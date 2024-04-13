@@ -1,0 +1,236 @@
+package admin
+
+import (
+	"context"
+	"fmt"
+	"net"
+	"net/http"
+	"path"
+	"time"
+
+	"github.com/dgate-io/chi-router"
+	"github.com/dgate-io/dgate/internal/config"
+	"github.com/dgate-io/dgate/internal/proxy"
+	"github.com/dgate-io/dgate/pkg/raftadmin"
+	"github.com/dgate-io/dgate/pkg/rafthttp"
+	"github.com/dgate-io/dgate/pkg/storage"
+	"github.com/dgate-io/dgate/pkg/util/logger"
+	raftbadgerdb "github.com/dgate-io/raft-badger"
+	"github.com/hashicorp/raft"
+)
+
+func setupRaft(conf *config.DGateConfig, server *chi.Mux, ps *proxy.ProxyState) {
+	adminConfig := conf.AdminConfig
+	var sstore raft.StableStore
+	var lstore raft.LogStore
+	snapstore := raft.NewInmemSnapshotStore()
+	switch conf.Storage.StorageType {
+	case config.StorageTypeMemory:
+		sstore = raft.NewInmemStore()
+		lstore = raft.NewInmemStore()
+	case config.StorageTypeFile:
+		fileConfig, err := config.StoreConfig[storage.FileStoreConfig](conf.Storage.Config)
+		if err != nil {
+			panic(fmt.Errorf("invalid config: %s", err))
+		}
+		badgerStore, err := raftbadgerdb.NewBadgerStore(
+			path.Join(fileConfig.Directory, "raft"),
+		)
+		if err != nil {
+			panic(err)
+		}
+		sstore = badgerStore
+		lstore = badgerStore
+	default:
+		panic(fmt.Errorf("invalid storage type: %s", conf.Storage.StorageType))
+	}
+	raftId := adminConfig.Replication.RaftID
+
+	raftConfig := adminConfig.Replication.LoadRaftConfig(
+		&raft.Config{
+			ProtocolVersion:    raft.ProtocolVersionMax,
+			LocalID:            raft.ServerID(raftId),
+			HeartbeatTimeout:   time.Millisecond * 8000,
+			ElectionTimeout:    time.Second * 10,
+			CommitTimeout:      time.Second * 5,
+			BatchApplyCh:       true,
+			MaxAppendEntries:   16,
+			SnapshotInterval:   time.Hour * 72,
+			LeaderLeaseTimeout: time.Millisecond * 4000,
+			SnapshotThreshold:  8192,
+			Logger: logger.NewZeroHCLogger(
+				ps.Logger().With().
+					Str("component", "raft").
+					Logger(),
+			),
+		},
+	)
+	advertAddr := adminConfig.Replication.AdvertAddr
+	if advertAddr == "" {
+		advertAddr = fmt.Sprintf("%s:%d", adminConfig.Host, adminConfig.Port)
+	}
+	address := raft.ServerAddress(advertAddr)
+	raftHttpLogger := ps.Logger().With().Str("component", "raftHttp").Logger()
+
+	if adminConfig.Replication.AdvertScheme != "http" && adminConfig.Replication.AdvertScheme != "https" {
+		panic(fmt.Errorf("invalid scheme: %s", adminConfig.Replication.AdvertScheme))
+	}
+
+	trans := rafthttp.NewHTTPTransport(address,
+		http.DefaultClient, raftHttpLogger,
+		adminConfig.Replication.AdvertScheme+
+			"://(address)/raft",
+	)
+	raftNode, err := raft.NewRaft(raftConfig, newDGateAdminFSM(ps),
+		lstore, sstore, snapstore, trans)
+	if err != nil {
+		panic(err)
+	}
+
+	ps.EnableRaft(raftNode, raftConfig)
+	// Setup raft handler
+	server.Handle("/raft/*", trans)
+
+	raftAdminLogger := ps.Logger().With().Str("component", "raftAdmin").Logger()
+	raftAdmin := raftadmin.NewRaftAdminHTTPServer(
+		raftNode, raftAdminLogger,
+		[]raft.ServerAddress{address},
+	)
+
+	// Setup handler raft
+	server.HandleFunc("/raftadmin/*", func(w http.ResponseWriter, r *http.Request) {
+		if adminConfig.Replication.SharedKey != "" {
+			sharedKey := r.Header.Get("X-DGate-Shared-Key")
+			if sharedKey != adminConfig.Replication.SharedKey {
+				http.Error(w, "Unauthorized", http.StatusUnauthorized)
+				return
+			}
+		}
+		raftAdmin.ServeHTTP(w, r)
+	})
+
+	configFuture := raftNode.GetConfiguration()
+
+	if err = configFuture.Error(); err != nil {
+		panic(err)
+	}
+	serverConfig := configFuture.Configuration()
+
+	ps.Logger().Debug().
+		Interface("config", adminConfig).
+		Msg("Replication config")
+
+	if adminConfig.Replication.BootstrapCluster {
+		raftNode.BootstrapCluster(raft.Configuration{
+			Servers: []raft.Server{
+				{
+					Suffrage: raft.Voter,
+					ID:       raft.ServerID(raftId),
+					Address:  raft.ServerAddress(adminConfig.Replication.AdvertAddr),
+				},
+			},
+		})
+	} else if len(serverConfig.Servers) == 0 {
+		go func() {
+			addresses := make([]string, 0)
+			if adminConfig.Replication.DiscoveryDomain != "" {
+				ps.Logger().Debug().
+					Msgf("no previous configuration found, attempting to discover cluster at %s",
+						adminConfig.Replication.DiscoveryDomain)
+				addrs, err := net.LookupHost(adminConfig.Replication.DiscoveryDomain)
+				if err != nil {
+					panic(err)
+				}
+				if len(addrs) == 0 {
+					panic(fmt.Errorf("no addrs found for %s", adminConfig.Replication.DiscoveryDomain))
+				}
+				ps.Logger().Info().
+					Msgf("discovered addrs: %v", addrs)
+				for _, addr := range addrs {
+					if addr[len(addr)-1] == '.' {
+						addr = addr[:len(addr)-1]
+					}
+					addresses = append(addresses, fmt.Sprintf("%s:%d", addr, adminConfig.Port))
+				}
+			}
+
+			if adminConfig.Replication.ClusterAddrs != nil && len(adminConfig.Replication.ClusterAddrs) > 0 {
+				addresses = append(addresses, adminConfig.Replication.ClusterAddrs...)
+			}
+
+			if len(addresses) > 0 {
+				addresses = append(addresses, adminConfig.Replication.ClusterAddrs...)
+				retries := 0
+				doer := func(req *http.Request) (*http.Response, error) {
+					req.Header.Set("User-Agent", "dgate")
+					if adminConfig.Replication.SharedKey != "" {
+						req.Header.Set("X-DGate-Shared-Key", adminConfig.Replication.SharedKey)
+					}
+					return http.DefaultClient.Do(req)
+				}
+				adminClient := raftadmin.NewHTTPAdminClient(doer,
+					adminConfig.Replication.AdvertScheme+"://(address)/raftadmin",
+					ps.Logger().With().Str("component", "raftAdminClient").Logger(),
+				)
+			RETRY:
+				for _, url := range addresses {
+					err = adminClient.VerifyLeader(context.Background(), raft.ServerAddress(url))
+					if err != nil {
+						if err == raftadmin.ErrNotLeader {
+							continue
+						}
+						if retries > 15 {
+							ps.Logger().Error().
+								Msgf("Skipping verifying leader at %s: %s", url, err)
+							continue
+						}
+						retries += 1
+						ps.Logger().Debug().
+							Msgf("Retrying verifying leader at %s: %s", url, err)
+						<-time.After(3 * time.Second)
+						goto RETRY
+					}
+					// If this node is watch only, add it as a non-voter node, otherwise add it as a voter node
+					if adminConfig.WatchOnly {
+						ps.Logger().Debug().
+							Msgf("Adding non-voter: %s", url)
+						resp, err := adminClient.AddNonvoter(context.Background(), raft.ServerAddress(url), &raftadmin.AddNonvoterRequest{
+							ID:      raftId,
+							Address: adminConfig.Replication.AdvertAddr,
+						})
+						if err != nil {
+							panic(err)
+						}
+						if resp.Error != "" {
+							panic(resp.Error)
+						}
+					} else {
+						ps.Logger().Debug().
+							Msgf("Adding voter: %s - leader: %s",
+								adminConfig.Replication.AdvertAddr, url)
+						resp, err := adminClient.AddVoter(context.Background(), raft.ServerAddress(url), &raftadmin.AddVoterRequest{
+							ID:      raftId,
+							Address: adminConfig.Replication.AdvertAddr,
+						})
+						if err != nil {
+							panic(err)
+						}
+						if resp.Error != "" {
+							panic(resp.Error)
+						}
+					}
+					break
+				}
+				if err != nil {
+					panic(err)
+				}
+			} else {
+				ps.Logger().Warn().
+					Msg("no admin urls specified, waiting to be added to cluster")
+			}
+		}()
+	} else {
+		ps.Logger().Debug().
+			Msgf("previous configuration found - %v", serverConfig)
+	}
+}

@@ -1,0 +1,32 @@
+name: DGate Performance Test (short)
+
+on:
+  push:
+    branches: [ "**" ]
+
+jobs:
+  k6_load_test:
+    name: k6 Load Test
+    runs-on: ubuntu-latest
+  
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v3
+
+      - uses: actions/setup-go@v4
+        with:
+          go-version-file: 'go.mod'
+
+      - run: go mod download
+
+      - run: go run cmd/dgate-server/main.go &
+
+      - name: Wait for server to start
+        run: sleep 5
+      - run: ./functional-tests/admin_tests/performance_test_prep.sh
+  
+      - name: Run local k6 test
+        uses: grafana/k6-action@v0.3.1
+        with:
+          filename: performance-tests/perf-test.js
+

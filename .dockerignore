@@ -1,0 +1,5 @@
+.*/
+dashboard/
+dist/
+functional-tests/
+go.work*

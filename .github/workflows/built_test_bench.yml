@@ -1,0 +1,39 @@
+name: DGate Build/Test/Bench
+
+on:
+  push:
+    branches: [ "**" ]
+
+jobs:
+  build_test:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v3
+
+    - name: Set up Go
+      uses: actions/setup-go@v3
+      with:
+        go-version-file: go.mod
+        cache: true
+        cache-dependency-path: go.sum
+
+    - name: Build
+      run: |
+        go mod download
+        go build -v ./...
+
+    - name: Test
+      run: |
+        go test -coverprofile=cov.out -v ./...
+        go tool cover -func=cov.out
+
+    - name: Benchmark
+      run: |
+        go test -bench=. -run=^# ./...
+
+    - name: Upload coverage reports to Codecov
+      uses: codecov/codecov-action@v4.0.1
+      with:
+        token: ${{ secrets.CODECOV_TOKEN }}
+        slug: dgate-io/dgate
+
