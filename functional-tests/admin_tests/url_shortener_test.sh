@@ -26,7 +26,7 @@ $CALL PUT ${ADMIN_URL}/collection \
 MOD_B64="$(base64 < $DIR/url_shortener.ts)"
 $CALL PUT ${ADMIN_URL}/module \
     name=printer \
-    payload=$MOD_B64 \
+    payload="$MOD_B64" \
     namespace=url_shortener-ns
 
 $CALL PUT ${ADMIN_URL}/route \

@@ -35,7 +35,7 @@ proxy:
         namespace: "admin"
         patterns: ["admin.*"]
   tls:
-    port: 443
+    port: ${PORT_SSL:-443}
     auto_generate: true
     cert_file: .lego/certificates/ufosoup.com.crt
     key_file: .lego/certificates/ufosoup.com.key

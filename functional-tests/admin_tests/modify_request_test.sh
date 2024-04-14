@@ -7,7 +7,7 @@ PROXY_URL=${PROXY_URL:-"http://localhost"}
 
 DIR="$( cd "$( dirname "$0" )" && pwd )"
 
-CALL='http --check-status -p=mb -F'
+CALL='http --ignore-stdin --check-status -p=mb -F'
 
 $CALL PUT ${ADMIN_URL}/namespace \
     name=modify_request_test-ns
@@ -19,7 +19,7 @@ $CALL PUT ${ADMIN_URL}/domain \
 
 MOD_B64="$(base64 < $DIR/modify_request.ts)"
 $CALL PUT ${ADMIN_URL}/module \
-    name=printer payload=$MOD_B64 \
+    name=printer payload="$MOD_B64" \
     namespace=modify_request_test-ns
 
 $CALL PUT ${ADMIN_URL}/service \

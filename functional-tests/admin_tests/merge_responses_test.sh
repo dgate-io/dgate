@@ -7,7 +7,7 @@ PROXY_URL=${PROXY_URL:-"http://localhost"}
 
 DIR="$( cd "$( dirname "$0" )" && pwd )"
 
-CALL='http --check-status -p=mb -F'
+CALL='http --ignore-stdin --check-status -p=mb -F'
 
 $CALL PUT ${ADMIN_URL}/namespace \
     name=test-ns
@@ -22,7 +22,7 @@ $CALL ${ADMIN_URL}/domain
 MOD_B64="$(base64 < $DIR/merge_responses.ts)"
 $CALL PUT ${ADMIN_URL}/module \
     name=printer \
-    payload=$MOD_B64 \
+    payload="$MOD_B64" \
     namespace=test-ns
 
 

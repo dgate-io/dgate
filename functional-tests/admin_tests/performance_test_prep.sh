@@ -9,7 +9,7 @@ DIR="$( cd "$( dirname "$0" )" && pwd )"
 
 # SETUP BASE
 
-CALL='http --check-status -p=mb -F'
+CALL='http --ignore-stdin --check-status -p=mb -F'
 
 # domain setup
 
@@ -26,7 +26,7 @@ $CALL PUT ${ADMIN_URL}/service \
     
 MOD_B64="$(base64 < $DIR/performance_test_prep.ts)"
 $CALL PUT ${ADMIN_URL}/module \
-    name=test-mod payload=$MOD_B64 \
+    name=test-mod payload="$MOD_B64" \
     namespace=test-ns1
 
 $CALL PUT ${ADMIN_URL}/route \
