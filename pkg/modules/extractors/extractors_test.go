@@ -185,7 +185,7 @@ func TestExportedPromiseErrors(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	
+
 	rt := loop.Start()
 	defer loop.Stop()
 
@@ -208,7 +208,7 @@ func TestExportedPromiseErrors(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	
+
 	callable, ok = goja.AssertFunction(v)
 	if !assert.True(t, ok) {
 		return

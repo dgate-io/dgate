@@ -165,8 +165,8 @@ func replace[K cmp.Ordered, V any](root *node[K, V], key K, value V) (*node[K, V
 	var oldValue V
 	if root == nil {
 		return &node[K, V]{
-			key: key,
-			val: value,
+			key:    key,
+			val:    value,
 			height: 1,
 		}, oldValue
 	}

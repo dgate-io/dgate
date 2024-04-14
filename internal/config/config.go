@@ -108,9 +108,9 @@ type (
 
 	DGateJWTAuthConfig struct {
 		// HeaderName is the name of the header to extract the JWT token from
-		HeaderName string         `koanf:"header_name"`
-		Algorithm  string         `koanf:"algorithm"`
-		SignatureConfig     map[string]any `koanf:",remain"`
+		HeaderName      string         `koanf:"header_name"`
+		Algorithm       string         `koanf:"algorithm"`
+		SignatureConfig map[string]any `koanf:",remain"`
 	}
 
 	AsymmetricSignatureConfig struct {

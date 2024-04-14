@@ -103,7 +103,6 @@ func TestCache_MaxItems_Overwrite(t *testing.T) {
 	assert.True(t, ok, "expected key to be found")
 	assert.Equal(t, 1, n, "expected value to be 1, got %d", n)
 
-
 	c.Bucket("test").SetWithTTL("key", 2, time.Millisecond*100)
 	n, ok = c.Bucket("test").Get("key")
 	assert.True(t, ok, "expected key to be found")

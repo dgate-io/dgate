@@ -52,10 +52,10 @@ func (b *proxyTransportBuilder) RetryTimeout(retryTimeout time.Duration) Builder
 
 func (b *proxyTransportBuilder) Clone() Builder {
 	return &proxyTransportBuilder{
-		transport: b.transport,
+		transport:      b.transport,
 		requestTimeout: b.requestTimeout,
-		retries: b.retries,
-		retryTimeout: b.requestTimeout,
+		retries:        b.retries,
+		retryTimeout:   b.requestTimeout,
 	}
 }
 
@@ -101,8 +101,8 @@ func (m *retryRoundTripper) RoundTrip(req *http.Request) (*http.Response, error)
 		return m.transport.RoundTrip(req)
 	}
 	var (
-		resp             *http.Response
-		err              error
+		resp *http.Response
+		err  error
 		// retryTimeoutChan <-chan time.Time
 	)
 	// if m.retryTimeout != 0 {

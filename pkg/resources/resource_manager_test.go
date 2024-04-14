@@ -582,7 +582,7 @@ func BenchmarkRM_ReadingWriting(b *testing.B) {
 				Paths:   []string{"/"},
 				Methods: []string{"GET"},
 				Modules: []string{""},
-				Tags:          []string{"test"},
+				Tags:    []string{"test"},
 			}
 			for i := 0; pb.Next(); i++ {
 				rt.Name = "test" + strconv.Itoa(i%routeSize)

@@ -99,4 +99,3 @@ func NewTest2DGateConfig() *config.DGateConfig {
 		},
 	}
 }
-

@@ -8,6 +8,7 @@ import (
 )
 
 // typescript v5.3.3
+//
 //go:embed typescript.min.js
 var tscSource string
 

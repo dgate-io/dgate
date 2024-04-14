@@ -12,8 +12,8 @@ type ResponseWriterTracker interface {
 }
 
 type rwTracker struct {
-	rw     http.ResponseWriter
-	status int
+	rw           http.ResponseWriter
+	status       int
 	bytesWritten int64
 }
 

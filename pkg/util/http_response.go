@@ -23,7 +23,7 @@ func JsonResponse(w http.ResponseWriter, statusCode int, data any) {
 	}
 	responseData := map[string]any{
 		"status_code": statusCode,
-		"data": data,
+		"data":        data,
 	}
 	if isSlice(data) {
 		responseData["count"] = sliceLen(data)
@@ -40,7 +40,7 @@ func JsonError[T any](w http.ResponseWriter, statusCode int, message T) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(statusCode)
 	json.NewEncoder(w).Encode(map[string]any{
-		"error": message,
+		"error":  message,
 		"status": statusCode,
 	})
 }

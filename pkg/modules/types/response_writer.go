@@ -137,4 +137,3 @@ func (g *ResponseWriterWrapper) Cookie() []*http.Cookie {
 func (g *ResponseWriterWrapper) Header() http.Header {
 	return g.rw.Header()
 }
-

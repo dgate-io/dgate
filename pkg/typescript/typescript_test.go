@@ -8,7 +8,7 @@ import (
 	"github.com/dop251/goja"
 )
 
-// TOOD: add more test cases for errors to ensure the line numbers are correct
+// TODO: add more test cases for errors to ensure the line numbers are correct
 // and the error messages are correct; also wrap code in a function and test.
 
 func TestTranspile(t *testing.T) {
