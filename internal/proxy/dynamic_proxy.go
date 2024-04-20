@@ -47,8 +47,9 @@ func (ps *ProxyState) setupModules() error {
 	eg, _ := errgroup.WithContext(context.Background())
 	newModPrograms := avl.NewTree[string, *goja.Program]()
 	for _, route := range ps.rm.GetRoutes() {
-		// TODO: check if route/module has changes
+		route := route
 		for _, mod := range route.Modules {
+			mod := mod
 			eg.Go(func() error {
 				var (
 					err        error
@@ -134,6 +135,7 @@ func (ps *ProxyState) setupRoutes() (err error) {
 						if len(r.Methods) == 0 {
 							return errors.New("route must have at least one method")
 						}
+						// TODO: validate methods
 						for _, method := range r.Methods {
 							mux.Method(method, path, ps.HandleRoute(reqCtxProvider, path))
 						}

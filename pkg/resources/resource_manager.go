@@ -9,7 +9,6 @@ import (
 	"github.com/dgate-io/dgate/pkg/spec"
 	"github.com/dgate-io/dgate/pkg/util/linker"
 	"github.com/dgate-io/dgate/pkg/util/safe"
-	"github.com/dgate-io/dgate/pkg/util/sliceutil"
 	"github.com/dgate-io/dgate/pkg/util/tree/avl"
 )
 
@@ -693,16 +692,17 @@ func (rm *ResourceManager) transformCollection(collection *spec.Collection) (*sp
 	if ns, ok := rm.getNamespace(collection.NamespaceName); !ok {
 		return nil, ErrNamespaceNotFound(collection.NamespaceName)
 	} else {
-		if mods, err := sliceutil.SliceMapperError(collection.Modules, func(modName string) (*spec.DGateModule, error) {
-			if mod, ok := rm.getModule(modName, collection.NamespaceName); ok {
-				return mod, nil
-			}
-			return nil, ErrModuleNotFound(collection.NamespaceName)
-		}); err != nil {
-			return nil, err
-		} else {
-			return spec.TransformCollection(ns, mods, collection), nil
-		}
+		// if mods, err := sliceutil.SliceMapperError(collection.Modules, func(modName string) (*spec.DGateModule, error) {
+		// 	if mod, ok := rm.getModule(modName, collection.NamespaceName); ok {
+		// 		return mod, nil
+		// 	}
+		// 	return nil, ErrModuleNotFound(collection.NamespaceName)
+		// }); err != nil {
+		// 	return nil, err
+		// } else {
+		// 	return spec.TransformCollection(ns, mods, collection), nil
+		// }
+		return spec.TransformCollection(ns, nil, collection), nil
 	}
 }
 

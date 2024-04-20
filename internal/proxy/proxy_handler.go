@@ -78,7 +78,7 @@ func proxyHandler(ps *ProxyState, reqCtx *RequestContext) {
 					rtCtx.reqCtx.route, pathParams,
 				),
 			)
-			// TODO: consider using context to properly close
+			// TODO: consider passing context to properly close
 			modExt.Start()
 			defer func() {
 				rtCtx.Clean()
@@ -155,7 +155,7 @@ func handleServiceProxy(ps *ProxyState, reqCtx *RequestContext, modExt ModuleExt
 			t.TLSClientConfig = &tls.Config{
 				InsecureSkipVerify: reqCtx.route.Service.TLSSkipVerify,
 			}
-			dialer.Timeout = reqCtx.route.Service.ConnectTimeout
+			dialer.Timeout = reqCtx.route.Service.ConnectTimeout.TimeDuration()
 			t.ForceAttemptHTTP2 = reqCtx.route.Service.HTTP2Only
 		},
 	)
@@ -163,8 +163,8 @@ func handleServiceProxy(ps *ProxyState, reqCtx *RequestContext, modExt ModuleExt
 	ptb := ps.ProxyTransportBuilder.Clone().
 		Transport(proxyTransport).
 		Retries(reqCtx.route.Service.Retries).
-		RetryTimeout(reqCtx.route.Service.RetryTimeout).
-		RequestTimeout(reqCtx.route.Service.RequestTimeout)
+		RetryTimeout(reqCtx.route.Service.RetryTimeout.TimeDuration()).
+		RequestTimeout(reqCtx.route.Service.RequestTimeout.TimeDuration())
 
 	proxy, err := ptb.Build()
 	if err != nil {

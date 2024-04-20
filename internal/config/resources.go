@@ -149,11 +149,12 @@ func (resources *DGateResources) Validate() error {
 		if col.Visibility != spec.CollectionVisibilityPublic && col.Visibility != spec.CollectionVisibilityPrivate {
 			return errors.New("collection (" + col.Name + ") must specify visibility")
 		}
-		for _, modName := range col.Modules {
-			if _, ok := modules[modName+"-"+col.NamespaceName]; !ok {
-				return errors.New("collection (" + col.Name + ") references non-existent module (" + modName + ")")
-			}
-		}
+		// TODO: Uncomment when modules are supported for collections
+		// for _, modName := range col.Modules {
+		// 	if _, ok := modules[modName+"-"+col.NamespaceName]; !ok {
+		// 		return errors.New("collection (" + col.Name + ") references non-existent module (" + modName + ")")
+		// 	}
+		// }
 		collections[key] = &col
 	}
 

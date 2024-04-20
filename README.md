@@ -92,15 +92,3 @@ Production Ready Checklist:
   - [x] modify json response
   - [x] send multiple requests and combine the response
 
-- Add Module Permissions Functionality
-- Add Change Versioning
-- Add Change Rollback
-- Add Server Tags
-- Add Transactions
-  - [ ] - Add transactional support for admin API
-
-## Release Checklist
-- Test multiple modules being used at the same time
-  - [ ] - ??? Add option to specify specific export variables
-  - [ ] - check for module export conflicts from different modules
-  - [ ] - check for global variable conflicts

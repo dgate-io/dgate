@@ -15,19 +15,18 @@ func (n *Namespace) GetName() string {
 }
 
 type Service struct {
-	Name          string   `json:"name" koanf:"name"`
-	URLs          []string `json:"urls" koanf:"urls"`
-	NamespaceName string   `json:"namespace" koanf:"namespace"`
-	Tags          []string `json:"tags,omitempty" koanf:"tags"`
-
-	Retries            *int           `json:"retries" koanf:"retries"`
-	RetryTimeout       *time.Duration `json:"retryTimeout" koanf:"retryTimeout"`
-	ConnectTimeout     *time.Duration `json:"connectTimeout"  koanf:"connectTimeout"`
-	RequestTimeout     *time.Duration `json:"requestTimeout"  koanf:"requestTimeout"`
-	TLSSkipVerify      *bool          `json:"tlsSkipVerify" koanf:"tlsSkipVerify"`
-	HTTP2Only          *bool          `json:"http2Only" koanf:"http2Only"`
-	HideDGateHeaders   *bool          `json:"hideDGateHeaders" koanf:"hideDGateHeaders"`
-	DisableQueryParams *bool          `json:"disableQueryParams" koanf:"disableQueryParams"`
+	Name               string         `json:"name" koanf:"name"`
+	URLs               []string       `json:"urls" koanf:"urls"`
+	NamespaceName      string         `json:"namespace" koanf:"namespace"`
+	Retries            *int           `json:"retries,omitempty" koanf:"retries"`
+	RetryTimeout       *Duration      `json:"retryTimeout,omitempty" koanf:"retryTimeout"`
+	ConnectTimeout     *Duration      `json:"connectTimeout,omitempty"  koanf:"connectTimeout"`
+	RequestTimeout     *Duration      `json:"requestTimeout,omitempty"  koanf:"requestTimeout"`
+	TLSSkipVerify      *bool          `json:"tlsSkipVerify,omitempty" koanf:"tlsSkipVerify"`
+	HTTP2Only          *bool          `json:"http2Only,omitempty" koanf:"http2Only"`
+	HideDGateHeaders   *bool          `json:"hideDGateHeaders,omitempty" koanf:"hideDGateHeaders"`
+	DisableQueryParams *bool          `json:"disableQueryParams,omitempty" koanf:"disableQueryParams"`
+	Tags               []string       `json:"tags,omitempty" koanf:"tags"`
 }
 
 func (s *Service) GetName() string {
@@ -38,11 +37,11 @@ type Route struct {
 	Name          string   `json:"name" koanf:"name"`
 	Paths         []string `json:"paths" koanf:"paths"`
 	Methods       []string `json:"methods" koanf:"methods"`
-	Schemes       []string `json:"schemes" koanf:"schemes"`
+	Schemes       []string `json:"schemes,omitempty" koanf:"schemes"`
 	PreserveHost  bool     `json:"preserveHost" koanf:"preserveHost"`
 	StripPath     bool     `json:"stripPath" koanf:"stripPath"`
-	ServiceName   string   `json:"service" koanf:"service"`
-	NamespaceName string   `json:"namespace,omitempty" koanf:"namespace"`
+	ServiceName   string   `json:"service,omitempty" koanf:"service"`
+	NamespaceName string   `json:"namespace" koanf:"namespace"`
 	Modules       []string `json:"modules,omitempty" koanf:"modules"`
 	Tags          []string `json:"tags,omitempty" koanf:"tags"`
 }
@@ -84,8 +83,8 @@ type Collection struct {
 	Schema        any                  `json:"schema" koanf:"schema"`
 	Type          CollectionType       `json:"type" koanf:"type"`
 	Visibility    CollectionVisibility `json:"visibility" koanf:"visibility"`
-	Modules       []string             `json:"modules,omitempty" koanf:"modules"`
-	Tags          []string             `json:"tags,omitempty" koanf:"tags"`
+	// Modules       []string             `json:"modules,omitempty" koanf:"modules"`
+	Tags []string `json:"tags,omitempty" koanf:"tags"`
 }
 
 type CollectionType string

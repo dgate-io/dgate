@@ -29,8 +29,7 @@ func main() {
 
 	// get version from build info when installed using `go install``
 	buildInfo, ok := debug.ReadBuildInfo()
-	bversion := buildInfo.Main.Version
-	if ok && bversion != "" && bversion != "(devel)" {
+	if ok && buildInfo.Main.Version != "" && buildInfo.Main.Version != "(devel)" {
 		version = buildInfo.Main.Version
 	}
 

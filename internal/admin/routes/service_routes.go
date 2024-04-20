@@ -2,6 +2,7 @@ package routes
 
 import (
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"time"
@@ -25,8 +26,18 @@ func ConfigureServiceAPI(server chi.Router, proxyState *proxy.ProxyState, appCon
 		svc := spec.Service{}
 		err = json.Unmarshal(eb, &svc)
 		if err != nil {
-			util.JsonError(w, http.StatusBadRequest, "error unmarshalling body")
-			return
+			if ute, ok := err.(*json.UnmarshalTypeError); ok {
+				err = fmt.Errorf("error unmarshalling body: field %s expected type %s", ute.Field, ute.Type.String())
+				util.JsonError(w, http.StatusBadRequest, err.Error())
+				return
+			} else if se, ok := err.(*json.SyntaxError); ok {
+				err = fmt.Errorf("error unmarshalling body: syntax error at byte offset %d", se.Offset)
+				util.JsonError(w, http.StatusBadRequest, err.Error())
+				return
+			} else {
+				util.JsonError(w, http.StatusBadRequest, "error unmarshalling body")
+				return
+			}
 		}
 		if svc.Retries == nil {
 			retries := 3
@@ -112,5 +123,16 @@ func ConfigureServiceAPI(server chi.Router, proxyState *proxy.ProxyState, appCon
 			}
 		}
 		util.JsonResponse(w, http.StatusOK, spec.TransformDGateServices(rm.GetServicesByNamespace(nsName)...))
+	})
+
+	server.Get("/service/{name}", func(w http.ResponseWriter, r *http.Request) {
+		name := chi.URLParam(r, "name")
+		nsName := r.URL.Query().Get("namespace")
+		svc, ok := rm.GetService(name, nsName)
+		if !ok {
+			util.JsonError(w, http.StatusNotFound, "service not found")
+			return
+		}
+		util.JsonResponse(w, http.StatusOK, svc)
 	})
 }

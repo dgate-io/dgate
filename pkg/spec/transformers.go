@@ -159,7 +159,6 @@ func TransformDGateDocument(document *DGateDocument) *Document {
 	if document.Data != "" {
 		err := json.Unmarshal([]byte(document.Data), &payloadStruct)
 		if err != nil {
-			// this should never happen,
 			panic(err)
 		}
 	}
@@ -314,7 +313,7 @@ func TransformCollection(ns *DGateNamespace, mods []*DGateModule, col *Collectio
 		Schema:        schema,
 		SchemaPayload: string(schemaData),
 		Type:          col.Type,
-		Modules:       mods,
+		// Modules:       mods,
 		Visibility:    col.Visibility,
 		Tags:          col.Tags,
 	}

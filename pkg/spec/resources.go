@@ -37,14 +37,14 @@ type DGateService struct {
 	Tags      []string        `json:"tags,omitempty"`
 	Namespace *DGateNamespace `json:"namespace"`
 
-	DisableQueryParams bool          `json:"disableQueryParams,omitempty"`
-	Retries            int           `json:"retries,omitempty"`
-	RetryTimeout       time.Duration `json:"retryTimeout,omitempty"`
-	ConnectTimeout     time.Duration `json:"connectTimeout,omitempty"`
-	RequestTimeout     time.Duration `json:"requestTimeout,omitempty"`
-	TLSSkipVerify      bool          `json:"tlsSkipVerify,omitempty"`
-	HTTP2Only          bool          `json:"http2_only,omitempty"`
-	HideDGateHeaders   bool          `json:"hideDGateHeaders,omitempty"`
+	DisableQueryParams bool     `json:"disableQueryParams,omitempty"`
+	Retries            int      `json:"retries,omitempty"`
+	RetryTimeout       Duration `json:"retryTimeout,omitempty"`
+	ConnectTimeout     Duration `json:"connectTimeout,omitempty"`
+	RequestTimeout     Duration `json:"requestTimeout,omitempty"`
+	TLSSkipVerify      bool     `json:"tlsSkipVerify,omitempty"`
+	HTTP2Only          bool     `json:"http2_only,omitempty"`
+	HideDGateHeaders   bool     `json:"hideDGateHeaders,omitempty"`
 }
 
 func (s *DGateService) GetName() string {
@@ -117,8 +117,8 @@ type DGateCollection struct {
 	SchemaPayload string               `json:"schema_payload"`
 	Type          CollectionType       `json:"type"`
 	Visibility    CollectionVisibility `json:"visibility"`
-	Modules       []*DGateModule       `json:"modules"`
-	Tags          []string             `json:"tags,omitempty"`
+	// Modules       []*DGateModule       `json:"modules"`
+	Tags []string `json:"tags,omitempty"`
 }
 
 func (n *DGateCollection) GetName() string {
