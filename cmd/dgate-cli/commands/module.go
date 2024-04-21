@@ -1,8 +1,6 @@
 package commands
 
 import (
-	"fmt"
-
 	"github.com/dgate-io/dgate/pkg/dgclient"
 	"github.com/dgate-io/dgate/pkg/spec"
 	"github.com/urfave/cli/v2"
@@ -27,7 +25,6 @@ func ModuleCommand(client *dgclient.DGateClient) *cli.Command {
 					if err != nil {
 						return err
 					}
-					fmt.Println(mod, client.BaseUrl())
 					err = client.CreateModule(mod)
 					if err != nil {
 						return err

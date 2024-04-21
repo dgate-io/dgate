@@ -17,7 +17,7 @@ dgate-cli domain create \
     namespace=test-ns1
 
 dgate-cli service create \
-    name=test-svc urls:='["http://localhost:8080"]' \
+    name=test-svc urls:='["http://localhost:8888"]' \
     namespace=test-ns1
     
 MOD_B64="$(base64 < $DIR/performance_test_prep.ts)"
@@ -52,8 +52,8 @@ dgate-cli route create \
     namespace=test-ns1
 
 
-curl ${PROXY_URL}/svctest -H Host:dgate.dev
+curl -s ${PROXY_URL}/svctest -H Host:dgate.dev
 
-curl ${PROXY_URL}/modtest -H Host:dgate.dev
+curl -s ${PROXY_URL}/modtest -H Host:dgate.dev
 
-curl ${PROXY_URL}/blank -H Host:dgate.dev
+curl -s ${PROXY_URL}/blank -H Host:dgate.dev

@@ -1,8 +1,6 @@
 package commands
 
 import (
-	"fmt"
-
 	"github.com/dgate-io/dgate/pkg/dgclient"
 	"github.com/dgate-io/dgate/pkg/spec"
 	"github.com/urfave/cli/v2"
@@ -28,7 +26,6 @@ func RouteCommand(client *dgclient.DGateClient) *cli.Command {
 					if err != nil {
 						return err
 					}
-					fmt.Println(rt, client.BaseUrl())
 					err = client.CreateRoute(rt)
 					if err != nil {
 						return err

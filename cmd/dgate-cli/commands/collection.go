@@ -1,8 +1,6 @@
 package commands
 
 import (
-	"fmt"
-
 	"github.com/dgate-io/dgate/pkg/dgclient"
 	"github.com/dgate-io/dgate/pkg/spec"
 	"github.com/urfave/cli/v2"
@@ -27,7 +25,6 @@ func CollectionCommand(client *dgclient.DGateClient) *cli.Command {
 					if err != nil {
 						return err
 					}
-					fmt.Println(col, client.BaseUrl())
 					err = client.CreateCollection(col)
 					if err != nil {
 						return err

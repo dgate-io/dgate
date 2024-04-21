@@ -1,8 +1,6 @@
 package commands
 
 import (
-	"fmt"
-
 	"github.com/dgate-io/dgate/pkg/dgclient"
 	"github.com/dgate-io/dgate/pkg/spec"
 	"github.com/urfave/cli/v2"
@@ -25,7 +23,6 @@ func NamespaceCommand(client *dgclient.DGateClient) *cli.Command {
 					if err != nil {
 						return err
 					}
-					fmt.Println(ns, client.BaseUrl())
 					err = client.CreateNamespace(ns)
 					if err != nil {
 						return err

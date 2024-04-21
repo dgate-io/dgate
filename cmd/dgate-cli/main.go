@@ -41,20 +41,7 @@ func main() {
 				Name:    "auth",
 				Aliases: []string{"a"},
 				EnvVars: []string{"DGATE_ADMIN_AUTH"},
-				Usage:   "the authorization credentials or token",
-			},
-			// &cli.StringFlag{
-			// 	Name:    "auth-scheme",
-			// 	Value:   "Basic",
-			// 	Aliases: []string{"A"},
-			// 	EnvVars: []string{"DGATE_ADMIN_AUTH_SCHEME"},
-			// 	Usage:   "the authorization scheme",
-			// },
-			&cli.StringFlag{
-				Name:    "tag",
-				Aliases: []string{"t"},
-				Value:   "default",
-				Usage:   "the namespace for the file client",
+				Usage:   "basic auth username:password; or just username for password prompt",
 			},
 		},
 		Before: func(ctx *cli.Context) (err error) {
