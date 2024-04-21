@@ -17,7 +17,7 @@ dgate-cli domain create \
 
 MOD_B64="$(base64 < $DIR/modify_request.ts)"
 dgate-cli module create \
-    name=printer payload=$MOD_B64 \
+    name=printer payload="$MOD_B64" \
     namespace=modify_request_test-ns
 
 dgate-cli service create \

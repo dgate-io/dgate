@@ -20,7 +20,7 @@ dgate-cli domain
 MOD_B64="$(base64 < $DIR/merge_responses.ts)"
 dgate-cli module create \
     name=printer \
-    payload=$MOD_B64 \
+    payload="$MOD_B64" \
     namespace=test-ns
 
 dgate-cli route create \

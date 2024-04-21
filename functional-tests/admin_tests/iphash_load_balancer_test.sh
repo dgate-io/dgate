@@ -19,7 +19,7 @@ dgate-cli domain create \
 MOD_B64="$(base64 < $DIR/iphash_load_balancer.ts)"
 dgate-cli module create \
     name=printer \
-    payload=$MOD_B64 \
+    payload="$MOD_B64" \
     namespace=test-lb-ns
 
 

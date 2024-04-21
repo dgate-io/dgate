@@ -24,7 +24,7 @@ dgate-cli collection create \
 MOD_B64="$(base64 < $DIR/url_shortener.ts)"
 dgate-cli module create \
     name=printer \
-    payload=$MOD_B64 \
+    payload="$MOD_B64" \
     namespace=url_shortener-ns
 
 dgate-cli route create \

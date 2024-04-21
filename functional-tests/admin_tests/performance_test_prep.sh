@@ -22,7 +22,7 @@ dgate-cli service create \
     
 MOD_B64="$(base64 < $DIR/performance_test_prep.ts)"
 dgate-cli module create \
-    name=test-mod payload=$MOD_B64 \
+    name=test-mod payload="$MOD_B64" \
     namespace=test-ns1
 
 dgate-cli route create \
