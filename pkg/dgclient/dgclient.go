@@ -70,7 +70,9 @@ func (ct *customTransport) RoundTrip(req *http.Request) (*http.Response, error) 
 		req.Header.Set("User-Agent", ct.UserAgent)
 	}
 	resp, err := ct.Transport.RoundTrip(req)
-	
+	if err != nil {
+		return nil, err
+	}
 	fmt.Printf("%s %s - %s %v\n", req.Method,
 		req.URL.String(), resp.Status, time.Since(start))
 	return resp, err

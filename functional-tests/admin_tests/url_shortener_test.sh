@@ -7,29 +7,27 @@ PROXY_URL=${PROXY_URL:-"http://localhost"}
 
 DIR="$( cd "$( dirname "$0" )" && pwd )"
 
-CALL='http --check-status -p=mhb -F'
-
-$CALL PUT ${ADMIN_URL}/namespace \
+dgate-cli namespace create \
     name=url_shortener-ns
 
-$CALL PUT ${ADMIN_URL}/domain \
+dgate-cli domain create \
     name=url_shortener-dm \
     patterns:='["url_shortener.com"]' \
     namespace=url_shortener-ns
 
-$CALL PUT ${ADMIN_URL}/collection \
+dgate-cli collection create \
     schema:='{"type":"object","properties":{"url":{"type":"string"}}}' \
     name=short_link \
     type=document \
     namespace=url_shortener-ns
 
 MOD_B64="$(base64 < $DIR/url_shortener.ts)"
-$CALL PUT ${ADMIN_URL}/module \
+dgate-cli module create \
     name=printer \
     payload=$MOD_B64 \
     namespace=url_shortener-ns
 
-$CALL PUT ${ADMIN_URL}/route \
+dgate-cli route create \
     name=base_rt \
     paths:='["/test","/hello"]' \
     methods:='["GET","POST"]' \
@@ -38,12 +36,9 @@ $CALL PUT ${ADMIN_URL}/route \
     preserveHost:=true \
     namespace=url_shortener-ns #\ service='base_svc'
 
-$CALL POST \
-    ${PROXY_URL}/test\?url\=${PROXY_URL}/hello \
-    Host:url_shortener.com
+JSON_RESP=$(curl -G -X POST -H Host:url_shortener.com ${PROXY_URL}/test --data-urlencode 'url=${PROXY_URL}/hello')
+echo $JSON_RESP
 
-URL_ID=$(http POST \
-    ${PROXY_URL}/test\?url\=${PROXY_URL}/hello \
-    Host:url_shortener.com | jq -re '.id')
+URL_ID=$(echo $JSON_RESP | jq -r '.id')
 
-http -m -p=hbm ${PROXY_URL}/test\?id\=$URL_ID Host:url_shortener.com
+curl ${PROXY_URL}/test\?id\=$URL_ID -H Host:url_shortener.com

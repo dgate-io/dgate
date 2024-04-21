@@ -37,14 +37,14 @@ type DGateService struct {
 	Tags      []string        `json:"tags,omitempty"`
 	Namespace *DGateNamespace `json:"namespace"`
 
-	DisableQueryParams bool     `json:"disableQueryParams,omitempty"`
-	Retries            int      `json:"retries,omitempty"`
-	RetryTimeout       Duration `json:"retryTimeout,omitempty"`
-	ConnectTimeout     Duration `json:"connectTimeout,omitempty"`
-	RequestTimeout     Duration `json:"requestTimeout,omitempty"`
-	TLSSkipVerify      bool     `json:"tlsSkipVerify,omitempty"`
-	HTTP2Only          bool     `json:"http2_only,omitempty"`
-	HideDGateHeaders   bool     `json:"hideDGateHeaders,omitempty"`
+	DisableQueryParams bool          `json:"disableQueryParams,omitempty"`
+	Retries            int           `json:"retries,omitempty"`
+	RetryTimeout       time.Duration `json:"retryTimeout,omitempty"`
+	ConnectTimeout     time.Duration `json:"connectTimeout,omitempty"`
+	RequestTimeout     time.Duration `json:"requestTimeout,omitempty"`
+	TLSSkipVerify      bool          `json:"tlsSkipVerify,omitempty"`
+	HTTP2Only          bool          `json:"http2_only,omitempty"`
+	HideDGateHeaders   bool          `json:"hideDGateHeaders,omitempty"`
 }
 
 func (s *DGateService) GetName() string {
@@ -65,7 +65,7 @@ type DGateDomain struct {
 	Namespace *DGateNamespace  `json:"namespace"`
 	Patterns  []string         `json:"pattern"`
 	TLSCert   *tls.Certificate `json:"tls_config"`
-	Priority  uint             `json:"priority"`
+	Priority  int             `json:"priority"`
 	Cert      string           `json:"cert"`
 	Key       string           `json:"key"`
 	Tags      []string         `json:"tags,omitempty"`

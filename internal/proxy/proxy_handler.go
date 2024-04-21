@@ -155,7 +155,7 @@ func handleServiceProxy(ps *ProxyState, reqCtx *RequestContext, modExt ModuleExt
 			t.TLSClientConfig = &tls.Config{
 				InsecureSkipVerify: reqCtx.route.Service.TLSSkipVerify,
 			}
-			dialer.Timeout = reqCtx.route.Service.ConnectTimeout.TimeDuration()
+			dialer.Timeout = reqCtx.route.Service.ConnectTimeout
 			t.ForceAttemptHTTP2 = reqCtx.route.Service.HTTP2Only
 		},
 	)
@@ -163,8 +163,8 @@ func handleServiceProxy(ps *ProxyState, reqCtx *RequestContext, modExt ModuleExt
 	ptb := ps.ProxyTransportBuilder.Clone().
 		Transport(proxyTransport).
 		Retries(reqCtx.route.Service.Retries).
-		RetryTimeout(reqCtx.route.Service.RetryTimeout.TimeDuration()).
-		RequestTimeout(reqCtx.route.Service.RequestTimeout.TimeDuration())
+		RetryTimeout(reqCtx.route.Service.RetryTimeout).
+		RequestTimeout(reqCtx.route.Service.RequestTimeout)
 
 	proxy, err := ptb.Build()
 	if err != nil {

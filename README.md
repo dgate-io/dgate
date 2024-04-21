@@ -27,7 +27,7 @@ go install github.com/dgate-io/dgate/cmd/dgate-server@latest
 
 ### Performance tests
 ```
-# requires k6 and httpie
+# requires k6 and jq
 ./functional-tests/admin_tests/performance_test_prep.sh
 k6 run --summary-trend-stats="min,max,med,p(99),p(99.9),p(99.99)" --out web-dashboard performance-tests/perf-test.js
 ```

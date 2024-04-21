@@ -25,6 +25,12 @@ import (
 )
 
 func LoadConfig(dgateConfigPath string) (*DGateConfig, error) {
+	ctx, cancel := context.WithTimeout(
+		context.Background(),
+		time.Second*10,
+	)
+	defer cancel()
+
 	var dgateConfigData string
 	if dgateConfigPath == "" {
 		dgateConfigPath = os.Getenv("DG_CONFIG_PATH")
@@ -93,8 +99,6 @@ func LoadConfig(dgateConfigPath string) (*DGateConfig, error) {
 			shell = shellEnv
 		}
 		resolveConfigStringPattern(data, commandRegex, func(value string, results map[string]string) (string, error) {
-			ctx, cancel := context.WithTimeout(context.Background(), time.Second*10)
-			defer cancel()
 			cmdResult, err := exec.CommandContext(ctx, shell, "-c", results["cmd"]).Output()
 			if err != nil {
 				return "", err
@@ -231,7 +235,7 @@ func LoadConfig(dgateConfigPath string) (*DGateConfig, error) {
 			Result: dgateConfig,
 			DecodeHook: mapstructure.ComposeDecodeHookFunc(
 				mapstructure.StringToTimeDurationHookFunc(),
-				StringToIntHookFunc(),
+				StringToIntHookFunc(), StringToBoolHookFunc(),
 			),
 		},
 	})

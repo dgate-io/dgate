@@ -7,7 +7,7 @@
   - server management (start-proxy, stop-proxy, restart, status, logs, stats, etc.)
   - cluster management (raft commands, replica commands, etc.) (low priority)
   - other commands (backup, restore, etc.) (low priority)
-- replace httpie usage in scripts with dgate-cli
+  - replace k6 with wrk for performance tests
 
 ## Replace zerolog with slog
 

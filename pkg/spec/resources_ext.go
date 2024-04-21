@@ -19,9 +19,9 @@ type Service struct {
 	URLs               []string       `json:"urls" koanf:"urls"`
 	NamespaceName      string         `json:"namespace" koanf:"namespace"`
 	Retries            *int           `json:"retries,omitempty" koanf:"retries"`
-	RetryTimeout       *Duration      `json:"retryTimeout,omitempty" koanf:"retryTimeout"`
-	ConnectTimeout     *Duration      `json:"connectTimeout,omitempty"  koanf:"connectTimeout"`
-	RequestTimeout     *Duration      `json:"requestTimeout,omitempty"  koanf:"requestTimeout"`
+	RetryTimeout       *time.Duration `json:"retryTimeout,omitempty" koanf:"retryTimeout"`
+	ConnectTimeout     *time.Duration `json:"connectTimeout,omitempty"  koanf:"connectTimeout"`
+	RequestTimeout     *time.Duration `json:"requestTimeout,omitempty"  koanf:"requestTimeout"`
 	TLSSkipVerify      *bool          `json:"tlsSkipVerify,omitempty" koanf:"tlsSkipVerify"`
 	HTTP2Only          *bool          `json:"http2Only,omitempty" koanf:"http2Only"`
 	HideDGateHeaders   *bool          `json:"hideDGateHeaders,omitempty" koanf:"hideDGateHeaders"`
@@ -67,7 +67,7 @@ type Domain struct {
 	Name          string   `json:"name" koanf:"name"`
 	NamespaceName string   `json:"namespace" koanf:"namespace"`
 	Patterns      []string `json:"patterns" koanf:"patterns"`
-	Priority      uint     `json:"priority" koanf:"priority"`
+	Priority      int      `json:"priority" koanf:"priority"`
 	Cert          string   `json:"cert" koanf:"cert"`
 	Key           string   `json:"key" koanf:"key"`
 	Tags          []string `json:"tags,omitempty" koanf:"tags"`

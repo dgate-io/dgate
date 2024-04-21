@@ -7,31 +7,28 @@ PROXY_URL=${PROXY_URL:-"http://localhost"}
 
 DIR="$( cd "$( dirname "$0" )" && pwd )"
 
-CALL='http --check-status -p=mb -F'
 
-$CALL PUT ${ADMIN_URL}/namespace \
+dgate-cli namespace create \
     name=test-lb-ns
 
-$CALL PUT ${ADMIN_URL}/domain \
+dgate-cli domain create \
     name=test-lb-dm \
     patterns:='["test-lb.com"]' \
     namespace=test-lb-ns
 
-$CALL ${ADMIN_URL}/domain
-
 MOD_B64="$(base64 < $DIR/iphash_load_balancer.ts)"
-$CALL PUT ${ADMIN_URL}/module \
+dgate-cli module create \
     name=printer \
     payload=$MOD_B64 \
     namespace=test-lb-ns
 
 
-http -m PUT ${ADMIN_URL}/service \
+dgate-cli service create \
     name=base_svc \
     urls:='["http://localhost:8888/a","http://localhost:8888/b","http://localhost:8888/c"]' \
     namespace=test-lb-ns
 
-$CALL PUT ${ADMIN_URL}/route \
+dgate-cli route create \
     name=base_rt \
     paths:='["/test-lb","/hello"]' \
     methods:='["GET"]' \
@@ -41,6 +38,13 @@ $CALL PUT ${ADMIN_URL}/route \
     preserveHost:=true \
     namespace=test-lb-ns
 
-http -m -p=hbm ${PROXY_URL}/test-lb Host:test-lb.com
+path1=$(curl -s ${PROXY_URL}/test-lb -H Host:test-lb.com | jq -r '.data.path')
 
-http -m -p=hbm ${PROXY_URL}/test-lb Host:test-lb.com X-Forwarded-For:192.168.0.1
+path2=$(curl -s ${PROXY_URL}/test-lb -H Host:test-lb.com -H X-Forwarded-For:192.168.0.1 | jq -r '.data.path')
+
+if [ "$path1" != "$path2" ]; then
+    echo "IP Hash Load Balancer Test Passed"
+else
+    echo "IP Hash Load Balancer Test Failed"
+    exit 1
+fi

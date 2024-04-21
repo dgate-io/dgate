@@ -7,29 +7,25 @@ PROXY_URL=${PROXY_URL:-"http://localhost"}
 
 DIR="$( cd "$( dirname "$0" )" && pwd )"
 
-# SETUP BASE
-
-CALL='http --check-status -p=mb -F'
-
 # domain setup
 
-$CALL PUT ${ADMIN_URL}/namespace \
+dgate-cli namespace create \
     name=test-ns1
 
-$CALL PUT ${ADMIN_URL}/domain \
+dgate-cli domain create \
     name=test-dm patterns:='["dgate.dev"]' \
     namespace=test-ns1
 
-$CALL PUT ${ADMIN_URL}/service \
+dgate-cli service create \
     name=test-svc urls:='["http://localhost:8080"]' \
     namespace=test-ns1
     
 MOD_B64="$(base64 < $DIR/performance_test_prep.ts)"
-$CALL PUT ${ADMIN_URL}/module \
+dgate-cli module create \
     name=test-mod payload=$MOD_B64 \
     namespace=test-ns1
 
-$CALL PUT ${ADMIN_URL}/route \
+dgate-cli route create \
     name=base-rt1 \
     service=test-svc \
     methods:='["GET"]' \
@@ -38,7 +34,7 @@ $CALL PUT ${ADMIN_URL}/route \
     stripPath:=true \
     namespace=test-ns1
 
-$CALL PUT ${ADMIN_URL}/route \
+dgate-cli route create \
     name=test-rt2 \
     paths:='["/modtest","/modview"]' \
     methods:='["GET"]' \
@@ -47,7 +43,7 @@ $CALL PUT ${ADMIN_URL}/route \
     preserveHost:=false \
     namespace=test-ns1
 
-$CALL PUT ${ADMIN_URL}/route \
+dgate-cli route create \
     name=test-rt3 \
     paths:='["/blank"]' \
     methods:='["GET"]' \
@@ -56,8 +52,8 @@ $CALL PUT ${ADMIN_URL}/route \
     namespace=test-ns1
 
 
-http ${PROXY_URL}/svctest Host:dgate.dev
+curl ${PROXY_URL}/svctest -H Host:dgate.dev
 
-http ${PROXY_URL}/modtest Host:dgate.dev
+curl ${PROXY_URL}/modtest -H Host:dgate.dev
 
-http ${PROXY_URL}/blank Host:dgate.dev
+curl ${PROXY_URL}/blank -H Host:dgate.dev

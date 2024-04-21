@@ -105,8 +105,7 @@ func (ps *ProxyState) processChangeLog(
 		if !ps.config.Debug {
 			return err
 		}
-		ps.logger.Error().
-			Err(err).
+		ps.logger.Error().Err(err).
 			Msg("error updating change log hash")
 	} else {
 		ps.changeHash = changeHash
@@ -118,10 +117,13 @@ func (ps *ProxyState) processChangeLog(
 func decode[T any](input any) (T, error) {
 	var output T
 	cfg := &mapstructure.DecoderConfig{
-		Metadata:   nil,
-		Result:     &output,
-		TagName:    "json",
-		DecodeHook: mapstructure.StringToTimeHookFunc(time.RFC3339),
+		Metadata: nil,
+		Result:   &output,
+		TagName:  "json",
+		DecodeHook: mapstructure.ComposeDecodeHookFunc(
+			mapstructure.StringToTimeHookFunc(time.RFC3339),
+			mapstructure.StringToTimeDurationHookFunc(),
+		),
 	}
 	decoder, _ := mapstructure.NewDecoder(cfg)
 	err := decoder.Decode(input)
@@ -253,11 +255,7 @@ func (ps *ProxyState) restoreFromChangeLogs() error {
 			lastIteration := i == len(logs)-1
 			err = ps.processChangeLog(cl, lastIteration, false)
 			if err != nil {
-				if ps.config.Debug {
-					ps.logger.Err(err).Msg("error processing change log, ignoring while in debug mode")
-				} else {
-					return err
-				}
+				return err
 			}
 		}
 		// TODO: change to configurable variable

@@ -92,8 +92,8 @@ func sliceMap[T any, V any](s []T, f func(T) V) []V {
 	return result
 }
 
-func StringToIntHookFunc() mapstructure.DecodeHookFunc {
-	return func(from, to reflect.Type, data any) (interface{}, error) {
+func StringToIntHookFunc() mapstructure.DecodeHookFuncType {
+	return func(from, to reflect.Type, data any) (any, error) {
 		if from.Kind() != reflect.String {
 			return data, nil
 		}
@@ -101,6 +101,18 @@ func StringToIntHookFunc() mapstructure.DecodeHookFunc {
 			return data, nil
 		}
 		return strconv.Atoi(data.(string))
+	}
+}
+
+func StringToBoolHookFunc() mapstructure.DecodeHookFuncType {
+	return func(f, t reflect.Type, data any) (any, error) {
+		if f.Kind() != reflect.String {
+			return data, nil
+		}
+		if t.Kind() != reflect.Bool {
+			return data, nil
+		}
+		return strconv.ParseBool(data.(string))
 	}
 }
 

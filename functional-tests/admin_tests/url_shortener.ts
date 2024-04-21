@@ -4,7 +4,7 @@ import {
 } from "dgate/state";
 import { createHash } from "dgate/crypto";
 
-export const requestHandler = async (ctx) => {
+export const requestHandler = (ctx) => {
     const req = ctx.request();
     const res = ctx.response();
     console.log("req", JSON.stringify(req));
@@ -14,7 +14,7 @@ export const requestHandler = async (ctx) => {
             res.status(400).json({ error: "id is required" })
             return;
         }
-        await getDocument("short_link", req.query.get("id"))
+        return getDocument("short_link", req.query.get("id"))
             .then((doc) => {
                 console.log("doc", JSON.stringify(doc));
                 if (!doc?.data?.url) {
@@ -28,7 +28,6 @@ export const requestHandler = async (ctx) => {
                 console.log("error", e, JSON.stringify(e));
                 res.status(500).json({ error: e?.message });
             });
-        return;
     } else if (req.method == "POST") {
         const hasher = createHash("sha1")
         const link = req.query.get("url");
@@ -52,6 +51,6 @@ export const requestHandler = async (ctx) => {
             res.status(500).json({ error: e?.message });
         });
     } else {
-        res.status(405).json({ error: "method not allowed" });
+        return res.status(405).json({ error: "method not allowed" });
     }
 };

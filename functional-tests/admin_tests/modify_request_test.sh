@@ -7,27 +7,25 @@ PROXY_URL=${PROXY_URL:-"http://localhost"}
 
 DIR="$( cd "$( dirname "$0" )" && pwd )"
 
-CALL='http --check-status -p=mb -F'
-
-$CALL PUT ${ADMIN_URL}/namespace \
+dgate-cli namespace create \
     name=modify_request_test-ns
 
-$CALL PUT ${ADMIN_URL}/domain \
+dgate-cli domain create \
     name=modify_request_test-dm \
     patterns:='["modify_request_test.com"]' \
     namespace=modify_request_test-ns
 
 MOD_B64="$(base64 < $DIR/modify_request.ts)"
-$CALL PUT ${ADMIN_URL}/module \
+dgate-cli module create \
     name=printer payload=$MOD_B64 \
     namespace=modify_request_test-ns
 
-$CALL PUT ${ADMIN_URL}/service \
+dgate-cli service create \
     name=base_svc \
     urls:='["http://localhost:8888"]' \
     namespace=modify_request_test-ns
 
-$CALL PUT ${ADMIN_URL}/route \
+dgate-cli route create \
     name=base_rt \
     paths:='["/modify_request_test"]' \
     methods:='["GET"]' \
@@ -37,4 +35,8 @@ $CALL PUT ${ADMIN_URL}/route \
     namespace=modify_request_test-ns \
     service='base_svc'
 
-http -m -p=hmb ${PROXY_URL}/modify_request_test Host:modify_request_test.com X-Forwarded-For:1.1.1.1
+curl http://localhost/modify_request_test \
+    -H Host:modify_request_test.com \
+    -H X-Forwarded-For:1.1.1.1
+
+echo "Modify Request Test Passed"

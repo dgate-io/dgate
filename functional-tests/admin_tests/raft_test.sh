@@ -10,7 +10,7 @@ PROXY_URL=${PROXY_URL:-"http://localhost:81"}
 # SETUP BASE
 
 # make sure we're talking to the leader
-http ${ADMIN_URL}/raftadmin/VerifyLeader
+dgate-cli raftadmin/VerifyLeader
 
 . $DIR/namespace_test.sh
 

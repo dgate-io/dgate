@@ -12,7 +12,7 @@ import (
 	"github.com/dop251/goja_nodejs/console"
 )
 
-const TS_PAYLOAD = `
+const TS_PAYLOAD_CUSTOMFUNC = `
 let customFunc = (req: any, upstream: any) => {
 	console.log("log 1")
 	console.warn("log 2")
@@ -21,7 +21,7 @@ let customFunc = (req: any, upstream: any) => {
 export { customFunc }  
 `
 
-const JS_PAYLOAD = `
+const JS_PAYLOAD_CUSTOMFUNC = `
 let customFunc = (req, upstream) => {
 	console.log("log 1")
 	console.warn("log 2")
@@ -62,8 +62,8 @@ func (cp *consolePrinter) Error(string) {
 
 func TestNewModuleRuntimeJS(t *testing.T) {
 	programs := map[string]*goja.Program{
-		"javascript": testutil.CreateJSProgram(t, JS_PAYLOAD),
-		"typescript": testutil.CreateTSProgram(t, TS_PAYLOAD),
+		"javascript": testutil.CreateJSProgram(t, JS_PAYLOAD_CUSTOMFUNC),
+		"typescript": testutil.CreateTSProgram(t, TS_PAYLOAD_CUSTOMFUNC),
 	}
 	for testName, program := range programs {
 		t.Run(testName, func(t *testing.T) {
@@ -98,7 +98,7 @@ func TestNewModuleRuntimeJS(t *testing.T) {
 }
 
 func TestPrinter(t *testing.T) {
-	program := testutil.CreateJSProgram(t, JS_PAYLOAD)
+	program := testutil.CreateJSProgram(t, JS_PAYLOAD_CUSTOMFUNC)
 	cp := &consolePrinter{make(map[string]int)}
 	rt := &spec.DGateRoute{Namespace: &spec.DGateNamespace{}}
 	rtCtx := proxy.NewRuntimeContext(nil, rt)
@@ -117,7 +117,7 @@ func TestPrinter(t *testing.T) {
 }
 
 func BenchmarkNewModuleRuntime(b *testing.B) {
-	program := testutil.CreateTSProgram(b, TS_PAYLOAD)
+	program := testutil.CreateTSProgram(b, TS_PAYLOAD_CUSTOMFUNC)
 
 	b.ResetTimer()
 	b.Run("CreateModuleRuntime", func(b *testing.B) {
@@ -136,7 +136,7 @@ func BenchmarkNewModuleRuntime(b *testing.B) {
 	b.Run("Transpile-TS", func(b *testing.B) {
 		for i := 0; i < b.N; i++ {
 			b.StartTimer()
-			_, err := typescript.Transpile(TS_PAYLOAD)
+			_, err := typescript.Transpile(TS_PAYLOAD_CUSTOMFUNC)
 			if err != nil {
 				b.Fatal(err)
 			}
@@ -148,7 +148,7 @@ func BenchmarkNewModuleRuntime(b *testing.B) {
 	b.Run("CreateNewProgram-TS", func(b *testing.B) {
 		for i := 0; i < b.N; i++ {
 			b.StartTimer()
-			testutil.CreateTSProgram(b, TS_PAYLOAD)
+			testutil.CreateTSProgram(b, TS_PAYLOAD_CUSTOMFUNC)
 			b.StopTimer()
 		}
 	})
@@ -156,7 +156,7 @@ func BenchmarkNewModuleRuntime(b *testing.B) {
 	b.Run("CreateNewProgram-JS", func(b *testing.B) {
 		for i := 0; i < b.N; i++ {
 			b.StartTimer()
-			testutil.CreateJSProgram(b, JS_PAYLOAD)
+			testutil.CreateJSProgram(b, JS_PAYLOAD_CUSTOMFUNC)
 			b.StopTimer()
 		}
 	})

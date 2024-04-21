@@ -1,9 +1,10 @@
-package extractors
+package extractors_test
 
 import (
 	"strconv"
 	"testing"
 
+	"github.com/dgate-io/dgate/pkg/modules/extractors"
 	"github.com/dgate-io/dgate/pkg/modules/testutil"
 	"github.com/dgate-io/dgate/pkg/typescript"
 	"github.com/dop251/goja"
@@ -37,7 +38,7 @@ const customFunc4 = (req: any, upstream: any): Promise<any> => {
 async function print() {console.log("log")}
 `
 
-func Test_executeAndWaitForResult(t *testing.T) {
+func Test_runAndWaitForResult(t *testing.T) {
 	src, err := typescript.Transpile(TS_PAYLOAD)
 	if err != nil {
 		t.Fatal(err)
@@ -48,7 +49,7 @@ func Test_executeAndWaitForResult(t *testing.T) {
 	}
 	printer := testutil.NewMockPrinter()
 	modCtx := testutil.NewMockRuntimeContext()
-	loop, err := NewModuleEventLoop(
+	loop, err := extractors.NewModuleEventLoop(
 		printer, modCtx, program,
 	)
 	if err != nil {
@@ -67,7 +68,7 @@ func Test_executeAndWaitForResult(t *testing.T) {
 		if !ok {
 			t.Fatalf("%s is not a function", fn)
 		}
-		val, err := runAndWaitForResult(rt, customFunc, nil, nil, nil)
+		val, err := extractors.RunAndWaitForResult(rt, customFunc, nil, nil, nil)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -110,7 +111,7 @@ func TestExportedInformation(t *testing.T) {
 	modCtx.On("func1", "node_modules/test").
 		Return([]byte("exports.test = 'testing';"), nil).
 		Once()
-	loop, err := NewModuleEventLoop(printer, modCtx, program)
+	loop, err := extractors.NewModuleEventLoop(printer, modCtx, program)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -124,7 +125,7 @@ func TestExportedInformation(t *testing.T) {
 	if !assert.True(t, ok) {
 		return
 	}
-	v, err = runAndWaitForResult(rt, callable)
+	v, err = extractors.RunAndWaitForResult(rt, callable)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -142,7 +143,7 @@ func TestExportedInformation(t *testing.T) {
 	callable, ok = goja.AssertFunction(v)
 	assert.True(t, ok)
 
-	v, err = runAndWaitForResult(rt, callable)
+	v, err = extractors.RunAndWaitForResult(rt, callable)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -181,11 +182,11 @@ func TestExportedPromiseErrors(t *testing.T) {
 	}
 	printer := testutil.NewMockPrinter()
 	modCtx := testutil.NewMockRuntimeContext()
-	loop, err := NewModuleEventLoop(printer, modCtx, program)
+	loop, err := extractors.NewModuleEventLoop(printer, modCtx, program)
 	if err != nil {
 		t.Fatal(err)
 	}
-	
+
 	rt := loop.Start()
 	defer loop.Stop()
 
@@ -197,7 +198,7 @@ func TestExportedPromiseErrors(t *testing.T) {
 	if !assert.True(t, ok) {
 		return
 	}
-	v, err = runAndWaitForResult(rt, callable, nil)
+	v, err = extractors.RunAndWaitForResult(rt, callable, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -208,11 +209,11 @@ func TestExportedPromiseErrors(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	
+
 	callable, ok = goja.AssertFunction(v)
 	if !assert.True(t, ok) {
 		return
 	}
-	_, err = runAndWaitForResult(rt, callable, nil, nil, nil)
+	_, err = extractors.RunAndWaitForResult(rt, callable, nil, nil, nil)
 	assert.Error(t, err, "Error: test2 failed successfully")
 }

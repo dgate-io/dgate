@@ -479,7 +479,7 @@ func (ps *ProxyState) FindNamespaceByRequest(r *http.Request) *spec.DGateNamespa
 			}
 			return domains[i].Priority > domains[j].Priority
 		})
-		var priority uint
+		var priority int
 		var namespace *spec.DGateNamespace
 		for _, d := range domains {
 			if d.Priority < priority {

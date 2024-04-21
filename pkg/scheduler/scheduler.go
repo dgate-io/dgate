@@ -215,7 +215,7 @@ func (s *scheduler) ScheduleTask(name string, opts TaskOptions) error {
 		return ErrTaskFuncNotSet
 	}
 
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithCancel(context.TODO())
 	s.tasks[name] = &TaskDefinition{
 		Name:     name,
 		Func:     opts.TaskFunc,

@@ -7,27 +7,25 @@ PROXY_URL=${PROXY_URL:-"http://localhost"}
 
 DIR="$( cd "$( dirname "$0" )" && pwd )"
 
-CALL='http --check-status -p=mb -F'
-
-$CALL PUT ${ADMIN_URL}/namespace \
+dgate-cli namespace create \
     name=test-ns
 
-$CALL PUT ${ADMIN_URL}/domain \
+dgate-cli domain create \
     name=test-dm \
     patterns:='["test.com"]' \
     namespace=test-ns
 
 MOD_B64="$(base64 < $DIR/modify_response.ts)"
-$CALL PUT ${ADMIN_URL}/module \
+dgate-cli module create \
     name=printer payload=$MOD_B64 \
     namespace=test-ns
 
-$CALL PUT ${ADMIN_URL}/service \
+dgate-cli service create \
     name=base_svc \
     urls:='["http://localhost:8888"]' \
     namespace=test-ns
 
-$CALL PUT ${ADMIN_URL}/route \
+dgate-cli route create \
     name=base_rt \
     paths:='["/test","/hello"]' \
     methods:='["GET"]' \
@@ -37,4 +35,6 @@ $CALL PUT ${ADMIN_URL}/route \
     namespace=test-ns \
     service='base_svc'
 
-http -m -p=hmb ${PROXY_URL}/test Host:test.com
+curl ${PROXY_URL}/test -H Host:test.com
+
+echo "Modify Response Test Passed"

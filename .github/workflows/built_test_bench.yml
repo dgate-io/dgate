@@ -6,34 +6,35 @@ on:
 
 jobs:
   build_test:
-    runs-on: ubuntu-latest
+    runs-on: golang:1.22-alpine
     steps:
     - uses: actions/checkout@v3
 
-    - name: Set up Go
-      uses: actions/setup-go@v3
-      with:
-        go-version-file: go.mod
-        cache: true
-        cache-dependency-path: go.sum
-
-    - name: Build
+    - name: Build & Install
       run: |
         go mod download
         go build -v ./...
+        go install github.com/dgate-io/dgate/cmd/dgate-cli
+        go install github.com/dgate-io/dgate/cmd/dgate-server
 
     - name: Test
       run: |
         go test -coverprofile=cov.out -v ./...
         go tool cover -func=cov.out
 
-    - name: Benchmark
-      run: |
-        go test -bench=. -run=^# ./...
-
     - name: Upload coverage reports to Codecov
       uses: codecov/codecov-action@v4.0.1
       with:
         token: ${{ secrets.CODECOV_TOKEN }}
         slug: dgate-io/dgate
+
+    - name: Benchmark
+      run: |
+        go test -bench=. -run=^# ./...
+    
+    # needs jq, dgate-cli, and curl
+    - name: Functional Tests
+      run: |
+        apk update && apk add --no-cache curl jq
+        for i in functional-tests/admin_tests/*.sh; do bash -c $i; done
 

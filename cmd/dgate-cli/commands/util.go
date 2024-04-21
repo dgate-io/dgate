@@ -4,8 +4,10 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"reflect"
 	"strings"
+
+	"github.com/dgate-io/dgate/internal/config"
+	ms "github.com/mitchellh/mapstructure"
 )
 
 func createMapFromArgs[N any](
@@ -16,18 +18,25 @@ func createMapFromArgs[N any](
 	m := make(map[string]any)
 	// parse json strings
 	for i, arg := range args {
-		pair := strings.SplitN(arg, ":=", 2)
-		if len(pair) != 2 || pair[0] == "" || pair[1] == "" {
+		if !strings.Contains(arg, ":=") {
 			continue
 		}
+		pair := strings.SplitN(arg, ":=", 2)
+		if len(pair) != 2 || pair[0] == "" {
+			return nil, fmt.Errorf("invalid key-value pair: %s", arg)
+		}
 		var v any
-		err := json.Unmarshal([]byte(pair[1]), &v)
-		if err != nil {
-			if _, ok := err.(*json.SyntaxError); ok {
-				err = fmt.Errorf("error parsing values: invalid json for key '%s'", pair[0])
-				return nil, err
+		if pair[1] != "" {
+			err := json.Unmarshal([]byte(pair[1]), &v)
+			if err != nil {
+				if _, ok := err.(*json.SyntaxError); ok {
+					err = fmt.Errorf("error parsing values: invalid json for key '%s'", pair[0])
+					return nil, err
+				}
+				return nil, fmt.Errorf("invalid json value - key:'%s' value:'%s'", pair[0], pair[1])
 			}
-			return nil, fmt.Errorf("invalid json value - key:'%s' value:'%s'", pair[0], pair[1])
+		} else {
+			v = ""
 		}
 		m[pair[0]] = v
 		args[i] = ""
@@ -35,9 +44,12 @@ func createMapFromArgs[N any](
 
 	// parse raw strings
 	for _, arg := range args {
-		pair := strings.SplitN(arg, "=", 2)
-		if len(pair) != 2 || pair[0] == "" || pair[1] == "" {
+		if !strings.Contains(arg, "=") {
 			continue
+		}
+		pair := strings.SplitN(arg, "=", 2)
+		if len(pair) != 2 || pair[0] == "" {
+			return nil, fmt.Errorf("invalid key-value pair: %s", arg)
 		}
 		m[pair[0]] = pair[1]
 	}
@@ -53,22 +65,26 @@ func createMapFromArgs[N any](
 			strings.Join(required, ", "))
 	}
 
-	mapJson, err := json.Marshal(m)
-	if err != nil {
+	var resource N
+	var metadata ms.Metadata
+	if decoder, err := ms.NewDecoder(&ms.DecoderConfig{
+		TagName:  "json",
+		Result:   &resource,
+		Metadata: &metadata,
+		DecodeHook: ms.ComposeDecodeHookFunc(
+			ms.StringToTimeDurationHookFunc(),
+			ms.StringToSliceHookFunc(","),
+			config.StringToBoolHookFunc(),
+			config.StringToIntHookFunc(),
+		),
+	}); err != nil {
+		return nil, err
+	} else if err = decoder.Decode(m); err != nil {
 		return nil, err
 	}
-	var resource N
-	err = json.Unmarshal(mapJson, &resource)
-	if err != nil {
-		if ute, ok := err.(*json.UnmarshalTypeError); ok {
-			err = fmt.Errorf("error parsing values: field '%s' expected type %s", ute.Field, ute.Type.String())
-			if ute.Type.Kind() != reflect.String {
-				// TODO: add suggestion to use `:=` instead of `=`
-				fmt.Println("*suggestion: try using `:=` instead of `=`")
-			}
-			return nil, err
-		}
-		return nil, err
+	// add '--strict' flag to make this error a warning
+	if len(metadata.Unused) > 0 {
+		return nil, fmt.Errorf("input error: unused keys found - %s", strings.Join(metadata.Unused, ", "))
 	}
 	return &resource, nil
 }

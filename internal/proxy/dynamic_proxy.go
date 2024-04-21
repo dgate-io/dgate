@@ -44,7 +44,7 @@ func (state *ProxyState) reconfigureState(log *spec.ChangeLog) error {
 
 func (ps *ProxyState) setupModules() error {
 	ps.logger.Debug().Msg("Setting up modules")
-	eg, _ := errgroup.WithContext(context.Background())
+	eg, _ := errgroup.WithContext(context.TODO())
 	newModPrograms := avl.NewTree[string, *goja.Program]()
 	for _, route := range ps.rm.GetRoutes() {
 		route := route

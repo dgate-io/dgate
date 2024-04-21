@@ -1,7 +1,7 @@
 import { fetch } from "dgate/http";
 
 export const requestHandler = async (ctx) => {
-    await Promise.allSettled([
+    return Promise.allSettled([
         fetch("https://httpbin.org/uuid"),
         fetch("https://httpbin.org/headers"),
         fetch("https://httpbin.org/user-agent"),

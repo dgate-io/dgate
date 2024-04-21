@@ -25,7 +25,6 @@ func New(modCtx modules.RuntimeContext) modules.GoModule {
 func (sm *StorageModule) Exports() *modules.Exports {
 	return &modules.Exports{
 		Named: map[string]any{
-			"useCache": sm.UseCache,
 			"getCache": sm.GetCache,
 			"setCache": sm.SetCache,
 		},
@@ -35,48 +34,7 @@ func (sm *StorageModule) Exports() *modules.Exports {
 type UpdateFunc func(any, any) any
 
 type CacheOptions struct {
-	InitialValue any           `json:"initialValue"`
-	Callback     UpdateFunc    `json:"updateCallback"`
-	TTL          time.Duration `json:"ttl"`
-}
-
-func (sm *StorageModule) UseCache(cacheId string, opts CacheOptions) (arr [2]any, err error) {
-	if cacheId == "" {
-		err = errors.New("cache id cannot be empty")
-		return
-	}
-	nsValue := sm.modCtx.Context().
-		Value(spec.Name("namespace"))
-	if nsValue == nil || nsValue.(string) == "" {
-		err = errors.New("namespace is not set")
-		return
-	}
-	namespace := nsValue.(string)
-
-	if opts.TTL < 0 {
-		err = errors.New("TTL cannot be negative")
-		return
-	}
-
-	bucket := sm.modCtx.State().SharedCache().
-		Bucket("storage:cache:" + namespace)
-
-	val, ok := bucket.Get(cacheId)
-	if !ok && opts.InitialValue != nil {
-		val = opts.InitialValue
-	}
-
-	return [2]any{
-		val, func(newVal any) {
-			bucket.SetWithTTL(cacheId, newVal, opts.TTL)
-			if opts.Callback != nil {
-				newVal = opts.Callback(val, newVal)
-				// change val to newVal in case
-				// this function is called multiple times
-				val = newVal
-			}
-		},
-	}, nil
+	TTL int `json:"ttl"`
 }
 
 func (sm *StorageModule) SetCache(cacheId string, val any, opts CacheOptions) error {
@@ -92,8 +50,9 @@ func (sm *StorageModule) SetCache(cacheId string, val any, opts CacheOptions) er
 	bucket := sm.modCtx.State().SharedCache().Bucket(uniqueId)
 	if opts.TTL < 0 {
 		return errors.New("TTL cannot be negative")
+	} else if opts.TTL > 0 {
+		bucket.SetWithTTL(uniqueId, val, time.Duration(opts.TTL)*time.Second)
 	}
-	bucket.SetWithTTL(uniqueId, val, opts.TTL)
 	return nil
 }
 
@@ -112,7 +71,7 @@ func (sm *StorageModule) GetCache(cacheId string) (any, error) {
 	if val, ok := bucket.Get(cacheId); ok {
 		return val, nil
 	}
-	return nil, errors.New("cache not found")
+	return nil, nil
 }
 
 func (sm *StorageModule) ReadWriteBody(res *http.Response, callback func(string) string) string {
