@@ -21,13 +21,6 @@ jobs:
       run: |
         go mod download
         go build -v ./...
-  
-    - name: Install dgate-cli and dgate-server
-      run: |
-        go install github.com/dgate-io/dgate/cmd/dgate-cli
-        dgate-cli --version
-        go install github.com/dgate-io/dgate/cmd/dgate-server
-        dgate-server --version
     
     - name: Test
       run: |

@@ -1,4 +1,4 @@
-name: DGate Performance/Functional Test
+name: DGate Functional Test
 
 on:
   push:
@@ -18,11 +18,24 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v3
 
-      - uses: actions/setup-go@v4
+      - name: Set up Go
+        uses: actions/setup-go@v3
         with:
-          go-version-file: 'go.mod'
-
-      - run: go mod download
+          go-version-file: go.mod
+          cache: true
+          cache-dependency-path: go.sum
+  
+      - name: Build & Install
+        run: |
+          go mod download
+          go build -v ./...
+    
+      - name: Install dgate-cli and dgate-server
+        run: |
+          go install github.com/dgate-io/dgate/cmd/dgate-cli
+          dgate-cli --version
+          go install github.com/dgate-io/dgate/cmd/dgate-server
+          dgate-server --version
 
       - run: go run cmd/dgate-server/main.go &
 
