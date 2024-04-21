@@ -23,7 +23,6 @@ jobs:
 
       - name: Wait for server to start
         run: sleep 5
-      - run: ./functional-tests/admin_tests/performance_test_prep.sh
   
       - name: Run local k6 test
         uses: grafana/k6-action@v0.3.1

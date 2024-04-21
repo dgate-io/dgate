@@ -6,17 +6,29 @@ on:
 
 jobs:
   build_test:
-    runs-on: golang:1.22-alpine
+    runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v3
+
+    - name: Set up Go
+      uses: actions/setup-go@v3
+      with:
+        go-version-file: go.mod
+        cache: true
+        cache-dependency-path: go.sum
 
     - name: Build & Install
       run: |
         go mod download
         go build -v ./...
+  
+    - name: Install dgate-cli and dgate-server
+      run: |
         go install github.com/dgate-io/dgate/cmd/dgate-cli
+        dgate-cli --version
         go install github.com/dgate-io/dgate/cmd/dgate-server
-
+        dgate-server --version
+    
     - name: Test
       run: |
         go test -coverprofile=cov.out -v ./...
@@ -32,9 +44,14 @@ jobs:
       run: |
         go test -bench=. -run=^# ./...
     
-    # needs jq, dgate-cli, and curl
+    - name: Install jq
+      run: |
+        sudo apt install -y jq
+        jq --version
+    
     - name: Functional Tests
       run: |
         apk update && apk add --no-cache curl jq
         for i in functional-tests/admin_tests/*.sh; do bash -c $i; done
 
+  
