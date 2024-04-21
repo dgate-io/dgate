@@ -36,9 +36,9 @@ dgate-cli route create \
     preserveHost:=true \
     namespace=url_shortener-ns #\ service='base_svc'
 
-JSON_RESP=$(curl -G -X POST -H Host:url_shortener.com ${PROXY_URL}/test --data-urlencode 'url=${PROXY_URL}/hello')
+JSON_RESP=$(curl -sG -X POST -H Host:url_shortener.com ${PROXY_URL}/test --data-urlencode 'url=${PROXY_URL}/hello')
 echo $JSON_RESP
 
 URL_ID=$(echo $JSON_RESP | jq -r '.id')
 
-curl ${PROXY_URL}/test\?id\=$URL_ID -H Host:url_shortener.com
+curl -s ${PROXY_URL}/test\?id\=$URL_ID -H Host:url_shortener.com

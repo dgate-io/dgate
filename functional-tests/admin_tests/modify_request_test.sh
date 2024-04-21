@@ -35,7 +35,7 @@ dgate-cli route create \
     namespace=modify_request_test-ns \
     service='base_svc'
 
-curl http://localhost/modify_request_test \
+curl -s ${PROXY_URL}/modify_request_test \
     -H Host:modify_request_test.com \
     -H X-Forwarded-For:1.1.1.1
 
