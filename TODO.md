@@ -46,6 +46,8 @@ Also to execute code on specific events, like when a new route is added, or when
 
 # Metrics
 
+-- add support for prometheus, datadog, sentry, etc.
+
 expose metrics for the following:
 - proxy server
   - request count
