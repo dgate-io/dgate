@@ -22,12 +22,12 @@ func (ps *ProxyState) GetDocuments(collection, namespace string, limit, offset i
 }
 
 // GetDocumentByID is a function that returns a document in a collection by its ID.
-func (ps *ProxyState) GetDocumentByID(namespace, collection, id string) (*spec.Document, error) {
+func (ps *ProxyState) GetDocumentByID(namespace, collection, docId string) (*spec.Document, error) {
 	if _, ok := ps.rm.GetNamespace(namespace); !ok {
 		return nil, spec.ErrNamespaceNotFound(namespace)
 	}
 	if _, ok := ps.rm.GetCollection(collection, namespace); !ok {
 		return nil, spec.ErrCollectionNotFound(collection)
 	}
-	return ps.store.FetchDocument(namespace, collection, id)
+	return ps.store.FetchDocument(namespace, collection, docId)
 }

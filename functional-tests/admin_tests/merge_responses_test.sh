@@ -30,8 +30,8 @@ dgate-cli route create \
     modules:='["printer"]' \
     stripPath:=true \
     preserveHost:=true \
-    namespace=test-ns #\ service='base_svc'
+    namespace=test-ns
 
-curl -s ${PROXY_URL}/hello -H Host:test.com
+ --fail-with-body ${PROXY_URL}/hello -H Host:test.com
 
 echo "Merge Responses Test Passed"

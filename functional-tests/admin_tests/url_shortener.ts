@@ -1,53 +1,49 @@
-import {
-    addDocument,
-    getDocument,
-} from "dgate/state";
+// @ts-nocheck
 import { createHash } from "dgate/crypto";
+import { addDocument, getDocument } from "dgate/state";
 
-export const requestHandler = (ctx) => {
+export const requestHandler = (ctx: any) => {
     const req = ctx.request();
     const res = ctx.response();
-    console.log("req", JSON.stringify(req));
-    console.log("res", JSON.stringify(res));
     if (req.method == "GET") {
-        if (!req.query.has("id")) {
+        if (!req.query.get("id")) {
             res.status(400).json({ error: "id is required" })
             return;
         }
+        // get the document with the ID from the collection
         return getDocument("short_link", req.query.get("id"))
-            .then((doc) => {
-                console.log("doc", JSON.stringify(doc));
+            .then((doc: any) => {
+                // check if the document contains the URL
                 if (!doc?.data?.url) {
                     res.status(404).json({ error: "not found" });
                 } else {
-                    console.log("doc", JSON.stringify(doc), req.query.encode());
                     res.redirect(doc.data.url);
                 }
             })
-            .catch((e) => {
+            .catch((e: any) => {
                 console.log("error", e, JSON.stringify(e));
                 res.status(500).json({ error: e?.message });
             });
     } else if (req.method == "POST") {
-        const hasher = createHash("sha1")
         const link = req.query.get("url");
         console.log("link", link);
         if (!link) {
             res.status(400).json({ error: "link is required" });
         }
-        let hash = hasher.update(link).digest("base64rawurl");
-        console.log("hash", hash);
-        hash = hash.slice(-8);
-        console.log("hash", hash);
+        // create a hash of the link and use it as the ID
+        let hash = createHash("sha1")
+            .update(link)
+            .digest("base64rawurl")
+            .slice(-8);
+        // create a new document with the hash as the ID, and the link as the data
         return addDocument({
             id: hash,
             collection: "short_link",
-            data: {
-                url: link,
-            }
+            // the collection schema is defined in url_shortener_test.sh
+            data: { url: link },
         }).then(() => {
             res.status(201).json({ id: hash });
-        }).catch((e) => {
+        }).catch((e: any) => {
             res.status(500).json({ error: e?.message });
         });
     } else {

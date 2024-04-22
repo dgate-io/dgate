@@ -58,7 +58,7 @@ func (hp *ResourcesModule) fetchCollection(name string) *goja.Promise {
 	return docPromise
 }
 
-func (hp *ResourcesModule) fetchDocument(collection, id string) *goja.Promise {
+func (hp *ResourcesModule) fetchDocument(collection, docId string) *goja.Promise {
 	ctx := hp.modCtx.Context()
 	state := hp.modCtx.State()
 	loop := hp.modCtx.EventLoop()
@@ -71,7 +71,7 @@ func (hp *ResourcesModule) fetchDocument(collection, id string) *goja.Promise {
 			return
 		}
 		doc, err := state.DocumentManager().
-			GetDocumentByID(namespace.(string), collection, id)
+			GetDocumentByID(namespace.(string), collection, docId)
 		if err != nil {
 			reject(rt.NewGoError(err))
 			return

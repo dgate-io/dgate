@@ -125,9 +125,9 @@ func decode[T any](input any) (T, error) {
 			mapstructure.StringToTimeDurationHookFunc(),
 		),
 	}
-	decoder, _ := mapstructure.NewDecoder(cfg)
-	err := decoder.Decode(input)
-	if err != nil {
+	if dec, err := mapstructure.NewDecoder(cfg); err != nil {
+		return output, err
+	} else if err = dec.Decode(input); err != nil {
 		return output, err
 	}
 	return output, nil
@@ -146,6 +146,9 @@ func (ps *ProxyState) processNamespace(ns *spec.Namespace, cl *spec.ChangeLog) e
 }
 
 func (ps *ProxyState) processService(svc *spec.Service, cl *spec.ChangeLog) (err error) {
+	if svc.NamespaceName == "" {
+		svc.NamespaceName = cl.Namespace
+	}
 	switch cl.Cmd.Action() {
 	case spec.Add:
 		_, err = ps.rm.AddService(svc)
@@ -157,36 +160,45 @@ func (ps *ProxyState) processService(svc *spec.Service, cl *spec.ChangeLog) (err
 	return err
 }
 
-func (ps *ProxyState) processRoute(route *spec.Route, cl *spec.ChangeLog) (err error) {
+func (ps *ProxyState) processRoute(rt *spec.Route, cl *spec.ChangeLog) (err error) {
+	if rt.NamespaceName == "" {
+		rt.NamespaceName = cl.Namespace
+	}
 	switch cl.Cmd.Action() {
 	case spec.Add:
-		_, err = ps.rm.AddRoute(route)
+		_, err = ps.rm.AddRoute(rt)
 	case spec.Delete:
-		_, err = ps.rm.AddRoute(route)
+		_, err = ps.rm.AddRoute(rt)
 	default:
 		err = fmt.Errorf("unknown command: %s", cl.Cmd)
 	}
 	return err
 }
 
-func (ps *ProxyState) processModule(module *spec.Module, cl *spec.ChangeLog) (err error) {
+func (ps *ProxyState) processModule(mod *spec.Module, cl *spec.ChangeLog) (err error) {
+	if mod.NamespaceName == "" {
+		mod.NamespaceName = cl.Namespace
+	}
 	switch cl.Cmd.Action() {
 	case spec.Add:
-		_, err = ps.rm.AddModule(module)
+		_, err = ps.rm.AddModule(mod)
 	case spec.Delete:
-		_, err = ps.rm.AddModule(module)
+		_, err = ps.rm.AddModule(mod)
 	default:
 		err = fmt.Errorf("unknown command: %s", cl.Cmd)
 	}
 	return err
 }
 
-func (ps *ProxyState) processDomain(domain *spec.Domain, cl *spec.ChangeLog) (err error) {
+func (ps *ProxyState) processDomain(dom *spec.Domain, cl *spec.ChangeLog) (err error) {
+	if dom.NamespaceName == "" {
+		dom.NamespaceName = cl.Namespace
+	}
 	switch cl.Cmd.Action() {
 	case spec.Add:
-		_, err = ps.rm.AddDomain(domain)
+		_, err = ps.rm.AddDomain(dom)
 	case spec.Delete:
-		_, err = ps.rm.AddDomain(domain)
+		_, err = ps.rm.AddDomain(dom)
 	default:
 		err = fmt.Errorf("unknown command: %s", cl.Cmd)
 	}
@@ -194,6 +206,9 @@ func (ps *ProxyState) processDomain(domain *spec.Domain, cl *spec.ChangeLog) (er
 }
 
 func (ps *ProxyState) processCollection(col *spec.Collection, cl *spec.ChangeLog) (err error) {
+	if col.NamespaceName == "" {
+		col.NamespaceName = cl.Namespace
+	}
 	switch cl.Cmd.Action() {
 	case spec.Add:
 		_, err = ps.rm.AddCollection(col)
@@ -206,6 +221,9 @@ func (ps *ProxyState) processCollection(col *spec.Collection, cl *spec.ChangeLog
 }
 
 func (ps *ProxyState) processDocument(doc *spec.Document, cl *spec.ChangeLog) (err error) {
+	if doc.NamespaceName == "" {
+		doc.NamespaceName = cl.Namespace
+	}
 	switch cl.Cmd.Action() {
 	case spec.Add:
 		err = ps.store.StoreDocument(doc)
