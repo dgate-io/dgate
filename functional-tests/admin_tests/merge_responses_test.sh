@@ -32,6 +32,6 @@ dgate-cli route create \
     preserveHost:=true \
     namespace=test-ns
 
- --fail-with-body ${PROXY_URL}/hello -H Host:test.com
+ curl -s --fail-with-body ${PROXY_URL}/hello -H Host:test.com
 
 echo "Merge Responses Test Passed"
