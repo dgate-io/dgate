@@ -12,3 +12,4 @@ dist/
 # Local files #
 .dgate*/
 cov.out
+go.work.sum

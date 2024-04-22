@@ -2,9 +2,10 @@
 
 [![Go Report Card](https://goreportcard.com/badge/github.com/dgate-io/dgate)](https://goreportcard.com/report/github.com/dgate-io/dgate)
 [![Go Reference](https://pkg.go.dev/badge/github.com/dgate-io/dgate.svg)](https://pkg.go.dev/github.com/dgate-io/dgate)
-[![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
-[![Build Status](https://github.com/dgate-io/dgate/actions/workflows/built_test_bench.yml/badge.svg)](https://github.com/dgate-io/dgate/actions/workflows/ci.yml)
+[![CI](https://github.com/dgate-io/dgate/actions/workflows/built_test_bench.yml/badge.svg)](https://github.com/dgate-io/dgate/actions/workflows/ci.yml/badge.svg)
+[![E2E](https://github.com/dgate-io/dgate/actions/workflows/built_test_bench.yml/badge.svg)](https://github.com/dgate-io/dgate/actions/workflows/ci.yml/badge.svg)
 [![codecov](https://codecov.io/gh/dgate-io/dgate/graph/badge.svg?token=KIDT82HSO9)](https://codecov.io/gh/dgate-io/dgate)
+[![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
 ![GitHub Release](https://img.shields.io/github/v/release/dgate-io/dgate)
 
 
