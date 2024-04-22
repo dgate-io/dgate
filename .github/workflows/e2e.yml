@@ -1,4 +1,4 @@
-name: DGate Functional Test
+name: DGate E2E
 
 on:
   push:
