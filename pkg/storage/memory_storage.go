@@ -20,11 +20,9 @@ var _ Storage = &MemoryStore{}
 func NewMemoryStore(cfg *MemoryStoreConfig) *MemoryStore {
 	return &MemoryStore{
 		FileStore: &FileStore{
-			directory: "",
 			inMemory:  true,
 			logger: newBadgerLoggerAdapter(
-				"filestore::badger",
-				cfg.Logger.Level(zerolog.InfoLevel),
+				"memstore::badger", cfg.Logger,
 			),
 		},
 	}

@@ -15,10 +15,11 @@ import (
 
 // processChangeLog - processes a change log and applies the change to the proxy state
 func (ps *ProxyState) processChangeLog(
-	cl *spec.ChangeLog, apply, store bool,
+	cl *spec.ChangeLog, reload, store bool,
 ) (err error) {
-	// TODO: add revert cl function to check if storage fails or something
-	if !cl.Cmd.IsNoop() {
+	if cl == nil {
+		cl = &spec.ChangeLog{Cmd: spec.NoopCommand}
+	} else if !cl.Cmd.IsNoop() {
 		switch cl.Cmd.Resource() {
 		case spec.Namespaces:
 			var item spec.Namespace
@@ -69,6 +70,13 @@ func (ps *ProxyState) processChangeLog(
 				ps.logger.Trace().Msgf("Processing domain: %s", item.ID)
 				err = ps.processDocument(&item, cl)
 			}
+		case spec.Secrets:
+			var item spec.Secret
+			item, err = decode[spec.Secret](cl.Item)
+			if err == nil {
+				ps.logger.Trace().Msgf("Processing domain: %s", item.Name)
+				err = ps.processSecret(&item, cl)
+			}
 		default:
 			err = fmt.Errorf("unknown command: %s", cl.Cmd)
 		}
@@ -77,7 +85,7 @@ func (ps *ProxyState) processChangeLog(
 			return
 		}
 	}
-	if apply && (cl.Cmd.Resource().IsRelatedTo(spec.Routes) || cl.Cmd.IsNoop()) {
+	if reload && (cl.Cmd.Resource().IsRelatedTo(spec.Routes) || cl.Cmd.IsNoop()) {
 		ps.logger.Trace().Msgf("Registering change log: %s", cl.Cmd)
 		errChan := ps.applyChange(cl)
 		select {
@@ -90,25 +98,28 @@ func (ps *ProxyState) processChangeLog(
 			ps.logger.Err(err).Msg("Error registering change log")
 			return
 		}
+		// update change log hash only when the change is successfully applied
+		//   even if the change is a noop, we still need to update the hash
+		changeHash, err := HashAny[*spec.ChangeLog](ps.changeHash, cl)
+		if err != nil {
+			if !ps.config.Debug {
+				return err
+			}
+			ps.logger.Error().Err(err).
+				Msg("error updating change log hash")
+		} else {
+			ps.changeHash = changeHash
+		}
 	}
 	if store {
-		err = ps.store.StoreChangeLog(cl)
-		if err != nil {
+		if err = ps.store.StoreChangeLog(cl); err != nil {
 			// TODO: Add config option to panic on persistent storage errors
-			// TODO: maybe revert change here or add to some in-memory queue for changes?
+			// TODO: maybe revert change here
+			// add some in-memory queue for changes?
+			// add some retry mechanism?
 			ps.logger.Err(err).Msg("Error storing change log")
 			return
 		}
-	}
-	changeHash, err := HashAny[*spec.ChangeLog](ps.changeHash, cl)
-	if err != nil {
-		if !ps.config.Debug {
-			return err
-		}
-		ps.logger.Error().Err(err).
-			Msg("error updating change log hash")
-	} else {
-		ps.changeHash = changeHash
 	}
 
 	return nil
@@ -137,12 +148,12 @@ func (ps *ProxyState) processNamespace(ns *spec.Namespace, cl *spec.ChangeLog) e
 	switch cl.Cmd.Action() {
 	case spec.Add:
 		ps.rm.AddNamespace(ns)
-		return nil
 	case spec.Delete:
 		return ps.rm.RemoveNamespace(ns.Name)
 	default:
 		return fmt.Errorf("unknown command: %s", cl.Cmd)
 	}
+	return nil
 }
 
 func (ps *ProxyState) processService(svc *spec.Service, cl *spec.ChangeLog) (err error) {
@@ -153,7 +164,7 @@ func (ps *ProxyState) processService(svc *spec.Service, cl *spec.ChangeLog) (err
 	case spec.Add:
 		_, err = ps.rm.AddService(svc)
 	case spec.Delete:
-		_, err = ps.rm.AddService(svc)
+		err = ps.rm.RemoveService(svc.Name, svc.NamespaceName)
 	default:
 		err = fmt.Errorf("unknown command: %s", cl.Cmd)
 	}
@@ -168,7 +179,7 @@ func (ps *ProxyState) processRoute(rt *spec.Route, cl *spec.ChangeLog) (err erro
 	case spec.Add:
 		_, err = ps.rm.AddRoute(rt)
 	case spec.Delete:
-		_, err = ps.rm.AddRoute(rt)
+		err = ps.rm.RemoveRoute(rt.Name, rt.NamespaceName)
 	default:
 		err = fmt.Errorf("unknown command: %s", cl.Cmd)
 	}
@@ -183,7 +194,7 @@ func (ps *ProxyState) processModule(mod *spec.Module, cl *spec.ChangeLog) (err e
 	case spec.Add:
 		_, err = ps.rm.AddModule(mod)
 	case spec.Delete:
-		_, err = ps.rm.AddModule(mod)
+		err = ps.rm.RemoveModule(mod.Name, mod.NamespaceName)
 	default:
 		err = fmt.Errorf("unknown command: %s", cl.Cmd)
 	}
@@ -198,7 +209,7 @@ func (ps *ProxyState) processDomain(dom *spec.Domain, cl *spec.ChangeLog) (err e
 	case spec.Add:
 		_, err = ps.rm.AddDomain(dom)
 	case spec.Delete:
-		_, err = ps.rm.AddDomain(dom)
+		err = ps.rm.RemoveDomain(dom.Name, dom.NamespaceName)
 	default:
 		err = fmt.Errorf("unknown command: %s", cl.Cmd)
 	}
@@ -213,7 +224,7 @@ func (ps *ProxyState) processCollection(col *spec.Collection, cl *spec.ChangeLog
 	case spec.Add:
 		_, err = ps.rm.AddCollection(col)
 	case spec.Delete:
-		_, err = ps.rm.AddCollection(col)
+		err = ps.rm.RemoveCollection(col.Name, col.NamespaceName)
 	default:
 		err = fmt.Errorf("unknown command: %s", cl.Cmd)
 	}
@@ -228,7 +239,22 @@ func (ps *ProxyState) processDocument(doc *spec.Document, cl *spec.ChangeLog) (e
 	case spec.Add:
 		err = ps.store.StoreDocument(doc)
 	case spec.Delete:
-		err = ps.store.DeleteDocument(doc)
+		err = ps.store.DeleteDocument(doc.ID, doc.CollectionName, doc.NamespaceName)
+	default:
+		err = fmt.Errorf("unknown command: %s", cl.Cmd)
+	}
+	return err
+}
+
+func (ps *ProxyState) processSecret(scrt *spec.Secret, cl *spec.ChangeLog) (err error) {
+	if scrt.NamespaceName == "" {
+		scrt.NamespaceName = cl.Namespace
+	}
+	switch cl.Cmd.Action() {
+	case spec.Add:
+		_, err = ps.rm.AddSecret(scrt)
+	case spec.Delete:
+		err = ps.rm.RemoveSecret(scrt.Name, scrt.NamespaceName)
 	default:
 		err = fmt.Errorf("unknown command: %s", cl.Cmd)
 	}
@@ -270,12 +296,12 @@ func (ps *ProxyState) restoreFromChangeLogs() error {
 		for i, cl := range logs {
 			ps.logger.Trace().
 				Interface("changeLog: "+cl.Name, cl).Msgf("restoring change log index: %d", i)
-			lastIteration := i == len(logs)-1
-			err = ps.processChangeLog(cl, lastIteration, false)
+			err = ps.processChangeLog(cl, false, false)
 			if err != nil {
 				return err
 			}
 		}
+		ps.processChangeLog(nil, true, false)
 		// TODO: change to configurable variable
 		if len(logs) > 1 {
 			removed, err := ps.compactChangeLogs(logs)

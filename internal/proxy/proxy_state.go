@@ -12,7 +12,6 @@ import (
 	"net"
 	"net/http"
 	"os"
-	"sort"
 	"sync"
 	"time"
 
@@ -169,10 +168,10 @@ func NewProxyState(conf *config.DGateConfig) *ProxyState {
 
 	state.store = proxystore.New(dataStore, state.Logger(WithComponentLogger("proxystore")))
 
-	err = state.initConfigResources(conf.ProxyConfig.InitResources)
-	if err != nil {
+	if err = state.initConfigResources(conf.ProxyConfig.InitResources); err != nil {
 		panic("error initializing resources: " + err.Error())
 	}
+
 	return state
 }
 
@@ -204,6 +203,10 @@ func (ps *ProxySnapshot) PersistState(w io.Writer) error {
 	var buf bytes.Buffer
 	enc := gob.NewEncoder(&buf)
 	return enc.Encode(ps)
+}
+
+func (ps *ProxyState) Store() *proxystore.ProxyStore {
+	return ps.store
 }
 
 func (ps *ProxyState) Stats() *ProxyStats {
@@ -259,9 +262,6 @@ func (ps *ProxyState) WaitForChanges() {
 }
 
 func (ps *ProxyState) ApplyChangeLog(log *spec.ChangeLog) error {
-	ps.logger.Trace().
-		Bool("replication_enabled", ps.replicationEnabled).
-		Msgf("Applying change log: %s", log.Cmd)
 	if ps.replicationEnabled {
 		r := ps.replicationSettings.raft
 		if r.State() != raft.Leader {
@@ -285,9 +285,6 @@ func (ps *ProxyState) ApplyChangeLog(log *spec.ChangeLog) error {
 }
 
 func (ps *ProxyState) ResourceManager() *resources.ResourceManager {
-	if ps == nil {
-		return nil
-	}
 	return ps.rm
 }
 
@@ -303,43 +300,43 @@ func (ps *ProxyState) ReloadState() error {
 	return <-ps.applyChange(nil)
 }
 
-func (ps *ProxyState) ProcessChangeLog(log *spec.ChangeLog, register bool) error {
-	err := ps.processChangeLog(log, register, !ps.replicationEnabled)
+func (ps *ProxyState) ProcessChangeLog(log *spec.ChangeLog, reload bool) error {
+	err := ps.processChangeLog(log, reload, !ps.replicationEnabled)
 	if err != nil {
 		ps.logger.Error().Err(err).Msg("error processing change log")
-		return err
 	}
-	return nil
+	return err
 }
 
-func (ps *ProxyState) DynamicTLSConfig(
-	certFile, keyFile string,
-) *tls.Config {
+func (ps *ProxyState) DynamicTLSConfig(certFile, keyFile string) *tls.Config {
 	var fallbackCert *tls.Certificate
+	if certFile != "" && keyFile != "" {
+		cert, err := loadCertFromFile(certFile, keyFile)
+		if err != nil {
+			panic(fmt.Errorf("error loading cert: %s", err))
+		}
+		fallbackCert = cert
+	}
+
 	return &tls.Config{
 		GetCertificate: func(info *tls.ClientHelloInfo) (*tls.Certificate, error) {
-			cert, ok, err := ps.getDomainCertificate(info.ServerName)
-			if err != nil {
+			if cert, err := ps.getDomainCertificate(info.ServerName); err != nil {
 				return nil, err
-			} else if !ok {
-				if certFile != "" && keyFile != "" {
-					cert, err := ps.loadCertFromFile(certFile, keyFile)
-					if err != nil {
-						return nil, err
-					}
-					fallbackCert = cert
-				} else if fallbackCert != nil {
+			} else if cert == nil {
+				if fallbackCert != nil {
 					return fallbackCert, nil
 				} else {
+					ps.logger.Error().Msg("no cert found matching: " + info.ServerName)
 					return nil, errors.New("no cert found")
 				}
+			} else {
+				return cert, nil
 			}
-			return cert, nil
 		},
 	}
 }
 
-func (ps *ProxyState) loadCertFromFile(certFile, keyFile string) (*tls.Certificate, error) {
+func loadCertFromFile(certFile, keyFile string) (*tls.Certificate, error) {
 	cert, err := tls.LoadX509KeyPair(certFile, keyFile)
 	if err != nil {
 		return nil, err
@@ -347,43 +344,51 @@ func (ps *ProxyState) loadCertFromFile(certFile, keyFile string) (*tls.Certifica
 	return &cert, nil
 }
 
-func (ps *ProxyState) getDomainCertificate(domain string) (*tls.Certificate, bool, error) {
+func (ps *ProxyState) getDomainCertificate(domain string) (*tls.Certificate, error) {
 	allowedDomains := ps.config.ProxyConfig.AllowedDomains
-	_, domainAllowed, err := pattern.MatchAnyPattern(domain, allowedDomains)
-	if err != nil {
-		ps.logger.Error().Msgf("Error checking domain match list: %s", err.Error())
-		return nil, false, err
+	domainAllowed := len(allowedDomains) == 0
+	if !domainAllowed {
+		_, domainMatch, err := pattern.MatchAnyPattern(domain, allowedDomains)
+		if err != nil {
+			ps.logger.Error().Msgf("Error checking domain match list: %s", err.Error())
+			return nil, err
+		}
+		domainAllowed = domainMatch
 	}
-	if domainAllowed || len(allowedDomains) == 0 {
-		domains := ps.rm.GetDomains()
-		sort.Slice(domains, func(i, j int) bool {
-			if domains[i].Priority == domains[j].Priority {
-				return domains[i].Name > domains[j].Name
-			}
-			return domains[i].Priority > domains[j].Priority
-		})
-		for _, d := range domains {
-			if _, domainMatches, err := pattern.MatchAnyPattern(domain, d.Patterns); err != nil {
+	if domainAllowed {
+		for _, d := range ps.rm.GetDomainsByPriority() {
+			if _, match, err := pattern.MatchAnyPattern(domain, d.Patterns); err != nil {
 				ps.logger.Error().Msgf("Error checking domain match list: %s", err.Error())
-				return nil, false, err
-			} else {
-				if domainMatches {
-					if d.TLSCert == nil {
-						return nil, false, nil
-					}
-					return d.TLSCert, true, nil
+				return nil, err
+			} else if match && d.Cert != "" && d.Key != "" {
+				certBucket := ps.sharedCache.Bucket("certs")
+				key := fmt.Sprintf("cert:%s:%s:%d", d.Namespace.Name,
+					d.Name, d.CreatedAt.UnixMilli())
+				if cert, ok := certBucket.Get(key); ok {
+					return cert.(*tls.Certificate), nil
 				}
+				serverCert, err := tls.X509KeyPair([]byte(d.Cert), []byte(d.Key))
+				if err != nil {
+					ps.logger.Error().Msgf("Error loading cert: %s on domain %s/%s",
+						err.Error(), d.Namespace.Name, d.Name)
+					return nil, err
+				}
+				certBucket.Set(key, &serverCert)
+				return &serverCert, nil
 			}
 		}
 	}
-	return nil, false, nil
+	return nil, nil
 }
 
 func (ps *ProxyState) initConfigResources(resources *config.DGateResources) error {
 	if resources != nil {
-		err := resources.Validate()
+		numChanges, err := resources.Validate()
 		if err != nil {
 			return err
+		}
+		if numChanges > 0 {
+			defer ps.processChangeLog(nil, false, false)
 		}
 		ps.logger.Info().Msg("Initializing resources")
 		for _, ns := range resources.Namespaces {
@@ -441,7 +446,7 @@ func (ps *ProxyState) initConfigResources(resources *config.DGateResources) erro
 				}
 				dom.Key = string(key)
 			}
-			cl := spec.NewChangeLog(&dom.Domain, dom.NamespaceName, spec.AddDomainCommand)
+			cl := spec.NewChangeLog(dom.Domain, dom.NamespaceName, spec.AddDomainCommand)
 			err := ps.processChangeLog(cl, false, false)
 			if err != nil {
 				return err
@@ -471,31 +476,33 @@ func (ps *ProxyState) FindNamespaceByRequest(r *http.Request) *spec.DGateNamespa
 		host = r.Host
 	}
 
-	domains := ps.rm.GetDomains()
-	if len(domains) > 0 {
-		sort.Slice(domains, func(i, j int) bool {
-			if domains[i].Priority == domains[j].Priority {
-				return domains[i].Name > domains[j].Name
-			}
-			return domains[i].Priority > domains[j].Priority
-		})
-		var priority int
-		var namespace *spec.DGateNamespace
+	// if there are no domains and only one namespace, return that namespace
+	if ps.rm.DomainCountEquals(0) && ps.rm.NamespaceCountEquals(1) {
+		return ps.rm.GetFirstNamespace()
+	}
+	// search through domains for a match
+	var defaultNsHasDomain bool
+	if domains := ps.rm.GetDomainsByPriority(); len(domains) > 0 {
 		for _, d := range domains {
-			if d.Priority < priority {
-				continue
+			if !ps.config.DisableDefaultNamespace {
+				if d.Namespace.Name == "default" {
+					defaultNsHasDomain = true
+				}
 			}
 			_, match, err := pattern.MatchAnyPattern(host, d.Patterns)
 			if err != nil {
 				ps.logger.Error().Err(err).
 					Msg("error matching namespace")
-				continue
-			}
-			if match {
-				priority, namespace = d.Priority, d.Namespace
+			} else if match {
+				return d.Namespace
 			}
 		}
-		return namespace
+	}
+	// if no domain matches, return the default namespace, if it doesn't have a domain
+	if !ps.config.DisableDefaultNamespace && !defaultNsHasDomain {
+		if defaultNs, ok := ps.rm.GetNamespace("default"); ok {
+			return defaultNs
+		}
 	}
 	return nil
 }

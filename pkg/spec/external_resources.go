@@ -114,6 +114,19 @@ type Document struct {
 	Data           any       `json:"data"`
 }
 
+type Secret struct {
+	Name          string    `json:"name"`
+	CreatedAt     time.Time `json:"created_at"`
+	UpdatedAt     time.Time `json:"updated_at"`
+	NamespaceName string    `json:"namespace"`
+	Data          string    `json:"data"`
+	Tags          []string  `json:"tags,omitempty"`
+}
+
+func (n *Secret) GetName() string {
+	return n.Name
+}
+
 type RFC3339Time time.Time
 
 func (t RFC3339Time) MarshalJSON() ([]byte, error) {

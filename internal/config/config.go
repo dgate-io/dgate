@@ -173,12 +173,13 @@ type (
 		Routes         []spec.Route      `koanf:"routes"`
 		Modules        []ModuleSpec      `koanf:"modules"`
 		Domains        []DomainSpec      `koanf:"domains"`
-		Collections    []spec.Collection `koanf:"-"`
+		Collections    []spec.Collection `koanf:"collections"`
 		Documents      []spec.Document   `koanf:"documents"`
+		Secrets        []spec.Secret     `koanf:"secrets"`
 	}
 
 	DomainSpec struct {
-		spec.Domain `koanf:",squash"`
+		*spec.Domain `koanf:",squash"`
 		CertFile    string `koanf:"cert_file"`
 		KeyFile     string `koanf:"key_file"`
 	}

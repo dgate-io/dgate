@@ -2,6 +2,7 @@ package proxystore
 
 import (
 	"encoding/json"
+	"time"
 
 	"errors"
 
@@ -64,8 +65,17 @@ func (store *ProxyStore) StoreChangeLog(cl *spec.ChangeLog) error {
 		return err
 	}
 	store.logger.Trace().Msgf("storing changelog:%s", string(clBytes))
+	retries, delay := 30, time.Microsecond*100
+RETRY:
 	err = store.storage.Set("changelog/"+cl.ID, clBytes)
 	if err != nil {
+		if retries > 0 {
+			store.logger.Err(err).
+				Msgf("failed to store changelog, retrying %d more times", retries)
+			time.Sleep(delay)
+			retries--
+			goto RETRY
+		}
 		return err
 	}
 	return nil
@@ -106,9 +116,8 @@ func (store *ProxyStore) FetchDocument(nsName, colName, docId string) (*spec.Doc
 }
 
 func (store *ProxyStore) FetchDocuments(
-	namespaceName string,
-	collectionName string,
-	offset, limit int,
+	namespaceName, collectionName string,
+	limit, offset int,
 ) ([]*spec.Document, error) {
 	docs := make([]*spec.Document, 0)
 	docPrefix := createDocumentKey(namespaceName, collectionName, "")
@@ -144,8 +153,8 @@ func (store *ProxyStore) StoreDocument(doc *spec.Document) error {
 	return nil
 }
 
-func (store *ProxyStore) DeleteDocument(doc *spec.Document) error {
-	err := store.storage.Delete(createDocumentKey(doc.NamespaceName, doc.CollectionName, doc.ID))
+func (store *ProxyStore) DeleteDocument(id, colName, nsName string) error {
+	err := store.storage.Delete(createDocumentKey(nsName, colName, id))
 	if err != nil {
 		if err == badger.ErrKeyNotFound {
 			return nil

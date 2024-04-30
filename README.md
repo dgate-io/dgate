@@ -9,7 +9,7 @@
 ![GitHub Release](https://img.shields.io/github/v/release/dgate-io/dgate)
 
 
-DGate is a distributed API Gateway built for developers. DGate allows you to use JavaScript/TypeScript to modify request/response data(L7). Inpired by [k6](https://github.com/grafana/k6) and [kong](https://github.com/Kong/kong).
+DGate is a distributed API Gateway built for developers. DGate allows you to use JavaScript/TypeScript to modify request/response data(L7). Inspired by [k6](https://github.com/grafana/k6) and [kong](https://github.com/Kong/kong).
 
 > DGate is currently in development and is not ready for production use. Please use at your own discretion.
 
@@ -29,6 +29,10 @@ go install github.com/dgate-io/dgate/cmd/dgate-server@latest
 ### DGate Server (dgate-server)
 
 DGate Server is proxy and admin server bundled into one. the admin server is responsible for managing the state of the proxy server. The proxy server is responsible for routing requests to upstream servers. The admin server can also be used to manage the state of the cluster using the Raft Consensus Algorithm.
+
+### DGate CLI (dgate-cli)
+
+DGate CLI is a command-line interface that can be used to interact with the DGate Server. It can be used to deploy modules, manage the state of the cluster, and more.
 
 #### Proxy Modules
 

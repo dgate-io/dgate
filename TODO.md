@@ -44,6 +44,10 @@ Also to execute code on specific events, like when a new route is added, or when
   - resource CRUD operations (namespace/domain/service/module/route/collection/document)
 - execute cron jobs: @every 1m, @cron 0 0 * * *, @daily, @weekly, @monthly, @yearly
 
+At a higher level, background jobs can be used to enable features like health checks, which can periodically check the health of the upstream servers and disable/enable them if they are not healthy.
+
+Other features include: automatic service discovery, ping-based load balancing, 
+
 # Metrics
 
 -- add support for prometheus, datadog, sentry, etc.
@@ -149,3 +153,27 @@ time based tags
 ## Module Permissions
 
 - Allow users to define permissions for modules to access certain dgate resources/apis and/or OS resources.
+  - resource:document:read
+  - resource:document:write
+  - os:net:(http/tcp/udp)
+  - os:file:read
+  - os:env:read
+
+# Bundles
+
+- Add support for bundles that can be used to extend the functionality of DGate. Bundles are a grouping of resources that can be used to extend the functionality of DGate. Bundles can be used to add new modules, resources, and more.
+A good example of a bundle would be a bundle that adds support for OAuth2 authentication. It would need to setup the necessary routes, modules, and configurations to enable OAuth2 authentication. 
+
+## Module/Plugin Variables
+
+- Allow users to define variables that can be used in modules/plugins. These variables can be set by the user, eventually the Admin Console should allow these variables to be set, and the variables can be used in the modules/plugins.
+
+## Mutual TLS Support (low priority)
+
+## Versioning Modules
+
+Differing from common resource versioning, modules can have multiple versions that can be used at the same time. This can be used to test new versions of modules before deploying them to the cluster.
+
+## Secrets
+
+- Add support for secrets that can be used in modules. Secrets can be used to store sensitive information like API keys, passwords, etc. Secrets can only be used in modules and cannot be accessed by the API. Explicit permissions can be set to allow certain modules to access certain secrets. Secrets are also versioned and can be rolled back if necessary. This also allows different modules to use different versions of the same secret.

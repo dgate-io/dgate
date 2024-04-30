@@ -14,14 +14,12 @@ import (
 type FileStoreConfig struct {
 	Directory string `koanf:"dir"`
 	Logger    zerolog.Logger
-
-	inMemory bool
 }
 
 type FileStore struct {
 	directory string
-	inMemory  bool
 	logger    badger.Logger
+	inMemory  bool
 	db        *badger.DB
 }
 
@@ -53,17 +51,12 @@ func NewFileStore(fsConfig *FileStoreConfig) *FileStore {
 		fsConfig.Directory = strings.TrimSuffix(fsConfig.Directory, "/")
 	}
 
-	logger := fsConfig.Logger.Hook(zerolog.HookFunc(func(e *zerolog.Event, level zerolog.Level, msg string) {
-		e.Str("storage", "filestore::badger")
-	}))
-
 	return &FileStore{
 		directory: fsConfig.Directory,
 		logger: newBadgerLoggerAdapter(
-			"filestore::badger",
-			logger.Level(zerolog.InfoLevel),
+			"filestore::badger", fsConfig.Logger,
 		),
-		inMemory: fsConfig.inMemory,
+		inMemory: false,
 	}
 }
 

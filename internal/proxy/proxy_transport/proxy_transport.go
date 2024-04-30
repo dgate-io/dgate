@@ -103,11 +103,7 @@ func (m *retryRoundTripper) RoundTrip(req *http.Request) (*http.Response, error)
 	var (
 		resp *http.Response
 		err  error
-		// retryTimeoutChan <-chan time.Time
 	)
-	// if m.retryTimeout != 0 {
-	// 	retryTimeoutChan = time.After(m.retryTimeout)
-	// }
 	ogReq := req
 	for i := 0; i <= m.retries; i++ {
 		if m.requestTimeout != 0 {
@@ -119,14 +115,6 @@ func (m *retryRoundTripper) RoundTrip(req *http.Request) (*http.Response, error)
 		if err == nil {
 			break
 		}
-		// if m.retryTimeout != 0 {
-		// 	select {
-		// 	case <-retryTimeoutChan:
-		// 		return nil, errors.New("retry timeout exceeded")
-		// 	default:
-		// 		// ensures that this fails fast
-		// 	}
-		// }
 	}
 	return resp, err
 }

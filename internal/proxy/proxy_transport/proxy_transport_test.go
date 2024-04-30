@@ -15,6 +15,10 @@ import (
 	"github.com/stretchr/testify/mock"
 )
 
+var proxyBuilder = proxy_transport.NewBuilder().
+	RequestTimeout(5).
+	RetryTimeout(5)
+
 func TestDGateProxy(t *testing.T) {
 	mockTp := proxytest.CreateMockTransport()
 	header := make(http.Header)
@@ -30,10 +34,8 @@ func TestDGateProxy(t *testing.T) {
 	}, nil).Once()
 
 	numRetries := 5
-	proxy, err := proxy_transport.NewBuilder().
-		Retries(numRetries).
-		Transport(mockTp).
-		Build()
+	proxy, err := proxyBuilder.Clone().
+		Transport(mockTp).Retries(numRetries).Build()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -44,7 +46,7 @@ func TestDGateProxy(t *testing.T) {
 
 	mockRw := proxytest.CreateMockResponseWriter()
 	mockRw.On("Header").Return(header)
-	mockRw.On("Write3xdHeader", mock.Anything).Return()
+	mockRw.On("WriteHeader", mock.Anything).Return()
 	req = req.WithContext(context.WithValue(context.Background(), proxytest.S("testing"), "testing"))
 	proxy.RoundTrip(req)
 
@@ -52,6 +54,42 @@ func TestDGateProxy(t *testing.T) {
 	mockTp.AssertCalled(t, "RoundTrip", mock.Anything)
 	// ensure retries are called
 	assert.Equal(t, numRetries, mockTp.CallCount)
+	// ensure context is passed through
+	assert.Equal(t, "testing", req.Context().Value(proxytest.S("testing")))
+}
+
+func TestDGateProxyError(t *testing.T) {
+	mockTp := proxytest.CreateMockTransport()
+	header := make(http.Header)
+	header.Add("X-Testing", "testing")
+	mockTp.On("RoundTrip", mock.Anything).
+		Return(nil, errors.New("testing error")).
+		Times(4)
+	mockTp.On("RoundTrip", mock.Anything).Return(&http.Response{
+		StatusCode:    200,
+		ContentLength: 0,
+		Header:        header,
+		Body:          io.NopCloser(strings.NewReader("")),
+	}, nil).Once()
+
+	proxy, err := proxyBuilder.Clone().
+		Transport(mockTp).Build()
+	if err != nil {
+		t.Fatal(err)
+	}
+	req := &http.Request{
+		URL:    &url.URL{},
+		Header: header,
+	}
+
+	mockRw := proxytest.CreateMockResponseWriter()
+	mockRw.On("Header").Return(header)
+	mockRw.On("WriteHeader", mock.Anything).Return()
+	req = req.WithContext(context.WithValue(context.Background(), proxytest.S("testing"), "testing"))
+	proxy.RoundTrip(req)
+
+	// ensure roundtrip is called at least once
+	mockTp.AssertCalled(t, "RoundTrip", mock.Anything)
 	// ensure context is passed through
 	assert.Equal(t, "testing", req.Context().Value(proxytest.S("testing")))
 }

@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"github.com/dgate-io/dgate/pkg/spec"
+	"github.com/stretchr/testify/assert"
 )
 
 func TestValidate(t *testing.T) {
@@ -31,7 +32,7 @@ func TestValidate(t *testing.T) {
 		},
 		Domains: []DomainSpec{
 			{
-				Domain: spec.Domain{
+				Domain: &spec.Domain{
 					Name:          "default",
 					NamespaceName: "default",
 					Tags:          []string{"default"},
@@ -49,8 +50,9 @@ func TestValidate(t *testing.T) {
 			},
 		},
 	}
-	err := resources.Validate()
+	changes, err := resources.Validate()
 	if err != nil {
 		t.Error(err)
 	}
+	assert.Equal(t, 5, changes)
 }
