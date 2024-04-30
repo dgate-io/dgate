@@ -32,7 +32,7 @@ func TestValidate(t *testing.T) {
 		},
 		Domains: []DomainSpec{
 			{
-				Domain: &spec.Domain{
+				Domain: spec.Domain{
 					Name:          "default",
 					NamespaceName: "default",
 					Tags:          []string{"default"},

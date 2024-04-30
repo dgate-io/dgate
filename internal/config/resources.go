@@ -128,7 +128,7 @@ func (resources *DGateResources) Validate() (int, error) {
 		if (dom.Cert == "") != (dom.Key == "") {
 			return 0, errors.New("domain cert (file) and key (file) must both be specified, or neither")
 		}
-		domains[key] = dom.Domain
+		domains[key] = &dom.Domain
 	}
 	numChanges += len(domains)
 

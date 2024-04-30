@@ -113,10 +113,7 @@ func (ps *ProxyState) processChangeLog(
 	}
 	if store {
 		if err = ps.store.StoreChangeLog(cl); err != nil {
-			// TODO: Add config option to panic on persistent storage errors
-			// TODO: maybe revert change here
-			// add some in-memory queue for changes?
-			// add some retry mechanism?
+			// TODO: revert change here on error ??
 			ps.logger.Err(err).Msg("Error storing change log")
 			return
 		}

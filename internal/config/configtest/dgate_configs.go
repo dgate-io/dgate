@@ -102,7 +102,7 @@ func NewTestDGateConfig_DomainAndNamespaces() *config.DGateConfig {
 	}
 	conf.ProxyConfig.InitResources.Domains = []config.DomainSpec{
 		{
-			Domain: &spec.Domain{
+			Domain: spec.Domain{
 				Name:          "test-dm",
 				NamespaceName: "test",
 				Patterns:      []string{"example.com"},
@@ -111,7 +111,7 @@ func NewTestDGateConfig_DomainAndNamespaces() *config.DGateConfig {
 			},
 		},
 		{
-			Domain: &spec.Domain{
+			Domain: spec.Domain{
 				Name:          "test-dm2",
 				NamespaceName: "test2",
 				Patterns:      []string{`*test.com`},
@@ -120,7 +120,7 @@ func NewTestDGateConfig_DomainAndNamespaces() *config.DGateConfig {
 			},
 		},
 		{
-			Domain: &spec.Domain{
+			Domain: spec.Domain{
 				Name:          "test-dm3",
 				NamespaceName: "test3",
 				Patterns:      []string{`/^(abc|cba).test.com$/`},

@@ -179,7 +179,7 @@ type (
 	}
 
 	DomainSpec struct {
-		*spec.Domain `koanf:",squash"`
+		spec.Domain `koanf:",squash"`
 		CertFile    string `koanf:"cert_file"`
 		KeyFile     string `koanf:"key_file"`
 	}

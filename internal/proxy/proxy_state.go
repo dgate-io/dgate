@@ -446,7 +446,7 @@ func (ps *ProxyState) initConfigResources(resources *config.DGateResources) erro
 				}
 				dom.Key = string(key)
 			}
-			cl := spec.NewChangeLog(dom.Domain, dom.NamespaceName, spec.AddDomainCommand)
+			cl := spec.NewChangeLog(&dom.Domain, dom.NamespaceName, spec.AddDomainCommand)
 			err := ps.processChangeLog(cl, false, false)
 			if err != nil {
 				return err

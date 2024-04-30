@@ -57,3 +57,5 @@ curl -s --fail-with-body ${PROXY_URL}/svctest -H Host:dgate.dev
 curl -s --fail-with-body ${PROXY_URL}/modtest -H Host:dgate.dev
 
 curl -s ${PROXY_URL}/blank -H Host:dgate.dev
+
+echo "Performance Test Prep Done"

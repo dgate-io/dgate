@@ -26,9 +26,6 @@ func (b *badgerLoggerAdapter) Debugf(format string, args ...any) {
 }
 
 func newBadgerLoggerAdapter(component string, logger zerolog.Logger) badger.Logger {
-	// logger := fsConfig.Logger.Hook(zerolog.HookFunc(func(e *zerolog.Event, level zerolog.Level, msg string) {
-	// 	e.Str("storage", "filestore::badger")
-	// }))
 	logger = logger.With().Str("component", component).Logger()
 	return &badgerLoggerAdapter{
 		logger: logger,

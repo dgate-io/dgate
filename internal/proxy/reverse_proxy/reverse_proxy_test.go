@@ -84,12 +84,6 @@ func testDGateProxyRewrite(
 		if params.newHost != "" && req.Host != params.newHost {
 			t.Errorf("FAIL: Expected Host %s, got %s", params.newHost, req.Host)
 		}
-		// if req.Header.Get("X-Testing") == "" {
-		// 	t.Errorf("FAIL: Expected X-Testing header, got empty")
-		// }
-		// if req.Header.Get("X-Testing-2") == "" {
-		// 	t.Errorf("FAIL: Expected X-Testing-2 header, got empty")
-		// }
 		if rewriteParams.xForwardedHeaders {
 			if req.Header.Get("X-Forwarded-For") == "" {
 				t.Errorf("FAIL: Expected X-Forwarded-For header, got empty")
