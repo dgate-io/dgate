@@ -128,6 +128,10 @@ func NewProxyState(conf *config.DGateConfig) *ProxyState {
 		WithComponentLogger("proxy_store"),
 		WithDefaultLevel(zerolog.InfoLevel),
 	)
+	replicationEnabled := false
+	if conf.AdminConfig != nil && conf.AdminConfig.Replication != nil {
+		replicationEnabled = true
+	}
 	state := &ProxyState{
 		version:            "unknown",
 		startTime:          time.Now(),
@@ -145,7 +149,7 @@ func NewProxyState(conf *config.DGateConfig) *ProxyState {
 		proxyLock:          new(sync.RWMutex),
 		sharedCache:        cache.New(),
 		store:              proxy_store.New(dataStore, storeLogger),
-		replicationEnabled: conf.AdminConfig.Replication != nil,
+		replicationEnabled: replicationEnabled,
 		ReverseProxyBuilder: reverse_proxy.NewBuilder().
 			FlushInterval(-1).
 			ErrorLogger(log.New(rpLogger, "", 0)).
