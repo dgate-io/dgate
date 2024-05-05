@@ -170,27 +170,20 @@ func TransformDGateDocument(document *DGateDocument) *Document {
 	}
 }
 
-func TransformDGateSecrets(redact bool, secrets ...*DGateSecret) []*Secret {
+func TransformDGateSecrets(secrets ...*DGateSecret) []*Secret {
 	newSecrets := make([]*Secret, len(secrets))
 	for i, secret := range secrets {
-		newSecrets[i] = TransformDGateSecret(secret, redact)
+		newSecrets[i] = TransformDGateSecret(secret)
 	}
 	return newSecrets
 }
 
-func TransformDGateSecret(col *DGateSecret, redact bool) *Secret {
-	data := "--redacted--"
-	if !redact {
-		data = col.Data
-		if data != "" {
-			data = base64.StdEncoding.EncodeToString([]byte(data))
-		}
-	}
+func TransformDGateSecret(sec *DGateSecret) *Secret {
 	return &Secret{
-		Name:          col.Name,
-		NamespaceName: col.Namespace.Name,
-		Data:          data,
-		Tags:          col.Tags,
+		Name:          sec.Name,
+		NamespaceName: sec.Namespace.Name,
+		Data:          "**redacted**",
+		Tags:          sec.Tags,
 	}
 }
 

@@ -13,6 +13,23 @@ type clientDoer interface {
 	Do(req *http.Request) (*http.Response, error)
 }
 
+type NamePayload struct {
+	Name string `json:"name"`
+}
+
+type NamespacePayload struct {
+	Namespace string `json:"namespace"`
+}
+
+type DocumentPayload struct {
+	Document   string `json:"document"`
+	Limit      int    `json:"limit"`
+	Offset     int    `json:"offset"`
+	Count      int    `json:"count"`
+	Collection string `json:"collection"`
+	Namespace  string `json:"namespace"`
+}
+
 type ListResponseWrapper[T any] struct {
 	StatusCode int
 	Count      int
@@ -88,17 +105,8 @@ func commonPut[T any](client clientDoer, uri string, item T) error {
 	return nil
 }
 
-type M map[string]any
-
-func commonDelete(client clientDoer, uri, name, namespace string) error {
-	payload, err := json.Marshal(M{
-		"name":      name,
-		"namespace": namespace,
-	})
-	if err != nil {
-		return err
-	}
-	req, err := http.NewRequest("DELETE", uri, bytes.NewReader(payload))
+func basicDelete(client clientDoer, uri string, rdr io.Reader) error {
+	req, err := http.NewRequest("DELETE", uri, rdr)
 	if err != nil {
 		return err
 	}
@@ -113,11 +121,24 @@ func commonDelete(client clientDoer, uri, name, namespace string) error {
 	return nil
 }
 
+type M map[string]any
+
+func commonDelete(client clientDoer, uri, name, namespace string) error {
+	payload, err := json.Marshal(M{
+		"name":      name,
+		"namespace": namespace,
+	})
+	if err != nil {
+		return err
+	}
+	return basicDelete(client, uri, bytes.NewReader(payload))
+}
+
 func validateStatusCode(code int) error {
 	if code < 300 {
 		return nil
 	} else if code < 400 {
-		return errors.New("unexpected Redirect")
+		return errors.New("redirect from server; retry with the --follow flag")
 	}
 	return fmt.Errorf("error code %d: %s", code, http.StatusText(code))
 }

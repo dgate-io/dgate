@@ -3,13 +3,17 @@ package proxy
 import (
 	"bytes"
 	"cmp"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"hash"
 	"hash/crc32"
+	"net/http"
+	"slices"
 	"sort"
 )
 
-func HashAny[T any](salt uint32, objs ...any) (uint32, error) {
+func saltHash[T any](salt uint32, objs ...T) (hash.Hash32, error) {
 	hash := crc32.NewIEEE()
 	if salt != 0 {
 		// uint32 to byte array
@@ -22,17 +26,33 @@ func HashAny[T any](salt uint32, objs ...any) (uint32, error) {
 	}
 
 	if len(objs) == 0 {
-		return 0, errors.New("no objects provided")
+		return nil, errors.New("no objects provided")
 	}
 	for _, r := range objs {
 		b := bytes.Buffer{}
 		err := json.NewEncoder(&b).Encode(r)
 		if err != nil {
-			return 0, err
+			return nil, err
 		}
 		hash.Write(b.Bytes())
 	}
-	return hash.Sum32(), nil
+	return hash, nil
+}
+
+func HashAny[T any](salt uint32, objs ...T) (uint32, error) {
+	h, err := saltHash(salt, objs...)
+	if err != nil {
+		return 0, err
+	}
+	return h.Sum32(), nil
+}
+
+func HashString[T any](salt uint32, objs ...T) (string, error) {
+	h, err := saltHash(salt, objs...)
+	if err != nil {
+		return "", err
+	}
+	return hex.EncodeToString(h.Sum(nil)), nil
 }
 
 func findInSortedWith[T any, K cmp.Ordered](arr []T, k K, f func(T) K) (T, bool) {
@@ -44,4 +64,35 @@ func findInSortedWith[T any, K cmp.Ordered](arr []T, k K, f func(T) K) (T, bool)
 		return arr[i], true
 	}
 	return t, false
+}
+
+var validMethods = []string{
+	http.MethodGet,
+	http.MethodPost,
+	http.MethodPut,
+	http.MethodPatch,
+	http.MethodDelete,
+	http.MethodOptions,
+	http.MethodHead,
+	http.MethodConnect,
+	http.MethodTrace,
+}
+
+func ValidateMethods(methods []string) error {
+	methodCount := 0
+	for _, m := range methods {
+		if m == "" {
+			continue
+		} else if slices.ContainsFunc(validMethods, func(v string) bool {
+			return v == m
+		}) {
+			methodCount++
+		} else {
+			return errors.New("unsupported method: " + m)
+		}
+	}
+	if methodCount == 0 {
+		return errors.New("no valid methods provided")
+	}
+	return nil
 }

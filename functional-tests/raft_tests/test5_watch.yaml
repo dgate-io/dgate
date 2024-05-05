@@ -1,7 +1,7 @@
 version: v1
 debug: true
 log_level: info
-# read_only: false
+
 tags:
  - "dev"
  - "internal"
@@ -16,7 +16,6 @@ stats?:
   enable_cache_stats: true
   enable_stream_stats: true
   enable_cluster_stats: true
-# read_only must be true
 proxy:
   port: 85
   host: 0.0.0.0
@@ -48,11 +47,10 @@ proxy:
 admin:
   port: 9085
   host: 0.0.0.0
-  # read_only: true
+  watch_only: true
   replication:
     bootstrap_cluster: false
     id: "test5"
-    watch_only: true
     advert_address: "localhost:9085"
     cluster_address:
       - "localhost:9081"

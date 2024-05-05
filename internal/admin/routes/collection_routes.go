@@ -88,13 +88,19 @@ func ConfigureCollectionAPI(server chi.Router, proxyState *proxy.ProxyState, app
 			namespace = spec.DefaultNamespace.Name
 		}
 		collections := rm.GetCollectionsByNamespace(namespace)
-		b, err := json.Marshal(spec.TransformDGateCollections(collections...))
-		if err != nil {
-			util.JsonError(w, http.StatusInternalServerError, err.Error())
+		util.JsonResponse(w, http.StatusOK,
+			spec.TransformDGateCollections(collections...))
+	})
+
+	server.Get("/collection/{name}", func(w http.ResponseWriter, r *http.Request) {
+		name := chi.URLParam(r, "name")
+		nsName := r.URL.Query().Get("namespace")
+		col, ok := rm.GetCollection(name, nsName)
+		if !ok {
+			util.JsonError(w, http.StatusNotFound, "collection not found")
 			return
 		}
-		w.Header().Set("Content-Type", "application/json")
-		w.Write(b)
+		util.JsonResponse(w, http.StatusOK, col)
 	})
 
 	server.Get("/document", func(w http.ResponseWriter, r *http.Request) {
@@ -139,6 +145,7 @@ func ConfigureCollectionAPI(server chi.Router, proxyState *proxy.ProxyState, app
 			util.JsonError(w, http.StatusInternalServerError, err.Error())
 			return
 		}
+
 		b, err := json.Marshal(map[string]any{
 			"documents":  docs,
 			"limit":      limit,
@@ -178,7 +185,6 @@ func ConfigureCollectionAPI(server chi.Router, proxyState *proxy.ProxyState, app
 			util.JsonError(w, http.StatusNotFound, "collection not found")
 			return
 		} else {
-
 			if collection.Type != spec.CollectionTypeDocument {
 				util.JsonError(w, http.StatusBadRequest, "collection is not a document collection")
 				return

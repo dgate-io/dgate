@@ -1,4 +1,4 @@
-package proxystore
+package proxy_store
 
 import (
 	"encoding/json"
@@ -58,7 +58,6 @@ func (store *ProxyStore) FetchChangeLogs() ([]*spec.ChangeLog, error) {
 	return logs, nil
 }
 
-// TODO: add retry for failed store operations
 func (store *ProxyStore) StoreChangeLog(cl *spec.ChangeLog) error {
 	clBytes, err := json.Marshal(*cl)
 	if err != nil {

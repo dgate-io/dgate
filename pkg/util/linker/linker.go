@@ -10,8 +10,8 @@ import (
 )
 
 type kv[T, U any] struct {
-	Key T `json:"key"`
-	Val U `json:"val"`
+	key T
+	val U
 }
 
 type Linker[K cmp.Ordered] interface {
@@ -51,7 +51,7 @@ func NewNamedVertexWithValue[K cmp.Ordered, V any](item *V, names ...K) *Link[K,
 	edges := make([]*kv[K, avl.Tree[K, Linker[K]]], len(names))
 	for i, name := range names {
 		edges[i] = &kv[K, avl.Tree[K, Linker[K]]]{
-			Key: name, Val: avl.NewTree[K, Linker[K]](),
+			key: name, val: avl.NewTree[K, Linker[K]](),
 		}
 	}
 
@@ -66,7 +66,7 @@ func (nl *Link[K, V]) Vertex() Linker[K] {
 }
 
 func (nl *Link[K, V]) Item() *V {
-	return nl.item.Load()
+	return nl.item.Read()
 }
 
 func (nl *Link[K, V]) SetItem(item *V) {
@@ -75,14 +75,14 @@ func (nl *Link[K, V]) SetItem(item *V) {
 
 func (nl *Link[K, V]) Get(name K) Linker[K] {
 	for _, edge := range nl.edges {
-		if edge.Key == name {
-			if !edge.Val.Empty() {
+		if edge.key == name {
+			if !edge.val.Empty() {
 				count := 0
-				edge.Val.Each(func(key K, val Linker[K]) bool {
+				edge.val.Each(func(key K, val Linker[K]) bool {
 					count++
 					return count <= 2
 				})
-				if _, lk, ok := edge.Val.RootKeyValue(); ok && count == 1 {
+				if _, lk, ok := edge.val.RootKeyValue(); ok && count == 1 {
 					return lk
 				}
 				panic("this function should not be called on a vertex with more than one edge per name")
@@ -95,8 +95,8 @@ func (nl *Link[K, V]) Get(name K) Linker[K] {
 
 func (nl *Link[K, V]) Len(name K) int {
 	for _, edge := range nl.edges {
-		if edge.Key == name {
-			return edge.Val.Length()
+		if edge.key == name {
+			return edge.val.Length()
 		}
 	}
 	return 0
@@ -104,8 +104,8 @@ func (nl *Link[K, V]) Len(name K) int {
 
 func (nl *Link[K, V]) Find(name K, key K) (Linker[K], bool) {
 	for _, edge := range nl.edges {
-		if edge.Key == name {
-			return edge.Val.Find(key)
+		if edge.key == name {
+			return edge.val.Find(key)
 		}
 	}
 	return nil, false
@@ -114,8 +114,8 @@ func (nl *Link[K, V]) Find(name K, key K) (Linker[K], bool) {
 // LinkOneMany adds an edge from this vertex to specified vertex
 func (nl *Link[K, V]) LinkOneMany(name K, key K, vtx Linker[K]) {
 	for _, edge := range nl.edges {
-		if edge.Key == name {
-			edge.Val.Insert(key, vtx)
+		if edge.key == name {
+			edge.val.Insert(key, vtx)
 			return
 		}
 	}
@@ -125,8 +125,8 @@ func (nl *Link[K, V]) LinkOneMany(name K, key K, vtx Linker[K]) {
 // UnlinkOneMany removes links to a vertex and returns the vertex
 func (nl *Link[K, V]) UnlinkOneMany(name K, key K) (Linker[K], bool) {
 	for _, edge := range nl.edges {
-		if edge.Key == name {
-			return edge.Val.Pop(key)
+		if edge.key == name {
+			return edge.val.Pop(key)
 		}
 	}
 	panic("name not found for this vertex: " + fmt.Sprint(name))
@@ -135,13 +135,13 @@ func (nl *Link[K, V]) UnlinkOneMany(name K, key K) (Linker[K], bool) {
 // UnlinkAllOneMany removes all edges from the vertex and returns them
 func (nl *Link[K, V]) UnlinkAllOneMany(name K) []Linker[K] {
 	for _, edge := range nl.edges {
-		if edge.Key == name {
+		if edge.key == name {
 			var removed []Linker[K]
-			edge.Val.Each(func(key K, val Linker[K]) bool {
+			edge.val.Each(func(key K, val Linker[K]) bool {
 				removed = append(removed, val)
 				return true
 			})
-			edge.Val.Clear()
+			edge.val.Clear()
 			return removed
 		}
 	}
@@ -151,9 +151,9 @@ func (nl *Link[K, V]) UnlinkAllOneMany(name K) []Linker[K] {
 // LinkOneOne links a vertex to the vertex
 func (nl *Link[K, V]) LinkOneOne(name K, key K, vertex Linker[K]) {
 	for _, edge := range nl.edges {
-		if edge.Key == name {
-			edge.Val.Insert(key, vertex)
-			if edge.Val.Length() > 1 {
+		if edge.key == name {
+			edge.val.Insert(key, vertex)
+			if edge.val.Length() > 1 {
 				panic("this function should not be called on a vertex with more than one edge per name")
 			}
 			return
@@ -165,8 +165,8 @@ func (nl *Link[K, V]) LinkOneOne(name K, key K, vertex Linker[K]) {
 // UnlinkOneOne unlinks a vertex from the vertex and returns the vertex
 func (nl *Link[K, V]) UnlinkOneOneByKey(name K, key K) (Linker[K], bool) {
 	for _, edge := range nl.edges {
-		if edge.Key == name {
-			return edge.Val.Pop(key)
+		if edge.key == name {
+			return edge.val.Pop(key)
 		}
 	}
 	panic("name not found for this vertex: " + fmt.Sprint(name))
@@ -175,10 +175,10 @@ func (nl *Link[K, V]) UnlinkOneOneByKey(name K, key K) (Linker[K], bool) {
 // UnlinkOneOne unlinks a vertex from the vertex and returns the vertex
 func (nl *Link[K, V]) UnlinkOneOne(name K) (Linker[K], bool) {
 	for _, edge := range nl.edges {
-		if edge.Key == name {
-			_, link, ok := edge.Val.RootKeyValue()
+		if edge.key == name {
+			_, link, ok := edge.val.RootKeyValue()
 			if ok {
-				edge.Val.Clear()
+				edge.val.Clear()
 			}
 			return link, ok
 		}
@@ -191,7 +191,7 @@ func (nl *Link[K, V]) Clone() Linker[K] {
 	edges := make([]*kv[K, avl.Tree[K, Linker[K]]], len(nl.edges))
 	for i, edge := range nl.edges {
 		edges[i] = &kv[K, avl.Tree[K, Linker[K]]]{
-			Key: edge.Key, Val: edge.Val.Clone(),
+			key: edge.key, val: edge.val.Clone(),
 		}
 	}
 	copiedItem := *nl.item
@@ -204,8 +204,8 @@ func (nl *Link[K, V]) Clone() Linker[K] {
 // Each iterates over all edges
 func (nl *Link[K, V]) Each(name K, fn func(K, Linker[K])) {
 	for _, edge := range nl.edges {
-		if edge.Key == name {
-			edge.Val.Each(func(key K, vertex Linker[K]) bool {
+		if edge.key == name {
+			edge.val.Each(func(key K, vertex Linker[K]) bool {
 				fn(key, vertex)
 				return true
 			})

@@ -3,6 +3,7 @@ package extractors_test
 import (
 	"testing"
 
+	"github.com/dgate-io/dgate/internal/config/configtest"
 	"github.com/dgate-io/dgate/internal/proxy"
 	"github.com/dgate-io/dgate/pkg/modules/extractors"
 	"github.com/dgate-io/dgate/pkg/modules/testutil"
@@ -101,7 +102,9 @@ func TestPrinter(t *testing.T) {
 	program := testutil.CreateJSProgram(t, JS_PAYLOAD_CUSTOMFUNC)
 	cp := &consolePrinter{make(map[string]int)}
 	rt := &spec.DGateRoute{Namespace: &spec.DGateNamespace{}}
-	rtCtx := proxy.NewRuntimeContext(nil, rt)
+	conf := configtest.NewTestDGateConfig()
+	ps := proxy.NewProxyState(conf)
+	rtCtx := proxy.NewRuntimeContext(ps, rt)
 	loop, err := extractors.NewModuleEventLoop(
 		cp, rtCtx, program,
 	)
@@ -118,13 +121,15 @@ func TestPrinter(t *testing.T) {
 
 func BenchmarkNewModuleRuntime(b *testing.B) {
 	program := testutil.CreateTSProgram(b, TS_PAYLOAD_CUSTOMFUNC)
+	conf := configtest.NewTestDGateConfig()
+	ps := proxy.NewProxyState(conf)
 
 	b.ResetTimer()
 	b.Run("CreateModuleRuntime", func(b *testing.B) {
 		for i := 0; i < b.N; i++ {
 			b.StartTimer()
 			rt := &spec.DGateRoute{Namespace: &spec.DGateNamespace{}}
-			rtCtx := proxy.NewRuntimeContext(nil, rt)
+			rtCtx := proxy.NewRuntimeContext(ps, rt)
 			_, err := extractors.NewModuleEventLoop(nil, rtCtx, program)
 			b.StopTimer()
 			if err != nil {

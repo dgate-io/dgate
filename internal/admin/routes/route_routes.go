@@ -110,12 +110,27 @@ func ConfigureRouteAPI(server chi.Router, proxyState *proxy.ProxyState, appConfi
 				return
 			}
 		}
-		b, err := json.Marshal(spec.TransformDGateRoutes(rm.GetRoutesByNamespace(nsName)...))
-		if err != nil {
-			util.JsonError(w, http.StatusInternalServerError, err.Error())
+		routes := rm.GetRoutesByNamespace(nsName)
+		util.JsonResponse(w, http.StatusCreated,
+			spec.TransformDGateRoutes(routes...))
+	})
+
+	server.Get("/route/{name}", func(w http.ResponseWriter, r *http.Request) {
+		name := chi.URLParam(r, "name")
+		nsName := r.URL.Query().Get("namespace")
+		if nsName == "" {
+			if appConfig.DisableDefaultNamespace {
+				util.JsonError(w, http.StatusBadRequest, "namespace is required")
+				return
+			}
+			nsName = spec.DefaultNamespace.Name
+		}
+		rt, ok := rm.GetRoute(name, nsName)
+		if !ok {
+			util.JsonError(w, http.StatusNotFound, "route not found")
 			return
 		}
-		w.Header().Set("Content-Type", "application/json")
-		w.Write([]byte(b))
+		util.JsonResponse(w, http.StatusOK,
+			spec.TransformDGateRoute(rt))
 	})
 }

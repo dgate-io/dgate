@@ -33,7 +33,10 @@ func (d *DGateClient) DeleteModule(name, namespace string) error {
 	return commonDelete(d.client, uri, name, namespace)
 }
 
-func (d *DGateClient) ListModule() ([]*spec.Module, error) {
+func (d *DGateClient) ListModule(namespace string) ([]*spec.Module, error) {
+	query := d.baseUrl.Query()
+	query.Set("namespace", namespace)
+	d.baseUrl.RawQuery = query.Encode()
 	uri, err := url.JoinPath(d.baseUrl.String(), "/api/v1/module")
 	if err != nil {
 		return nil, err

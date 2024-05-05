@@ -1,7 +1,6 @@
 package spec
 
 import (
-	"encoding/json"
 	"time"
 )
 
@@ -115,39 +114,14 @@ type Document struct {
 }
 
 type Secret struct {
-	Name          string    `json:"name"`
-	CreatedAt     time.Time `json:"created_at"`
-	UpdatedAt     time.Time `json:"updated_at"`
-	NamespaceName string    `json:"namespace"`
-	Data          string    `json:"data"`
-	Tags          []string  `json:"tags,omitempty"`
+	Name          string   `json:"name"`
+	NamespaceName string   `json:"namespace"`
+	Data          string   `json:"data,omitempty"`
+	Tags          []string `json:"tags,omitempty"`
 }
 
 func (n *Secret) GetName() string {
 	return n.Name
-}
-
-type RFC3339Time time.Time
-
-func (t RFC3339Time) MarshalJSON() ([]byte, error) {
-	return json.Marshal(time.Time(t).Format(time.RFC3339))
-}
-
-func (t *RFC3339Time) UnmarshalJSON(data []byte) error {
-	var str string
-	if err := json.Unmarshal(data, &str); err != nil {
-		return err
-	}
-	if str == "" {
-		return nil
-	}
-	parsed, err := time.Parse(time.RFC3339, str)
-	if err != nil {
-		return err
-	}
-
-	*t = RFC3339Time(parsed)
-	return nil
 }
 
 func (n *Document) GetName() string {

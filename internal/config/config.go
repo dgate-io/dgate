@@ -8,30 +8,33 @@ import (
 
 type (
 	DGateConfig struct {
-		Version                 string                 `koanf:"version"`
-		LogLevel                string                 `koanf:"log_level"`
-		Debug                   bool                   `koanf:"debug"`
-		Tags                    []string               `koanf:"tags"`
-		Storage                 DGateStorageConfig     `koanf:"storage"`
-		ProxyConfig             DGateProxyConfig       `koanf:"proxy"`
-		AdminConfig             *DGateAdminConfig      `koanf:"admin"`
-		TestServerConfig        *DGateTestServerConfig `koanf:"test_server"`
-		DisableDefaultNamespace bool                   `koanf:"disable_default_namespace"`
+		Version          string                 `koanf:"version"`
+		LogLevel         string                 `koanf:"log_level"`
+		Debug            bool                   `koanf:"debug"`
+		Tags             []string               `koanf:"tags"`
+		Storage          DGateStorageConfig     `koanf:"storage"`
+		ProxyConfig      DGateProxyConfig       `koanf:"proxy"`
+		AdminConfig      *DGateAdminConfig      `koanf:"admin"`
+		TestServerConfig *DGateTestServerConfig `koanf:"test_server"`
+
+		DisableMetrics          bool `koanf:"disable_metrics"`
+		DisableDefaultNamespace bool `koanf:"disable_default_namespace"`
 	}
 
 	DGateProxyConfig struct {
-		Host                     string                   `koanf:"host"`
-		Port                     int                      `koanf:"port"`
-		TLS                      *DGateTLSConfig          `koanf:"tls"`
-		EnableH2C                bool                     `koanf:"enable_h2c"`
-		EnableHTTP2              bool                     `koanf:"enable_http2"`
-		EnableConsoleLogger      bool                     `koanf:"enable_console_logger"`
-		RedirectHttpsDomains     []string                 `koanf:"redirect_https"`
-		AllowedDomains           []string                 `koanf:"allowed_domains"`
-		GlobalHeaders            map[string]string        `koanf:"global_headers"`
-		Transport                DGateHttpTransportConfig `koanf:"client_transport"`
-		InitResources            *DGateResources          `koanf:"init_resources"`
-		DisableXForwardedHeaders bool                     `koanf:"disable_x_forwarded_headers"`
+		Host                 string                   `koanf:"host"`
+		Port                 int                      `koanf:"port"`
+		TLS                  *DGateTLSConfig          `koanf:"tls"`
+		EnableH2C            bool                     `koanf:"enable_h2c"`
+		EnableHTTP2          bool                     `koanf:"enable_http2"`
+		EnableConsoleLogger  bool                     `koanf:"enable_console_logger"`
+		RedirectHttpsDomains []string                 `koanf:"redirect_https"`
+		AllowedDomains       []string                 `koanf:"allowed_domains"`
+		GlobalHeaders        map[string]string        `koanf:"global_headers"`
+		Transport            DGateHttpTransportConfig `koanf:"client_transport"`
+		// WARN: debug use only
+		InitResources            *DGateResources `koanf:"init_resources"`
+		DisableXForwardedHeaders bool            `koanf:"disable_x_forwarded_headers"`
 	}
 
 	DGateTestServerConfig struct {
@@ -135,6 +138,7 @@ type (
 	}
 
 	DGateHttpTransportConfig struct {
+		//
 		DNSServer              string        `koanf:"dns_server"`
 		DNSTimeout             time.Duration `koanf:"dns_timeout"`
 		DNSPreferGo            bool          `koanf:"dns_prefer_go"`

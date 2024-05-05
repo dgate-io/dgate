@@ -33,7 +33,10 @@ func (d *DGateClient) DeleteService(name, namespace string) error {
 	return commonDelete(d.client, uri, name, namespace)
 }
 
-func (d *DGateClient) ListService() ([]*spec.Service, error) {
+func (d *DGateClient) ListService(namespace string) ([]*spec.Service, error) {
+	query := d.baseUrl.Query()
+	query.Set("namespace", namespace)
+	d.baseUrl.RawQuery = query.Encode()
 	uri, err := url.JoinPath(d.baseUrl.String(), "/api/v1/service")
 	if err != nil {
 		return nil, err

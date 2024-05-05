@@ -1,7 +1,6 @@
 package resources
 
 import (
-	"encoding/json"
 	"errors"
 	"sort"
 	"sync"
@@ -278,8 +277,6 @@ func (rm *ResourceManager) transformRoute(route *spec.Route) (*spec.DGateRoute, 
 
 // RemoveRoute removes a route from the resource manager
 func (rm *ResourceManager) RemoveRoute(name, namespace string) error {
-	// TODO: this function can be improved by checking if
-	//    the links are valid before unlinking them
 	rm.mutex.Lock()
 	defer rm.mutex.Unlock()
 	if nsLk, ok := rm.namespaces.Find(namespace); !ok {
@@ -489,7 +486,10 @@ func (rm *ResourceManager) GetDomainsByPriority() []*spec.DGateDomain {
 
 	sort.Slice(domains, func(i, j int) bool {
 		d1, d2 := domains[j], domains[i]
-		return d1.Name < d2.Name || d1.Priority < d2.Priority
+		if d1.Priority == d2.Priority {
+			return d1.Name < d2.Name
+		}
+		return d1.Priority < d2.Priority
 	})
 
 	return domains
@@ -858,61 +858,6 @@ func (rm *ResourceManager) RemoveSecret(name, namespace string) error {
 	} else {
 		return ErrSecretNotFound(name)
 	}
-}
-
-// MarshalJSON marshals the resource manager to json
-func (rm *ResourceManager) MarshalJSON() ([]byte, error) {
-	rm.mutex.RLock()
-	defer rm.mutex.RUnlock()
-	return json.Marshal(map[string]interface{}{
-		"namespaces":  rm.namespaces,
-		"services":    rm.services,
-		"domains":     rm.domains,
-		"modules":     rm.modules,
-		"routes":      rm.routes,
-		"collections": rm.collections,
-	})
-}
-
-// UnmarshalJSON unmarshals the resource manager from json
-func (rm *ResourceManager) UnmarshalJSON(data []byte) error {
-	rm.mutex.RLock()
-	defer rm.mutex.RUnlock()
-	var obj map[string]json.RawMessage
-	if err := json.Unmarshal(data, &obj); err != nil {
-		return err
-	}
-	if collections, ok := obj["collections"]; ok {
-		if err := json.Unmarshal(collections, &rm.collections); err != nil {
-			return err
-		}
-	}
-	if routes, ok := obj["routes"]; ok {
-		if err := json.Unmarshal(routes, &rm.routes); err != nil {
-			return err
-		}
-	}
-	if modules, ok := obj["modules"]; ok {
-		if err := json.Unmarshal(modules, &rm.modules); err != nil {
-			return err
-		}
-	}
-	if domains, ok := obj["domains"]; ok {
-		if err := json.Unmarshal(domains, &rm.domains); err != nil {
-			return err
-		}
-	}
-	if services, ok := obj["services"]; ok {
-		if err := json.Unmarshal(services, &rm.services); err != nil {
-			return err
-		}
-	}
-	if namespaces, ok := obj["namespaces"]; ok {
-		if err := json.Unmarshal(namespaces, &rm.namespaces); err != nil {
-			return err
-		}
-	}
-	return nil
 }
 
 func (rm *ResourceManager) Empty() bool {

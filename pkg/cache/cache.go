@@ -103,22 +103,23 @@ func (cache *cacheImpl) newBucket(
 			b.mutex.Lock()
 			defer b.mutex.Unlock()
 			for {
-				t, v, ok := b.ttlQueue.Peak()
-				if !ok {
+				if t, v, ok := b.ttlQueue.Peak(); !ok {
 					break
-				}
-
-				if t != v.exp.UnixMilli() {
-					// TODO: test set TTL high, then set low
+				} else {
+					// if the expiration time is not the same as the value's expiration time,
+					// it means the value has been updated, so we pop it from the queue
+					if t != v.exp.UnixMilli() {
+						b.ttlQueue.Pop()
+						continue
+					}
+					// if the expiration time is in the future, we break
+					if v.exp.After(time.Now()) {
+						break
+					}
+					// if the expiration time is in the past, we pop the value from the queue
 					b.ttlQueue.Pop()
-					continue
+					delete(b.items, v.key)
 				}
-
-				if v.exp.After(time.Now()) {
-					break
-				}
-				b.ttlQueue.Pop()
-				delete(b.items, v.key)
 			}
 		},
 	})

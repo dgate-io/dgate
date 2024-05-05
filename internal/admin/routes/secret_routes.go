@@ -1,6 +1,7 @@
 package routes
 
 import (
+	"encoding/base64"
 	"encoding/json"
 	"io"
 	"net/http"
@@ -22,24 +23,26 @@ func ConfigureSecretAPI(server chi.Router, proxyState *proxy.ProxyState, appConf
 			util.JsonError(w, http.StatusBadRequest, "error reading body")
 			return
 		}
-		scrt := spec.Secret{}
-		err = json.Unmarshal(eb, &scrt)
+		sec := spec.Secret{}
+		err = json.Unmarshal(eb, &sec)
 		if err != nil {
 			util.JsonError(w, http.StatusBadRequest, "error unmarshalling body")
 			return
 		}
-		if scrt.Data == "" {
+		if sec.Data == "" {
 			util.JsonError(w, http.StatusBadRequest, "payload is required")
 			return
+		} else {
+			sec.Data = base64.RawStdEncoding.EncodeToString([]byte(sec.Data))
 		}
-		if scrt.NamespaceName == "" {
+		if sec.NamespaceName == "" {
 			if appConfig.DisableDefaultNamespace {
 				util.JsonError(w, http.StatusBadRequest, "namespace is required")
 				return
 			}
-			scrt.NamespaceName = spec.DefaultNamespace.Name
+			sec.NamespaceName = spec.DefaultNamespace.Name
 		}
-		cl := spec.NewChangeLog(&scrt, scrt.NamespaceName, spec.AddSecretCommand)
+		cl := spec.NewChangeLog(&sec, sec.NamespaceName, spec.AddSecretCommand)
 		if err = proxyState.ApplyChangeLog(cl); err != nil {
 			util.JsonError(w, http.StatusBadRequest, err.Error())
 			return
@@ -51,9 +54,9 @@ func ConfigureSecretAPI(server chi.Router, proxyState *proxy.ProxyState, appConf
 				return
 			}
 		}
+		secrets := rm.GetSecretsByNamespace(sec.NamespaceName)
 		util.JsonResponse(w, http.StatusCreated,
-			spec.TransformDGateSecrets(true,
-				rm.GetSecretsByNamespace(scrt.NamespaceName)...))
+			spec.TransformDGateSecrets(secrets...))
 	})
 
 	server.Delete("/secret", func(w http.ResponseWriter, r *http.Request) {
@@ -63,20 +66,20 @@ func ConfigureSecretAPI(server chi.Router, proxyState *proxy.ProxyState, appConf
 			util.JsonError(w, http.StatusBadRequest, "error reading body")
 			return
 		}
-		scrt := spec.Secret{}
-		err = json.Unmarshal(eb, &scrt)
+		sec := spec.Secret{}
+		err = json.Unmarshal(eb, &sec)
 		if err != nil {
 			util.JsonError(w, http.StatusBadRequest, "error unmarshalling body")
 			return
 		}
-		if scrt.NamespaceName == "" {
+		if sec.NamespaceName == "" {
 			if appConfig.DisableDefaultNamespace {
 				util.JsonError(w, http.StatusBadRequest, "namespace is required")
 				return
 			}
-			scrt.NamespaceName = spec.DefaultNamespace.Name
+			sec.NamespaceName = spec.DefaultNamespace.Name
 		}
-		cl := spec.NewChangeLog(&scrt, scrt.NamespaceName, spec.DeleteSecretCommand)
+		cl := spec.NewChangeLog(&sec, sec.NamespaceName, spec.DeleteSecretCommand)
 		if err = proxyState.ApplyChangeLog(cl); err != nil {
 			util.JsonError(w, http.StatusBadRequest, err.Error())
 			return
@@ -92,14 +95,30 @@ func ConfigureSecretAPI(server chi.Router, proxyState *proxy.ProxyState, appConf
 				return
 			}
 			nsName = spec.DefaultNamespace.Name
-		} else {
-			if _, ok := rm.GetNamespace(nsName); !ok {
-				util.JsonError(w, http.StatusBadRequest, "namespace not found: "+nsName)
+		} else if _, ok := rm.GetNamespace(nsName); !ok {
+			util.JsonError(w, http.StatusBadRequest, "namespace not found: "+nsName)
+			return
+		}
+		secrets := rm.GetSecretsByNamespace(nsName)
+		util.JsonResponse(w, http.StatusOK,
+			spec.TransformDGateSecrets(secrets...))
+	})
+
+	server.Get("/secret/{name}", func(w http.ResponseWriter, r *http.Request) {
+		name := chi.URLParam(r, "name")
+		nsName := r.URL.Query().Get("namespace")
+		if nsName == "" {
+			if appConfig.DisableDefaultNamespace {
+				util.JsonError(w, http.StatusBadRequest, "namespace is required")
 				return
 			}
+			nsName = spec.DefaultNamespace.Name
 		}
-		util.JsonResponse(w, http.StatusCreated,
-			spec.TransformDGateSecrets(true,
-				rm.GetSecretsByNamespace(nsName)...))
+		if sec, ok := rm.GetSecret(name, nsName); !ok {
+			util.JsonError(w, http.StatusNotFound, "secret not found")
+		} else {
+			util.JsonResponse(w, http.StatusOK,
+				spec.TransformDGateSecret(sec))
+		}
 	})
 }

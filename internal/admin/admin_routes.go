@@ -1,12 +1,10 @@
 package admin
 
 import (
-	"encoding/json"
 	"fmt"
-	"math"
+	"log"
 	"net"
 	"net/http"
-	"runtime"
 	"strings"
 
 	"github.com/dgate-io/chi-router"
@@ -16,6 +14,12 @@ import (
 	"github.com/dgate-io/dgate/pkg/util"
 	"github.com/dgate-io/dgate/pkg/util/iplist"
 	"github.com/hashicorp/raft"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/exporters/prometheus"
+	api "go.opentelemetry.io/otel/metric"
+	"go.opentelemetry.io/otel/metric/noop"
+	"go.opentelemetry.io/otel/sdk/metric"
 )
 
 func configureRoutes(server *chi.Mux, proxyState *proxy.ProxyState, conf *config.DGateConfig) {
@@ -165,7 +169,7 @@ func configureRoutes(server *chi.Mux, proxyState *proxy.ProxyState, conf *config
 	if adminConfig.Replication != nil {
 		setupRaft(conf, server, proxyState)
 	}
-	if adminConfig != nil && !adminConfig.WatchOnly {
+	if adminConfig != nil {
 		server.Route("/api/v1", func(api chi.Router) {
 			routes.ConfigureRouteAPI(api, proxyState, conf)
 			routes.ConfigureModuleAPI(api, proxyState, conf)
@@ -173,6 +177,7 @@ func configureRoutes(server *chi.Mux, proxyState *proxy.ProxyState, conf *config
 			routes.ConfigureNamespaceAPI(api, proxyState, conf)
 			routes.ConfigureDomainAPI(api, proxyState, conf)
 			routes.ConfigureCollectionAPI(api, proxyState, conf)
+			routes.ConfigureSecretAPI(api, proxyState, conf)
 		})
 	}
 
@@ -180,41 +185,26 @@ func configureRoutes(server *chi.Mux, proxyState *proxy.ProxyState, conf *config
 		routes.ConfigureChangeLogAPI(misc, proxyState, conf)
 		routes.ConfigureHealthAPI(misc, proxyState, conf)
 
-		misc.Get("/stats", func(w http.ResponseWriter, r *http.Request) {
-			snapshot := proxyState.Stats().Snapshot()
-			b, err := json.Marshal(snapshot)
-			if err != nil {
-				w.WriteHeader(http.StatusInternalServerError)
-				w.Write([]byte("Error getting stats: " + err.Error()))
-				return
-			}
-			w.Header().Set("Content-Type", "application/json")
-			w.Write([]byte(b))
-		})
-
-		misc.Get("/system", func(w http.ResponseWriter, r *http.Request) {
-			var m runtime.MemStats
-			runtime.ReadMemStats(&m)
-			systemStats := map[string]any{
-				"goroutines":         runtime.NumGoroutine(),
-				"mem_alloc_mb":       bToMb(m.Alloc),
-				"mem_total_alloc_mb": bToMb(m.TotalAlloc),
-				"mem_sys_mb":         bToMb(m.Sys),
-				"mem_num_gc":         m.NumGC,
-			}
-			b, err := json.Marshal(systemStats)
-			if err != nil {
-				w.WriteHeader(http.StatusInternalServerError)
-				w.Write([]byte("Error getting stats: " + err.Error()))
-				return
-			}
-			w.Header().Set("Content-Type", "application/json")
-			w.Write([]byte(b))
+		setupMetricProvider(conf, func() {
+			misc.Handle("/metrics", promhttp.Handler())
 		})
 	})
 }
 
-func bToMb(b uint64) float64 {
-	v := float64(b) / 1048576
-	return math.Round(v*100) / 100
+func setupMetricProvider(
+	config *config.DGateConfig,
+	callback func(),
+) {
+	var provider api.MeterProvider
+	if !config.DisableMetrics {
+		defer callback()
+		exporter, err := prometheus.New()
+		if err != nil {
+			log.Fatal(err)
+		}
+		provider = metric.NewMeterProvider(metric.WithReader(exporter))
+	} else {
+		provider = noop.NewMeterProvider()
+	}
+	otel.SetMeterProvider(provider)
 }

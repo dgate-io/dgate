@@ -33,7 +33,10 @@ func (d *DGateClient) DeleteDomain(name, namespace string) error {
 	return commonDelete(d.client, uri, name, namespace)
 }
 
-func (d *DGateClient) ListDomain() ([]*spec.Domain, error) {
+func (d *DGateClient) ListDomain(namespace string) ([]*spec.Domain, error) {
+	query := d.baseUrl.Query()
+	query.Set("namespace", namespace)
+	d.baseUrl.RawQuery = query.Encode()
 	uri, err := url.JoinPath(d.baseUrl.String(), "/api/v1/domain")
 	if err != nil {
 		return nil, err

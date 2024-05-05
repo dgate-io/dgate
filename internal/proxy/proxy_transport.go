@@ -10,7 +10,7 @@ import (
 	"golang.org/x/net/http2"
 )
 
-func setupTranportFromConfig(
+func setupTranportsFromConfig(
 	c config.DGateHttpTransportConfig,
 	modifyTransport func(*net.Dialer, *http.Transport),
 ) http.RoundTripper {

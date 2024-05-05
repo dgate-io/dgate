@@ -7,6 +7,7 @@ import (
 type StorageType string
 
 const (
+	StorageTypeDebug  StorageType = "debug"
 	StorageTypeMemory StorageType = "memory"
 	StorageTypeFile   StorageType = "file"
 )

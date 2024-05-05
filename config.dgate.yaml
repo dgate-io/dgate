@@ -37,24 +37,8 @@ proxy:
   tls:
     port: ${PORT_SSL:-443}
     auto_generate: true
-    cert_file: .lego/certificates/ufosoup.com.crt
-    key_file: .lego/certificates/ufosoup.com.key
-  client_transport:
-    dns_server: 8.8.8.8:53
-    dns_timeout: 10s
-    max_conns_per_host: 1000
-    max_idle_conns: 5000
-    max_idle_conns_per_host: 1000
-    idle_conn_timeout: 60s
-    tls_handshake_timeout: 10s
-    expect_continue_timeout: 5s
-    max_response_header_bytes: 4096
-    write_buffer_size: 4096
-    read_buffer_size: 4096
-    max_conns_per_client: 1000
-    disable_keep_alives: false
-    response_header_timeout: 10s
-    dial_timeout: 10s
+    cert_file: internal/proxy/testdata/server.crt
+    key_file: internal/proxy/testdata/server.key
 admin:
   port: 9080
   host: 0.0.0.0

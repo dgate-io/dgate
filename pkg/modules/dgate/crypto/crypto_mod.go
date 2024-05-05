@@ -13,6 +13,7 @@ import (
 	"fmt"
 	"hash"
 	"math/big"
+	"strings"
 
 	"github.com/dgate-io/dgate/pkg/modules"
 	"github.com/dgate-io/dgate/pkg/util"
@@ -31,30 +32,40 @@ func New(modCtx modules.RuntimeContext) modules.GoModule {
 }
 
 func (c *CryptoModule) Exports() *modules.Exports {
-	return &modules.Exports{
-		Named: map[string]any{
-			"createHash":   c.createHash,
-			"createHmac":   c.createHmac,
-			"createSign":   nil, // TODO: not implemented
-			"createVerify": nil, // TODO: not implemented
-			"hmac":         c.hmac,
-			"md5":          c.md5,
-			"randomBytes":  c.randomBytes,
-			"randomInt":    c.randomInt, //
-			"sha1":         c.sha1,
-			"sha256":       c.sha256,
-			"sha384":       c.sha384,
-			"sha512":       c.sha512,
-			"sha512_224":   c.sha512_224,
-			"sha512_256":   c.sha512_256,
-			"getHashes": func() []string {
-				return []string{
-					// TODO: add more hashes
-					"md5", "sha1", "sha256", "sha384", "sha512", "sha512-224", "sha512-256",
-				}
-			},
-			"hexEncode": c.hexEncode,
+	// Hash functions
+	hashAlgos := map[string]HashFunc{
+		"md5":        c.md5,
+		"sha1":       c.sha1,
+		"sha256":     c.sha256,
+		"sha384":     c.sha384,
+		"sha512":     c.sha512,
+		"sha512_224": c.sha512_224,
+		"sha512_256": c.sha512_256,
+	}
+	// Named exports
+	namedExports := map[string]any{
+		"createHash":   c.createHash,
+		"createHmac":   c.createHmac,
+		"createSign":   nil, // TODO: not implemented
+		"createVerify": nil, // TODO: not implemented
+		"hmac":         c.hmac,
+		"randomBytes":  c.randomBytes,
+		"randomInt":    c.randomInt,
+		"getHashes": func() []string {
+			keys := make([]string, 0, len(hashAlgos))
+			for k := range hashAlgos {
+				keys = append(keys, strings.Replace(k, "_", "-", -1))
+			}
+			return keys
 		},
+		"hexEncode": c.hexEncode,
+	}
+	
+	for k, v := range hashAlgos {
+		namedExports[k] = v
+	}
+	return &modules.Exports{
+		Named: namedExports,
 	}
 }
 
@@ -98,6 +109,8 @@ func (c *CryptoModule) randomInt(call goja.FunctionCall) (int64, error) {
 func (c *CryptoModule) randomUUID() string {
 	return uuid.New().String()
 }
+
+type HashFunc func(data any, encoding string) (any, error)
 
 func (c *CryptoModule) md5(data any, encoding string) (any, error) {
 	return c.update("md5", data, encoding)

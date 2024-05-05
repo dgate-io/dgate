@@ -37,18 +37,37 @@ func DocumentCommand(client *dgclient.DGateClient) *cli.Command {
 				Name:    "delete",
 				Aliases: []string{"rm"},
 				Usage:   "delete a document",
+				Flags: []cli.Flag{
+					&cli.BoolFlag{
+						Name:  "all",
+						Usage: "delete all documents",
+					},
+				},
 				Action: func(ctx *cli.Context) error {
-					doc, err := createMapFromArgs[spec.Document](
-						ctx.Args().Slice(), "id",
-					)
-					if err != nil {
-						return err
-					}
-					err = client.DeleteDocument(
-						doc.ID, doc.NamespaceName,
-					)
-					if err != nil {
-						return err
+					if ctx.Bool("all") {
+						doc, err := createMapFromArgs[spec.Document](
+							ctx.Args().Slice())
+						if err != nil {
+							return err
+						}
+						err = client.DeleteAllDocument(
+							doc.NamespaceName, doc.CollectionName)
+						if err != nil {
+							return err
+						}
+						return nil
+					} else {
+						doc, err := createMapFromArgs[spec.Document](
+							ctx.Args().Slice(), "id",
+						)
+						if err != nil {
+							return err
+						}
+						err = client.DeleteDocument(doc.ID,
+							doc.NamespaceName, doc.CollectionName)
+						if err != nil {
+							return err
+						}
 					}
 					return nil
 				},
@@ -58,7 +77,14 @@ func DocumentCommand(client *dgclient.DGateClient) *cli.Command {
 				Aliases: []string{"ls"},
 				Usage:   "list documents",
 				Action: func(ctx *cli.Context) error {
-					doc, err := client.ListDocument()
+					d, err := createMapFromArgs[spec.Document](
+						ctx.Args().Slice(), "collection",
+					)
+					if err != nil {
+						return err
+					}
+					doc, err := client.ListDocument(
+						d.NamespaceName, d.CollectionName)
 					if err != nil {
 						return err
 					}
@@ -75,9 +101,8 @@ func DocumentCommand(client *dgclient.DGateClient) *cli.Command {
 					if err != nil {
 						return err
 					}
-					doc, err = client.GetDocument(
-						doc.ID, doc.NamespaceName,
-					)
+					doc, err = client.GetDocument(doc.ID,
+						doc.NamespaceName, doc.CollectionName)
 					if err != nil {
 						return err
 					}

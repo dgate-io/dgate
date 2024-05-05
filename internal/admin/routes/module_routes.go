@@ -104,4 +104,22 @@ func ConfigureModuleAPI(server chi.Router, proxyState *proxy.ProxyState, appConf
 		util.JsonResponse(w, http.StatusCreated, spec.TransformDGateModules(
 			rm.GetModulesByNamespace(nsName)...))
 	})
+
+	server.Get("/module/{name}", func(w http.ResponseWriter, r *http.Request) {
+		name := chi.URLParam(r, "name")
+		nsName := r.URL.Query().Get("namespace")
+		if nsName == "" {
+			if appConfig.DisableDefaultNamespace {
+				util.JsonError(w, http.StatusBadRequest, "namespace is required")
+				return
+			}
+			nsName = spec.DefaultNamespace.Name
+		}
+		mod, ok := rm.GetModule(name, nsName)
+		if !ok {
+			util.JsonError(w, http.StatusNotFound, "module not found")
+			return
+		}
+		util.JsonResponse(w, http.StatusOK, mod)
+	})
 }

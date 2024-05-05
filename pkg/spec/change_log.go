@@ -82,7 +82,9 @@ var (
 	DeleteCollectionCommand Command = newCommand(Delete, Collections)
 	DeleteDocumentCommand   Command = newCommand(Delete, Documents)
 	DeleteSecretCommand     Command = newCommand(Delete, Secrets)
-	NoopCommand             Command = Command("noop")
+
+	NoopCommand Command = Command("noop")
+	StopCommand Command = Command("stop")
 )
 
 func newCommand(action Action, resource Resource) Command {

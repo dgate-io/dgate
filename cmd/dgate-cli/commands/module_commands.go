@@ -57,7 +57,13 @@ func ModuleCommand(client *dgclient.DGateClient) *cli.Command {
 				Aliases: []string{"ls"},
 				Usage:   "list modules",
 				Action: func(ctx *cli.Context) error {
-					mod, err := client.ListModule()
+					nsp, err := createMapFromArgs[dgclient.NamespacePayload](
+						ctx.Args().Slice(),
+					)
+					if err != nil {
+						return err
+					}
+					mod, err := client.ListModule(nsp.Namespace)
 					if err != nil {
 						return err
 					}

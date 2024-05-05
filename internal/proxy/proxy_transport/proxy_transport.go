@@ -81,6 +81,9 @@ func create(
 	if requestTimeout < 0 {
 		return nil, errors.New("requestTimeout must be greater than or equal to 0")
 	}
+	if requestTimeout == 0 && retries == 0 {
+		return transport, nil
+	}
 	return &retryRoundTripper{
 		transport:      transport,
 		retries:        retries,

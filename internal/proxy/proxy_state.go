@@ -1,24 +1,23 @@
 package proxy
 
 import (
-	"bytes"
 	"crypto/tls"
 	"encoding/base64"
-	"encoding/gob"
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
+	"log"
 	"net"
 	"net/http"
 	"os"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/dgate-io/dgate/internal/config"
 	"github.com/dgate-io/dgate/internal/pattern"
+	"github.com/dgate-io/dgate/internal/proxy/proxy_store"
 	"github.com/dgate-io/dgate/internal/proxy/proxy_transport"
-	"github.com/dgate-io/dgate/internal/proxy/proxystore"
 	"github.com/dgate-io/dgate/internal/proxy/reverse_proxy"
 	"github.com/dgate-io/dgate/internal/router"
 	"github.com/dgate-io/dgate/pkg/cache"
@@ -36,16 +35,17 @@ import (
 )
 
 type ProxyState struct {
+	version    string
 	debugMode  bool
+	startTime  time.Time
 	config     *config.DGateConfig
-	status     ProxyStatus
 	logger     zerolog.Logger
 	printer    console.Printer
-	stats      *ProxyStats
-	store      *proxystore.ProxyStore
+	store      *proxy_store.ProxyStore
 	proxyLock  *sync.RWMutex
 	changeHash uint32
 
+	metrics     *ProxyMetrics
 	sharedCache cache.TCache
 
 	changeChan chan *spec.ChangeLog
@@ -55,6 +55,7 @@ type ProxyState struct {
 	providers   avl.Tree[string, *RequestContextProvider]
 	modPrograms avl.Tree[string, *goja.Program]
 
+	raftReady           atomic.Bool
 	replicationSettings *ProxyReplication
 	replicationEnabled  bool
 
@@ -63,22 +64,6 @@ type ProxyState struct {
 	ReverseProxyBuilder   reverse_proxy.Builder
 	ProxyTransportBuilder proxy_transport.Builder
 	ProxyHandlerFunc      ProxyHandlerFunc
-}
-
-type (
-	ProxyStatus byte
-)
-
-const (
-	ProxyStatusStarting ProxyStatus = iota
-	ProxyStatusModifying
-	ProxyStatusRunning
-	ProxyStatusStopping
-	ProxyStatusClosed
-)
-
-type ProxySnapshot struct {
-	ResourceManager *resources.ResourceManager `json:"resource_manager"`
 }
 
 func NewProxyState(conf *config.DGateConfig) *ProxyState {
@@ -107,10 +92,14 @@ func NewProxyState(conf *config.DGateConfig) *ProxyState {
 
 	var dataStore storage.Storage
 	switch conf.Storage.StorageType {
+	case config.StorageTypeDebug:
+		dataStore = storage.NewDebugStore(&storage.DebugStoreConfig{
+			Logger: logger,
+		})
 	case config.StorageTypeMemory:
-		memConfig := storage.MemoryStoreConfig{}
-		memConfig.Logger = logger
-		dataStore = storage.NewMemoryStore(&memConfig)
+		dataStore = storage.NewMemoryStore(&storage.MemoryStoreConfig{
+			Logger: logger,
+		})
 	case config.StorageTypeFile:
 		fileConfig, err := config.StoreConfig[storage.FileStoreConfig](conf.Storage.Config)
 		if err != nil {
@@ -121,7 +110,6 @@ func NewProxyState(conf *config.DGateConfig) *ProxyState {
 	default:
 		panic(fmt.Errorf("invalid storage type: %s", conf.Storage.StorageType))
 	}
-	// kl := keylock.NewKeyLock()
 	var opt resources.Options
 	if conf.DisableDefaultNamespace {
 		logger.Debug().Msg("default namespace disabled")
@@ -132,23 +120,35 @@ func NewProxyState(conf *config.DGateConfig) *ProxyState {
 	if conf.ProxyConfig.EnableConsoleLogger {
 		printer = NewProxyPrinter(logger)
 	}
+	rpLogger := Logger(&logger,
+		WithComponentLogger("test-server-http"),
+		WithDefaultLevel(zerolog.InfoLevel),
+	)
+	storeLogger := Logger(&logger,
+		WithComponentLogger("proxy_store"),
+		WithDefaultLevel(zerolog.InfoLevel),
+	)
 	state := &ProxyState{
-		logger:      logger,
-		debugMode:   conf.Debug,
-		config:      conf,
-		status:      ProxyStatusModifying,
-		stats:       NewProxyStats(20),
-		printer:     printer,
-		routers:     avl.NewTree[string, *router.DynamicRouter](),
-		changeChan:  make(chan *spec.ChangeLog, 1),
-		rm:          resources.NewManager(opt),
-		providers:   avl.NewTree[string, *RequestContextProvider](),
-		modPrograms: avl.NewTree[string, *goja.Program](),
-		proxyLock:   new(sync.RWMutex),
-		sharedCache: cache.New(),
-
+		version:            "unknown",
+		startTime:          time.Now(),
+		raftReady:          atomic.Bool{},
+		logger:             logger,
+		debugMode:          conf.Debug,
+		config:             conf,
+		metrics:            NewProxyMetrics(),
+		printer:            printer,
+		routers:            avl.NewTree[string, *router.DynamicRouter](),
+		changeChan:         make(chan *spec.ChangeLog, 1),
+		rm:                 resources.NewManager(opt),
+		providers:          avl.NewTree[string, *RequestContextProvider](),
+		modPrograms:        avl.NewTree[string, *goja.Program](),
+		proxyLock:          new(sync.RWMutex),
+		sharedCache:        cache.New(),
+		store:              proxy_store.New(dataStore, storeLogger),
+		replicationEnabled: conf.AdminConfig.Replication != nil,
 		ReverseProxyBuilder: reverse_proxy.NewBuilder().
-			FlushInterval(time.Millisecond * 10).
+			FlushInterval(-1).
+			ErrorLogger(log.New(rpLogger, "", 0)).
 			CustomRewrite(func(in *http.Request, out *http.Request) {
 				if in.URL.Scheme == "ws" {
 					out.URL.Scheme = "http"
@@ -166,63 +166,37 @@ func NewProxyState(conf *config.DGateConfig) *ProxyState {
 		ProxyHandlerFunc:      proxyHandler,
 	}
 
-	state.store = proxystore.New(dataStore, state.Logger(WithComponentLogger("proxystore")))
-
-	if err = state.initConfigResources(conf.ProxyConfig.InitResources); err != nil {
-		panic("error initializing resources: " + err.Error())
+	if conf.Debug {
+		if err = state.initConfigResources(conf.ProxyConfig.InitResources); err != nil {
+			panic("error initializing resources: " + err.Error())
+		}
 	}
 
 	return state
 }
 
-func (ps *ProxyState) RestoreState(r io.Reader) error {
-	// register empty change to refresh state
-	defer ps.applyChange(nil)
-	dec := gob.NewDecoder(r)
-	var snapshot *ProxySnapshot
-	err := dec.Decode(snapshot)
-	if err != nil {
-		return err
-	}
-	// TODO: ps.rm.RestoreState(snapshot)
-	return nil
+func (ps *ProxyState) Version() string {
+	return ps.version
 }
 
-// func (ps *ProxyState) CaptureState() *ProxySnapshot {
-// 	unlock := ps.keyLock.LockAll()
-// 	defer unlock()
-// 	return &ProxySnapshot{
-// 		Namespaces:          ps.namespaces,
-// 		NamespaceModuleMap:  ps.namespaceModuleMap,
-// 		NamespaceRouteMap:   ps.namespaceRouteMap,
-// 		NamespaceServiceMap: ps.namespaceServiceMap,
-// 	}
-// }
-
-func (ps *ProxySnapshot) PersistState(w io.Writer) error {
-	var buf bytes.Buffer
-	enc := gob.NewEncoder(&buf)
-	return enc.Encode(ps)
-}
-
-func (ps *ProxyState) Store() *proxystore.ProxyStore {
+func (ps *ProxyState) Store() *proxy_store.ProxyStore {
 	return ps.store
 }
 
-func (ps *ProxyState) Stats() *ProxyStats {
-	return ps.stats
+func (ps *ProxyState) Logger(opts ...LoggerOptions) *zerolog.Logger {
+	return Logger(&ps.logger, opts...)
 }
 
 type LoggerOptions func(zerolog.Context) zerolog.Context
 
-func (ps *ProxyState) Logger(opts ...LoggerOptions) *zerolog.Logger {
-	logCtx := ps.logger.With()
+func Logger(logger *zerolog.Logger, opts ...LoggerOptions) *zerolog.Logger {
+	logCtx := logger.With()
 
 	for _, opt := range opts {
 		logCtx = opt(logCtx)
 	}
-	logger := logCtx.Logger()
-	return &logger
+	lgr := logCtx.Logger()
+	return &lgr
 }
 
 func WithComponentLogger(component string) LoggerOptions {
@@ -241,6 +215,22 @@ func (ps *ProxyState) ChangeHash() uint32 {
 	return ps.changeHash
 }
 
+func (ps *ProxyState) SetReady() {
+	if ps.replicationEnabled && !ps.raftReady.Load() {
+		ps.logger.Info().
+			Msgf("Replication status is now ready after %s", time.Since(ps.startTime))
+		ps.raftReady.Store(true)
+		return
+	}
+}
+
+func (ps *ProxyState) Ready() bool {
+	if ps.replicationEnabled {
+		return ps.raftReady.Load()
+	}
+	return true
+}
+
 func (ps *ProxyState) Raft() *raft.Raft {
 	if ps.replicationEnabled {
 		return ps.replicationSettings.raft
@@ -248,12 +238,10 @@ func (ps *ProxyState) Raft() *raft.Raft {
 	return nil
 }
 
-func (ps *ProxyState) EnableRaft(r *raft.Raft, rc *raft.Config) {
+func (ps *ProxyState) SetupRaft(r *raft.Raft, rc *raft.Config) {
 	ps.proxyLock.Lock()
 	defer ps.proxyLock.Unlock()
-	ps.replicationEnabled = true
 	ps.replicationSettings = NewProxyReplication(r, rc)
-
 }
 
 func (ps *ProxyState) WaitForChanges() {
@@ -263,6 +251,11 @@ func (ps *ProxyState) WaitForChanges() {
 
 func (ps *ProxyState) ApplyChangeLog(log *spec.ChangeLog) error {
 	if ps.replicationEnabled {
+		if log.Cmd.IsNoop() {
+			ps.processChangeLog(
+				log, true, false,
+			)
+		}
 		r := ps.replicationSettings.raft
 		if r.State() != raft.Leader {
 			return raft.ErrNotLeader
@@ -296,8 +289,22 @@ func (ps *ProxyState) SharedCache() cache.TCache {
 	return ps.sharedCache
 }
 
-func (ps *ProxyState) ReloadState() error {
-	return <-ps.applyChange(nil)
+// ReloadState - reload state checks the change logs to see if a reload is required,
+// specifying check as false skips this step and automatically reloads
+func (ps *ProxyState) ReloadState(check bool, logs ...*spec.ChangeLog) error {
+	reload := !check
+	if check {
+		for _, log := range logs {
+			if log.Cmd.Resource().IsRelatedTo(spec.Routes) {
+				reload = true
+				continue
+			}
+		}
+	}
+	if reload {
+		<-ps.applyChange(nil)
+	}
+	return nil
 }
 
 func (ps *ProxyState) ProcessChangeLog(log *spec.ChangeLog, reload bool) error {
@@ -345,6 +352,7 @@ func loadCertFromFile(certFile, keyFile string) (*tls.Certificate, error) {
 }
 
 func (ps *ProxyState) getDomainCertificate(domain string) (*tls.Certificate, error) {
+	start := time.Now()
 	allowedDomains := ps.config.ProxyConfig.AllowedDomains
 	domainAllowed := len(allowedDomains) == 0
 	if !domainAllowed {
@@ -357,7 +365,8 @@ func (ps *ProxyState) getDomainCertificate(domain string) (*tls.Certificate, err
 	}
 	if domainAllowed {
 		for _, d := range ps.rm.GetDomainsByPriority() {
-			if _, match, err := pattern.MatchAnyPattern(domain, d.Patterns); err != nil {
+			_, match, err := pattern.MatchAnyPattern(domain, d.Patterns)
+			if err != nil {
 				ps.logger.Error().Msgf("Error checking domain match list: %s", err.Error())
 				return nil, err
 			} else if match && d.Cert != "" && d.Key != "" {
@@ -365,6 +374,8 @@ func (ps *ProxyState) getDomainCertificate(domain string) (*tls.Certificate, err
 				key := fmt.Sprintf("cert:%s:%s:%d", d.Namespace.Name,
 					d.Name, d.CreatedAt.UnixMilli())
 				if cert, ok := certBucket.Get(key); ok {
+					ps.metrics.MeasureCertResolutionDuration(
+						start, domain, true)
 					return cert.(*tls.Certificate), nil
 				}
 				serverCert, err := tls.X509KeyPair([]byte(d.Cert), []byte(d.Key))
@@ -374,6 +385,8 @@ func (ps *ProxyState) getDomainCertificate(domain string) (*tls.Certificate, err
 					return nil, err
 				}
 				certBucket.Set(key, &serverCert)
+				ps.metrics.MeasureCertResolutionDuration(
+					start, domain, false)
 				return &serverCert, nil
 			}
 		}
@@ -480,6 +493,7 @@ func (ps *ProxyState) FindNamespaceByRequest(r *http.Request) *spec.DGateNamespa
 	if ps.rm.DomainCountEquals(0) && ps.rm.NamespaceCountEquals(1) {
 		return ps.rm.GetFirstNamespace()
 	}
+
 	// search through domains for a match
 	var defaultNsHasDomain bool
 	if domains := ps.rm.GetDomainsByPriority(); len(domains) > 0 {
@@ -508,6 +522,7 @@ func (ps *ProxyState) FindNamespaceByRequest(r *http.Request) *spec.DGateNamespa
 }
 
 func (ps *ProxyState) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	start := time.Now()
 	if ns := ps.FindNamespaceByRequest(r); ns != nil {
 		allowedDomains := ps.config.ProxyConfig.AllowedDomains
 		// if allowed domains is empty, allow all domains
@@ -532,14 +547,13 @@ func (ps *ProxyState) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 		}
-		if r.TLS == nil && len(ps.config.ProxyConfig.RedirectHttpsDomains) > 0 {
-			_, match, err := pattern.MatchAnyPattern(host, ps.config.ProxyConfig.RedirectHttpsDomains)
-			if err != nil {
+		redirectDomains := ps.config.ProxyConfig.RedirectHttpsDomains
+		if r.TLS == nil && len(redirectDomains) > 0 {
+			if _, match, err := pattern.MatchAnyPattern(host, redirectDomains); err != nil {
 				ps.logger.Error().Msgf("Error checking domain match list: %s", err.Error())
 				util.WriteStatusCodeError(w, http.StatusInternalServerError)
 				return
-			}
-			if match {
+			} else if match {
 				url := *r.URL
 				url.Scheme = "https"
 				ps.logger.Info().Msgf("Redirecting to https: %s", url.String())
@@ -550,6 +564,9 @@ func (ps *ProxyState) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 		if router, ok := ps.routers.Find(ns.Name); ok {
+			ps.metrics.MeasureNamespaceResolutionDuration(
+				start, host, ns.Name,
+			)
 			router.ServeHTTP(w, r)
 		} else {
 			ps.logger.Debug().Msgf("No router found for namespace: %s", ns.Name)
@@ -561,11 +578,5 @@ func (ps *ProxyState) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			r.Proto, r.Host, r.URL.String(), r.TLS != nil, r.RemoteAddr,
 		)
 		util.WriteStatusCodeError(w, http.StatusNotFound)
-	}
-}
-
-func (ps *ProxyState) Snapshot() *ProxySnapshot {
-	return &ProxySnapshot{
-		ResourceManager: ps.rm,
 	}
 }

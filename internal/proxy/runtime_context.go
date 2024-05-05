@@ -5,6 +5,7 @@ import (
 	"errors"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/dgate-io/dgate/pkg/eventloop"
 	"github.com/dgate-io/dgate/pkg/modules"
@@ -54,11 +55,19 @@ func NewRuntimeContext(
 			if mod.Type == spec.ModuleTypeJavascript {
 				return []byte(mod.Payload), nil
 			}
-			// TODO: add transpilation cache somewhere
+			var err error
+			var key string
+			transpileBucket := proxyState.sharedCache.Bucket("ts-transpile")
+			if key, err = HashString(0, mod.Payload); err == nil {
+				if code, ok := transpileBucket.Get(key); ok {
+					return code.([]byte), nil
+				}
+			}
 			payload, err := typescript.Transpile(mod.Payload)
 			if err != nil {
 				return nil, err
 			}
+			transpileBucket.SetWithTTL(key, []byte(payload), time.Minute*30)
 			return []byte(payload), nil
 		}
 	})
@@ -73,7 +82,7 @@ func (rtCtx *runtimeContext) SetRequestContext(
 	reqCtx *RequestContext, pathParams map[string]string,
 ) {
 	if reqCtx != nil {
-		if err := reqCtx.context.Err(); err != nil {
+		if err := reqCtx.ctx.Err(); err != nil {
 			panic("context is already closed: " + err.Error())
 		}
 	}
@@ -85,10 +94,7 @@ func (rtCtx *runtimeContext) Clean() {
 }
 
 func (rtCtx *runtimeContext) Context() context.Context {
-	if rtCtx.reqCtx == nil {
-		panic("request context is not set")
-	}
-	return rtCtx.reqCtx.context
+	return rtCtx.reqCtx.ctx
 }
 
 func (rtCtx *runtimeContext) EventLoop() *eventloop.EventLoop {

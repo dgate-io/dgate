@@ -75,7 +75,9 @@ func ConfigureServiceAPI(server chi.Router, proxyState *proxy.ProxyState, appCon
 				return
 			}
 		}
-		util.JsonResponse(w, http.StatusCreated, spec.TransformDGateServices(rm.GetServicesByNamespace(svc.NamespaceName)...))
+		svcs := rm.GetServicesByNamespace(svc.NamespaceName)
+		util.JsonResponse(w, http.StatusCreated,
+			spec.TransformDGateServices(svcs...))
 	})
 
 	server.Delete("/service", func(w http.ResponseWriter, r *http.Request) {
@@ -128,6 +130,13 @@ func ConfigureServiceAPI(server chi.Router, proxyState *proxy.ProxyState, appCon
 	server.Get("/service/{name}", func(w http.ResponseWriter, r *http.Request) {
 		name := chi.URLParam(r, "name")
 		nsName := r.URL.Query().Get("namespace")
+		if nsName == "" {
+			if appConfig.DisableDefaultNamespace {
+				util.JsonError(w, http.StatusBadRequest, "namespace is required")
+				return
+			}
+			nsName = spec.DefaultNamespace.Name
+		}
 		svc, ok := rm.GetService(name, nsName)
 		if !ok {
 			util.JsonError(w, http.StatusNotFound, "service not found")

@@ -43,6 +43,19 @@ func main() {
 				EnvVars: []string{"DGATE_ADMIN_AUTH"},
 				Usage:   "basic auth username:password; or just username for password prompt",
 			},
+			&cli.BoolFlag{
+				Name:        "follow",
+				DefaultText: "false",
+				Aliases:     []string{"f"},
+				EnvVars:     []string{"DGATE_FOLLOW_REDIRECTS"},
+				Usage:       "follows redirects, useful for raft leader changes",
+			},
+			&cli.BoolFlag{
+				Name:        "verbose",
+				DefaultText: "false",
+				Aliases:     []string{"V"},
+				Usage:       "enable verbose logging",
+			},
 		},
 		Before: func(ctx *cli.Context) (err error) {
 			var authOption dgclient.Options = func(dc *dgclient.DGateClient) {}
@@ -70,10 +83,16 @@ func main() {
 			return client.Init(
 				ctx.String("admin"),
 				authOption,
+				dgclient.WithFollowRedirect(
+					ctx.Bool("follow"),
+				),
 				dgclient.WithUserAgent(
 					"DGate CLI "+version+
 						";os="+runtime.GOOS+
 						";arch="+runtime.GOARCH,
+				),
+				dgclient.WithVerboseLogging(
+					ctx.Bool("verbose"),
 				),
 			)
 		},
@@ -88,6 +107,7 @@ func main() {
 			commands.DomainCommand(client),
 			commands.CollectionCommand(client),
 			commands.DocumentCommand(client),
+			commands.SecretCommand(client),
 		},
 	}
 

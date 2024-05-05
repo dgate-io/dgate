@@ -11,15 +11,12 @@ type ModuleExtractor interface {
 	Start()
 	// Stop stops the event loop for the module extractor
 	Stop(wait bool)
-
 	// RuntimeContext returns the runtime context for the module extractor
 	RuntimeContext() modules.RuntimeContext
-
 	// SetModuleContext sets the module context for the module extractor
 	SetModuleContext(*types.ModuleContext)
 	// ModuleContext returns the module context for the module extractor
 	ModuleContext() *types.ModuleContext
-
 	// ModHash returns the hash of the module
 	ModHash() uint32
 

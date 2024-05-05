@@ -1,28 +1,28 @@
 import http from "k6/http";
 import { check } from 'k6';
 
-const n = 10;
+const n = 15;
 export let options = {
   scenarios: {
-    modtest: {
-      executor: 'constant-vus',
-      vus: n,
-      duration: '20s',
-      // same function as the scenario above, but with different env vars
-      exec: 'dgatePath',
-      env: { DGATE_PATH: '/modtest' },
-      // startTime: '25s',
-      gracefulStop: '5s',
-    },
-    // svctest: {
+    // modtest: {
     //   executor: 'constant-vus',
     //   vus: n,
     //   duration: '20s',
-    //   exec: 'dgatePath', // same function as the scenario above, but with different env vars
-    //   env: { DGATE_PATH: "/svctest" },
+    //   // same function as the scenario above, but with different env vars
+    //   exec: 'dgatePath',
+    //   env: { DGATE_PATH: '/modtest' },
     //   // startTime: '25s',
     //   gracefulStop: '5s',
     // },
+    svctest: {
+      executor: 'constant-vus',
+      vus: n,
+      duration: '20s',
+      exec: 'dgatePath', // same function as the scenario above, but with different env vars
+      env: { DGATE_PATH: "/svctest" },
+      // startTime: '25s',
+      gracefulStop: '5s',
+    },
     // blank: {
     //   executor: 'constant-vus',
     //   vus: n,

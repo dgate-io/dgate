@@ -85,35 +85,37 @@ func (ps *ProxyState) processChangeLog(
 			return
 		}
 	}
-	if reload && (cl.Cmd.Resource().IsRelatedTo(spec.Routes) || cl.Cmd.IsNoop()) {
-		ps.logger.Trace().Msgf("Registering change log: %s", cl.Cmd)
-		errChan := ps.applyChange(cl)
-		select {
-		case err = <-errChan:
-			break
-		case <-time.After(time.Second * 15):
-			err = errors.New("timeout applying change log")
-		}
-		if err != nil {
-			ps.logger.Err(err).Msg("Error registering change log")
-			return
-		}
-		// update change log hash only when the change is successfully applied
-		//   even if the change is a noop, we still need to update the hash
-		changeHash, err := HashAny[*spec.ChangeLog](ps.changeHash, cl)
-		if err != nil {
-			if !ps.config.Debug {
-				return err
+	if reload {
+		if cl.Cmd.Resource().IsRelatedTo(spec.Routes) || cl.Cmd.IsNoop() {
+			ps.logger.Trace().Msgf("Registering change log: %s", cl.Cmd)
+			select {
+			case err = <-ps.applyChange(cl):
+				break
+			case <-time.After(time.Second * 15):
+				err = errors.New("timeout applying change log")
 			}
-			ps.logger.Error().Err(err).
-				Msg("error updating change log hash")
-		} else {
-			ps.changeHash = changeHash
+			if err != nil {
+				ps.logger.Err(err).Msg("Error registering change log")
+				return
+			}
+			// update change log hash only when the change is successfully applied
+			//   even if the change is a noop, we still need to update the hash
+			changeHash, err := HashAny(ps.changeHash, cl)
+			if err != nil {
+				if !ps.config.Debug {
+					return err
+				}
+				ps.logger.Error().Err(err).
+					Msg("error updating change log hash")
+			} else {
+				ps.changeHash = changeHash
+			}
 		}
 	}
 	if store {
 		if err = ps.store.StoreChangeLog(cl); err != nil {
-			// TODO: revert change here on error ??
+			// TODO: find a way to revert the change and reload the state
+			// TODO: OR add flag in config to ignore storage errors
 			ps.logger.Err(err).Msg("Error storing change log")
 			return
 		}
@@ -272,10 +274,7 @@ func (ps *ProxyState) applyChange(changeLog *spec.ChangeLog) <-chan error {
 }
 
 func (ps *ProxyState) rollbackChange(changeLog *spec.ChangeLog) {
-	if changeLog == nil {
-		return
-	}
-	ps.changeChan <- changeLog
+	panic("not implemented")
 }
 
 func (ps *ProxyState) restoreFromChangeLogs() error {
@@ -298,8 +297,12 @@ func (ps *ProxyState) restoreFromChangeLogs() error {
 				return err
 			}
 		}
-		ps.processChangeLog(nil, true, false)
-		// TODO: change to configurable variable
+
+		if err = ps.processChangeLog(nil, true, false); err != nil {
+			return err
+		}
+
+		// TODO: optionally compact change logs through a flag in config?
 		if len(logs) > 1 {
 			removed, err := ps.compactChangeLogs(logs)
 			if err != nil {

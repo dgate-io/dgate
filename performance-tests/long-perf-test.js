@@ -1,20 +1,56 @@
 import http from "k6/http";
 import { check, sleep } from 'k6';
 
+// export let options = {
+//   stages: [
+//     { duration: '5s', target: 200},
+//     { duration: '1h', target: 300},
+//     { duration: '1h', target: 100},
+//   ],
+// };
+
+const n = 15;
 export let options = {
-  stages: [
-    { duration: '5s', target: 200},
-    { duration: '1h', target: 300},
-    { duration: '1h', target: 100},
-  ],
+  scenarios: {
+    modtest: {
+      executor: 'constant-vus',
+      vus: n,
+      duration: '20m',
+      exec: 'dgatePath',
+      env: { DGATE_PATH: '/modtest' },
+      // startTime: '25s',
+      gracefulStop: '5s',
+    },
+    svctest: {
+      executor: 'constant-vus',
+      vus: n,
+      duration: '20m',
+      exec: 'dgatePath',
+      env: { DGATE_PATH: "/svctest" },
+      // startTime: '10m',
+      gracefulStop: '5s',
+    },
+    svctest_500ms: {
+      executor: 'constant-vus',
+      vus: n,
+      duration: '20m',
+      exec: 'dgatePath',
+      env: { DGATE_PATH: "/svctest?wait=150ms" },
+      // startTime: '20m',
+      gracefulStop: '5s',
+    },
+  },
+  discardResponseBodies: true,
 };
 
-let url = "http://localhost:80";
-let i = 0;
-
-export default async function() {
-  let res = http.get(url + "/modtest", {
+export function dgatePath() {
+  const dgatePath = __ENV.PROXY_URL || 'http://localhost';
+  const path = __ENV.DGATE_PATH;
+  let res = http.get(dgatePath + path, {
     headers: { Host: 'dgate.dev' },
   });
-    check(res, { 'status: 204': (r) => r.status == 204 });
+  let results = {};
+  results[path + ': status is ' + res.status] =
+    (r) => r.status >= 200 && r.status < 400;
+  check(res, results);
 };

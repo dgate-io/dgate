@@ -47,11 +47,10 @@ proxy:
 admin:
   port: 9084
   host: 0.0.0.0
-  # read_only: true
+  watch_only: true
   replication:
     bootstrap_cluster: false
     id: "test4"
-    watch_only: true
     advert_address: "localhost:9084"
     cluster_address:
       - "localhost:9081"

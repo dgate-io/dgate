@@ -1,6 +1,6 @@
 version: v1
 debug: true
-log_level: trace
+log_level: info
 tags:
  - "dev"
  - "internal"
