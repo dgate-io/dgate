@@ -19,7 +19,7 @@ export let options = {
       exec: 'dgatePath',
       env: { DGATE_PATH: '/modtest' },
       // startTime: '25s',
-      gracefulStop: '5s',
+      gracefulStop: '10s',
     },
     svctest: {
       executor: 'constant-vus',
@@ -35,7 +35,7 @@ export let options = {
       vus: n,
       duration: '20m',
       exec: 'dgatePath',
-      env: { DGATE_PATH: "/svctest?wait=150ms" },
+      env: { DGATE_PATH: "/svctest?wait=30ms" },
       // startTime: '20m',
       gracefulStop: '5s',
     },

@@ -137,6 +137,11 @@ func LoadConfig(dgateConfigPath string) (*DGateConfig, error) {
 	if err != nil {
 		return nil, err
 	}
+	nodeId := os.Getenv("DGATE_NODE_ID")
+	if nodeId == "" {
+		nodeId = os.Getenv("HOST")
+	}
+	kDefault(k, "node_id", nodeId)
 
 	err = kRequireAll(k, "storage", "storage.type")
 	if err != nil {

@@ -78,17 +78,8 @@ func NewBuilder() Builder {
 }
 
 func (b *reverseProxyBuilder) Clone() Builder {
-	return &reverseProxyBuilder{
-		proxyRewrite:   b.proxyRewrite,
-		errorLogger:    b.errorLogger,
-		customRewrite:  b.customRewrite,
-		upstreamUrl:    b.upstreamUrl,
-		proxyPattern:   b.proxyPattern,
-		transport:      b.transport,
-		flushInterval:  b.flushInterval,
-		modifyResponse: b.modifyResponse,
-		errorHandler:   b.errorHandler,
-	}
+	bb := *b
+	return &bb
 }
 
 func (b *reverseProxyBuilder) FlushInterval(interval time.Duration) Builder {

@@ -121,7 +121,7 @@ func NewProxyState(conf *config.DGateConfig) *ProxyState {
 		printer = NewProxyPrinter(logger)
 	}
 	rpLogger := Logger(&logger,
-		WithComponentLogger("test-server-http"),
+		WithComponentLogger("reverse-proxy"),
 		WithDefaultLevel(zerolog.InfoLevel),
 	)
 	storeLogger := Logger(&logger,
@@ -374,23 +374,25 @@ func (ps *ProxyState) getDomainCertificate(domain string) (*tls.Certificate, err
 				ps.logger.Error().Msgf("Error checking domain match list: %s", err.Error())
 				return nil, err
 			} else if match && d.Cert != "" && d.Key != "" {
+				var err error
+				defer ps.metrics.MeasureCertResolutionDuration(
+					start, domain, false, err)
+
 				certBucket := ps.sharedCache.Bucket("certs")
 				key := fmt.Sprintf("cert:%s:%s:%d", d.Namespace.Name,
 					d.Name, d.CreatedAt.UnixMilli())
 				if cert, ok := certBucket.Get(key); ok {
-					ps.metrics.MeasureCertResolutionDuration(
-						start, domain, true)
 					return cert.(*tls.Certificate), nil
 				}
-				serverCert, err := tls.X509KeyPair([]byte(d.Cert), []byte(d.Key))
+				var serverCert tls.Certificate
+				serverCert, err = tls.X509KeyPair(
+					[]byte(d.Cert), []byte(d.Key))
 				if err != nil {
 					ps.logger.Error().Msgf("Error loading cert: %s on domain %s/%s",
 						err.Error(), d.Namespace.Name, d.Name)
 					return nil, err
 				}
 				certBucket.Set(key, &serverCert)
-				ps.metrics.MeasureCertResolutionDuration(
-					start, domain, false)
 				return &serverCert, nil
 			}
 		}
@@ -533,15 +535,20 @@ func (ps *ProxyState) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		host, _, err := net.SplitHostPort(r.Host)
 		if err != nil {
 			host = r.Host
+			// ignore host/port error for metrics
+			err = nil
 		}
+		defer ps.metrics.MeasureNamespaceResolutionDuration(
+			start, host, ns.Name, err,
+		)
+		var ok bool
 		if len(allowedDomains) > 0 {
-			_, ok, err := pattern.MatchAnyPattern(host, allowedDomains)
+			_, ok, err = pattern.MatchAnyPattern(host, allowedDomains)
 			if err != nil {
 				ps.logger.Trace().Msgf("Error checking domain match list: %s", err.Error())
 				util.WriteStatusCodeError(w, http.StatusInternalServerError)
 				return
-			}
-			if !ok {
+			} else if !ok {
 				ps.logger.Trace().Msgf("Domain %s not allowed", host)
 				// if debug mode is enabled, return a 403
 				util.WriteStatusCodeError(w, http.StatusForbidden)
@@ -553,11 +560,11 @@ func (ps *ProxyState) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 		redirectDomains := ps.config.ProxyConfig.RedirectHttpsDomains
 		if r.TLS == nil && len(redirectDomains) > 0 {
-			if _, match, err := pattern.MatchAnyPattern(host, redirectDomains); err != nil {
+			if _, ok, err = pattern.MatchAnyPattern(host, redirectDomains); err != nil {
 				ps.logger.Error().Msgf("Error checking domain match list: %s", err.Error())
 				util.WriteStatusCodeError(w, http.StatusInternalServerError)
 				return
-			} else if match {
+			} else if ok {
 				url := *r.URL
 				url.Scheme = "https"
 				ps.logger.Info().Msgf("Redirecting to https: %s", url.String())
@@ -568,9 +575,6 @@ func (ps *ProxyState) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 		if router, ok := ps.routers.Find(ns.Name); ok {
-			ps.metrics.MeasureNamespaceResolutionDuration(
-				start, host, ns.Name,
-			)
 			router.ServeHTTP(w, r)
 		} else {
 			ps.logger.Debug().Msgf("No router found for namespace: %s", ns.Name)

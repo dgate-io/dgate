@@ -18,7 +18,7 @@ dgate-cli domain create \
 
 dgate-cli service create \
     name=test-svc urls:='["http://localhost:8888"]' \
-    namespace=test-ns1
+    namespace=test-ns1 retries=5
     
 MOD_B64="$(base64 < $DIR/performance_test_prep.ts)"
 dgate-cli module create \

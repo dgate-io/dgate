@@ -1,6 +1,7 @@
 package proxy
 
 import (
+	"errors"
 	"io"
 	"net/http"
 	"net/url"
@@ -14,7 +15,7 @@ import (
 type ProxyHandlerFunc func(ps *ProxyState, reqCtx *RequestContext)
 
 func proxyHandler(ps *ProxyState, reqCtx *RequestContext) {
-	defer ps.metrics.MeasureProxyRequest(time.Now(), reqCtx)
+	defer ps.metrics.MeasureProxyRequest(reqCtx, time.Now())
 
 	defer func() {
 		if reqCtx.req.Body != nil {
@@ -75,12 +76,19 @@ func proxyHandler(ps *ProxyState, reqCtx *RequestContext) {
 				reqCtx.provider.modBuf.Return(modExt)
 			}()
 		} else {
+			ps.metrics.MeasureModuleDuration(
+				reqCtx, "module_extract",
+				runtimeStart, errors.New("invalid runtime context"),
+			)
 			ps.logger.Error().Msg("Error getting runtime context")
 			util.WriteStatusCodeError(reqCtx.rw, http.StatusInternalServerError)
 			return
 		}
 
-		ps.metrics.MeasureModuleDuration("module_extract", runtimeStart, reqCtx)
+		ps.metrics.MeasureModuleDuration(
+			reqCtx, "module_extract",
+			runtimeStart, nil,
+		)
 	} else {
 		modExt = NewEmptyModuleExtractor()
 	}
@@ -97,15 +105,16 @@ func handleServiceProxy(ps *ProxyState, reqCtx *RequestContext, modExt ModuleExt
 	if fetchUpstreamUrl, ok := modExt.FetchUpstreamUrlFunc(); ok {
 		fetchUpstreamStart := time.Now()
 		hostUrl, err := fetchUpstreamUrl(modExt.ModuleContext())
+		ps.metrics.MeasureModuleDuration(
+			reqCtx, "fetch_upstream",
+			fetchUpstreamStart, err,
+		)
 		if err != nil {
 			ps.logger.Err(err).Msg("Error fetching upstream")
 			util.WriteStatusCodeError(reqCtx.rw, http.StatusInternalServerError)
 			return
 		}
 		host = hostUrl.String()
-		ps.metrics.MeasureModuleDuration(
-			"fetch_upstream", fetchUpstreamStart, reqCtx,
-		)
 	} else {
 		if reqCtx.route.Service.URLs == nil || len(reqCtx.route.Service.URLs) == 0 {
 			ps.logger.Error().Msg("Error getting service urls")
@@ -133,28 +142,28 @@ func handleServiceProxy(ps *ProxyState, reqCtx *RequestContext, modExt ModuleExt
 		return
 	}
 
+	var upstreamErr error
 	rpb := reqCtx.provider.rpb.Clone().
 		ModifyResponse(func(res *http.Response) error {
-			defer ps.metrics.MeasureModuleDuration(
-				"response_modifier", time.Now(), reqCtx,
-			)
 			if reqCtx.route.Service.HideDGateHeaders {
 				res.Header.Set("Via", "DGate Proxy")
 			}
 			if responseModifier, ok := modExt.ResponseModifierFunc(); ok {
 				resModifierStart := time.Now()
 				err = responseModifier(modExt.ModuleContext(), res)
+				ps.metrics.MeasureModuleDuration(
+					reqCtx, "response_modifier",
+					resModifierStart, err,
+				)
 				if err != nil {
 					ps.logger.Err(err).Msg("Error modifying response")
 					return err
 				}
-				ps.metrics.MeasureModuleDuration(
-					"response_modifier", resModifierStart, reqCtx,
-				)
 			}
 			return nil
 		}).
 		ErrorHandler(func(w http.ResponseWriter, r *http.Request, reqErr error) {
+			upstreamErr = reqErr
 			ps.logger.Debug().Err(reqErr).Msg("Error proxying request")
 			// TODO: add metric for error
 			if reqCtx.rw.HeadersSent() {
@@ -164,7 +173,8 @@ func handleServiceProxy(ps *ProxyState, reqCtx *RequestContext, modExt ModuleExt
 				errorHandlerStart := time.Now()
 				err = errorHandler(modExt.ModuleContext(), reqErr)
 				ps.metrics.MeasureModuleDuration(
-					"error_handler", errorHandlerStart, reqCtx,
+					reqCtx, "error_handler",
+					errorHandlerStart, err,
 				)
 				if err != nil {
 					ps.logger.Err(err).Msg("Error handling error")
@@ -172,7 +182,6 @@ func handleServiceProxy(ps *ProxyState, reqCtx *RequestContext, modExt ModuleExt
 					return
 				}
 			} else {
-				ps.logger.Err(reqErr).Msg("Error handling error")
 				util.WriteStatusCodeError(reqCtx.rw, http.StatusInternalServerError)
 				return
 			}
@@ -181,14 +190,15 @@ func handleServiceProxy(ps *ProxyState, reqCtx *RequestContext, modExt ModuleExt
 	if requestModifier, ok := modExt.RequestModifierFunc(); ok {
 		reqModifierStart := time.Now()
 		err = requestModifier(modExt.ModuleContext())
+		ps.metrics.MeasureModuleDuration(
+			reqCtx, "request_modifier",
+			reqModifierStart, err,
+		)
 		if err != nil {
 			ps.logger.Err(err).Msg("Error modifying request")
 			util.WriteStatusCodeError(reqCtx.rw, http.StatusInternalServerError)
 			return
 		}
-		ps.metrics.MeasureModuleDuration(
-			"request_modifier", reqModifierStart, reqCtx,
-		)
 	}
 
 	rp, err := rpb.Build(upstreamUrl, reqCtx.pattern)
@@ -205,7 +215,8 @@ func handleServiceProxy(ps *ProxyState, reqCtx *RequestContext, modExt ModuleExt
 	upstreamStart := time.Now()
 	rp.ServeHTTP(reqCtx.rw, reqCtx.req)
 	ps.metrics.MeasureUpstreamDuration(
-		upstreamStart, upstreamUrl.String(), reqCtx,
+		reqCtx, upstreamStart,
+		upstreamUrl.String(), upstreamErr,
 	)
 }
 
@@ -215,35 +226,39 @@ func requestHandlerModule(ps *ProxyState, reqCtx *RequestContext, modExt ModuleE
 		// extract request modifier function from module
 		reqModifierStart := time.Now()
 		err = requestModifier(modExt.ModuleContext())
+		ps.metrics.MeasureModuleDuration(
+			reqCtx, "request_modifier",
+			reqModifierStart, err,
+		)
 		if err != nil {
 			ps.logger.Err(err).Msg("Error modifying request")
 			util.WriteStatusCodeError(reqCtx.rw, http.StatusInternalServerError)
 			return
 		}
-		ps.metrics.MeasureModuleDuration(
-			"request_modifier", reqModifierStart, reqCtx,
-		)
 	}
 	if requestHandler, ok := modExt.RequestHandlerFunc(); ok {
 		requestHandlerStart := time.Now()
+		err := requestHandler(modExt.ModuleContext())
 		defer ps.metrics.MeasureModuleDuration(
-			"request_handler", requestHandlerStart, reqCtx,
+			reqCtx, "request_handler",
+			requestHandlerStart, err,
 		)
-		if err := requestHandler(modExt.ModuleContext()); err != nil {
+		if err != nil {
 			ps.logger.Error().Err(err).Msg("Error @ request_handler module")
 			if errorHandler, ok := modExt.ErrorHandlerFunc(); ok {
 				// extract error handler function from module
 				errorHandlerStart := time.Now()
-				if err = errorHandler(modExt.ModuleContext(), err); err != nil {
+				err = errorHandler(modExt.ModuleContext(), err)
+				ps.metrics.MeasureModuleDuration(
+					reqCtx, "error_handler",
+					errorHandlerStart, err,
+				)
+				if err != nil {
 					ps.logger.Err(err).Msg("Error handling error")
 					util.WriteStatusCodeError(reqCtx.rw, http.StatusInternalServerError)
 					return
 				}
-				ps.metrics.MeasureModuleDuration(
-					"error_handler", errorHandlerStart, reqCtx,
-				)
 			} else {
-				ps.logger.Err(err).Msg("Error handling request")
 				util.WriteStatusCodeError(reqCtx.rw, http.StatusInternalServerError)
 				return
 			}

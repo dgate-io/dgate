@@ -10,12 +10,13 @@ type (
 	DGateConfig struct {
 		Version          string                 `koanf:"version"`
 		LogLevel         string                 `koanf:"log_level"`
-		Debug            bool                   `koanf:"debug"`
-		Tags             []string               `koanf:"tags"`
+		NodeId           string                 `koanf:"node_id"`
 		Storage          DGateStorageConfig     `koanf:"storage"`
 		ProxyConfig      DGateProxyConfig       `koanf:"proxy"`
 		AdminConfig      *DGateAdminConfig      `koanf:"admin"`
 		TestServerConfig *DGateTestServerConfig `koanf:"test_server"`
+		Debug            bool                   `koanf:"debug"`
+		Tags             []string               `koanf:"tags"`
 
 		DisableMetrics          bool `koanf:"disable_metrics"`
 		DisableDefaultNamespace bool `koanf:"disable_default_namespace"`

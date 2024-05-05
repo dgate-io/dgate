@@ -298,3 +298,25 @@ func TestDGateProxyRewriteXForwardedHeaders(t *testing.T) {
 		xForwardedHeaders:  false,
 	})
 }
+
+func TestReverseProxy_DiffClone(t *testing.T) {
+	builder1 := reverse_proxy.NewBuilder().FlushInterval(1)
+	builder2 := builder1.Clone().FlushInterval(-1)
+
+	assert.NotEqual(t, builder1, builder2)
+
+	builder1.FlushInterval(-1)
+	assert.Equal(t, builder1, builder2)
+}
+
+func TestReverseProxy_SameClone(t *testing.T) {
+	builder1 := reverse_proxy.NewBuilder().
+		CustomRewrite(func(r1, r2 *http.Request) {})
+	builder2 := builder1.Clone()
+
+	assert.NotEqual(t, builder1, builder2)
+
+	builder1.CustomRewrite(nil)
+	builder2.CustomRewrite(nil)
+	assert.Equal(t, builder1, builder2)
+}
