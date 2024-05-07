@@ -6,45 +6,45 @@ import (
 	"github.com/urfave/cli/v2"
 )
 
-func DomainCommand(client *dgclient.DGateClient) *cli.Command {
+func ServiceCommand(client *dgclient.DGateClient) *cli.Command {
 	return &cli.Command{
-		Name:      "domain",
-		Aliases:   []string{"dom"},
+		Name:      "service",
+		Aliases:   []string{"svc"},
 		Args:      true,
 		ArgsUsage: "<command> <name>",
-		Usage:     "domain commands",
+		Usage:     "service commands",
 		Subcommands: []*cli.Command{
 			{
 				Name:    "create",
 				Aliases: []string{"mk"},
-				Usage:   "create a domain",
+				Usage:   "create a service",
 				Action: func(ctx *cli.Context) error {
-					dom, err := createMapFromArgs[spec.Domain](
-						ctx.Args().Slice(), "name", "patterns",
+					svc, err := createMapFromArgs[spec.Service](
+						ctx.Args().Slice(), "name", "urls",
 					)
 					if err != nil {
 						return err
 					}
-					err = client.CreateDomain(dom)
+					err = client.CreateService(svc)
 					if err != nil {
 						return err
 					}
-					return jsonPrettyPrint(dom)
+					return jsonPrettyPrint(svc)
 				},
 			},
 			{
 				Name:    "delete",
 				Aliases: []string{"rm"},
-				Usage:   "delete a domain",
+				Usage:   "delete a service",
 				Action: func(ctx *cli.Context) error {
-					dom, err := createMapFromArgs[spec.Domain](
+					svc, err := createMapFromArgs[spec.Service](
 						ctx.Args().Slice(), "name",
 					)
 					if err != nil {
 						return err
 					}
-					err = client.DeleteDomain(
-						dom.Name, dom.NamespaceName,
+					err = client.DeleteService(
+						svc.Name, svc.NamespaceName,
 					)
 					if err != nil {
 						return err
@@ -55,32 +55,38 @@ func DomainCommand(client *dgclient.DGateClient) *cli.Command {
 			{
 				Name:    "list",
 				Aliases: []string{"ls"},
-				Usage:   "list domains",
+				Usage:   "list services",
 				Action: func(ctx *cli.Context) error {
-					dom, err := client.ListDomain()
+					nsp, err := createMapFromArgs[dgclient.NamespacePayload](
+						ctx.Args().Slice(),
+					)
 					if err != nil {
 						return err
 					}
-					return jsonPrettyPrint(dom)
+					svc, err := client.ListService(nsp.Namespace)
+					if err != nil {
+						return err
+					}
+					return jsonPrettyPrint(svc)
 				},
 			},
 			{
 				Name:  "get",
-				Usage: "get a domain",
+				Usage: "get a service",
 				Action: func(ctx *cli.Context) error {
-					dom, err := createMapFromArgs[spec.Domain](
+					svc, err := createMapFromArgs[spec.Service](
 						ctx.Args().Slice(), "name",
 					)
 					if err != nil {
 						return err
 					}
-					dom, err = client.GetDomain(
-						dom.Name, dom.NamespaceName,
+					ns, err := client.GetService(
+						svc.Name, svc.NamespaceName,
 					)
 					if err != nil {
 						return err
 					}
-					return jsonPrettyPrint(dom)
+					return jsonPrettyPrint(ns)
 				},
 			},
 		},

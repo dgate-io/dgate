@@ -81,7 +81,8 @@ func ConfigureNamespaceAPI(server chi.Router, proxyState *proxy.ProxyState, _ *c
 	})
 
 	server.Get("/namespace", func(w http.ResponseWriter, r *http.Request) {
-		util.JsonResponse(w, http.StatusOK, spec.TransformDGateNamespaces(rm.GetNamespaces()...))
+		util.JsonResponse(w, http.StatusOK,
+			spec.TransformDGateNamespaces(rm.GetNamespaces()...))
 	})
 
 	server.Get("/namespace/{name}", func(w http.ResponseWriter, r *http.Request) {

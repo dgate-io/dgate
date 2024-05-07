@@ -11,11 +11,6 @@
 
 ## Replace zerolog with slog
 
-## Improve async function performance
-
-There is a pretty significant difference in performance when using async function.
-
-
 ## Add Module Tests
 
 - Test multiple modules being used at the same time
@@ -43,6 +38,10 @@ Also to execute code on specific events, like when a new route is added, or when
   - request (http requests made to the proxy)
   - resource CRUD operations (namespace/domain/service/module/route/collection/document)
 - execute cron jobs: @every 1m, @cron 0 0 * * *, @daily, @weekly, @monthly, @yearly
+
+At a higher level, background jobs can be used to enable features like health checks, which can periodically check the health of the upstream servers and disable/enable them if they are not healthy.
+
+Other features include: automatic service discovery, ping-based load balancing, 
 
 # Metrics
 
@@ -89,38 +88,6 @@ DGate Runtime is a JavaScript/TypeScript runtime that can be used to test module
 
 RuntimePool is a pool of runtimes that can be used to execute modules. It can be used to manage the different modules and clean up resources when they are no longer needed or idle for a certain amount of time.
 
-## TCP Proxy/Gateway (L4LB) (low priority)
-
-Using the same architecture as the HTTP Proxy/Gateway, create a TCP Proxy/Gateway that can be used to proxy TCP connections to upstream servers.
-
-A 'Custom Protocols API'can  allow users to define custom protocols that can be used to proxy TCP connections to upstream servers or handle the connections themselves.
-
-The custom protocols can be defined using JavaScript/TypeScript function or using protocol definitions (API) which will allow these values to be passed to the JavaScript/TypeScript code.
-
-```
-{
-  "name": "custom_protocol",
-  "version": "1",
-  "description": "Custom Protocol",
-  "modules": ["module_x"]
-  "format_definitions": [
-    {
-      "name": "command",
-      "type": "uint8"
-    }
-    {
-      "name": "data_len",
-      "type": "int16"
-    }
-    {
-      "name": "data",
-      "type": "string",
-      "length": "variable.data_len.length"
-    }
-  ]
-}
-```
-
 ## Server Tags
 
 No special characters are allowed in the tag name or value
@@ -149,3 +116,38 @@ time based tags
 ## Module Permissions
 
 - Allow users to define permissions for modules to access certain dgate resources/apis and/or OS resources.
+  - resource:document:read
+  - resource:document:write
+  - os:net:(http/tcp/udp)
+  - os:file:read
+  - os:env:read
+
+# Bundles
+
+- Add support for bundles that can be used to extend the functionality of DGate. Bundles are a grouping of resources that can be used to extend the functionality of DGate. Bundles can be used to add new modules, resources, and more.
+A good example of a bundle would be a bundle that adds support for OAuth2 authentication. It would need to setup the necessary routes, modules, and configurations to enable OAuth2 authentication. 
+
+## Module/Plugin Variables
+
+- Allow users to define variables that can be used in modules/plugins. These variables can be set by the user, eventually the Admin Console should allow these variables to be set, and the variables can be used in the modules/plugins.
+
+## Mutual TLS Support (low priority)
+
+## Versioning Modules
+
+Differing from common resource versioning, modules can have multiple versions that can be used at the same time. This can be used to test new versions of modules before deploying them to the cluster.
+
+
+## DGate CLI - argument variable suggestions
+
+For example, if the user types an argument that is not recognized, the CLI can suggest the correct argument by search the available arguments and finding the closest match.
+```
+dgate-cli ns mk my-ns nmae=my-ns
+Variable 'nmae' is not recognized. Did you mean 'name'?
+```
+
+## Improve Module Debugability
+
+Make it easier to debug modules by adding more logging and error handling. This can be done by adding more logging to the modules and making it easier to see the logs in the Admin Console.
+
+Add stack tracing for typescript modules.

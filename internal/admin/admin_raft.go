@@ -50,14 +50,15 @@ func setupRaft(conf *config.DGateConfig, server *chi.Mux, ps *proxy.ProxyState) 
 		&raft.Config{
 			ProtocolVersion:    raft.ProtocolVersionMax,
 			LocalID:            raft.ServerID(raftId),
-			HeartbeatTimeout:   time.Millisecond * 8000,
-			ElectionTimeout:    time.Second * 10,
-			CommitTimeout:      time.Second * 5,
+			HeartbeatTimeout:   time.Second * 4,
+			ElectionTimeout:    time.Second * 5,
+			CommitTimeout:      time.Second * 4,
 			BatchApplyCh:       true,
 			MaxAppendEntries:   16,
-			SnapshotInterval:   time.Hour * 72,
-			LeaderLeaseTimeout: time.Millisecond * 4000,
-			SnapshotThreshold:  8192,
+			LeaderLeaseTimeout: time.Second * 4,
+			// TODO: Support snapshots
+			SnapshotInterval:  time.Hour * 24,
+			SnapshotThreshold: ^uint64(0),
 			Logger: logger.NewZeroHCLogger(
 				ps.Logger().With().
 					Str("component", "raft").
@@ -87,7 +88,7 @@ func setupRaft(conf *config.DGateConfig, server *chi.Mux, ps *proxy.ProxyState) 
 		panic(err)
 	}
 
-	ps.EnableRaft(raftNode, raftConfig)
+	ps.SetupRaft(raftNode, raftConfig)
 	// Setup raft handler
 	server.Handle("/raft/*", trans)
 
@@ -192,12 +193,15 @@ func setupRaft(conf *config.DGateConfig, server *chi.Mux, ps *proxy.ProxyState) 
 					}
 					// If this node is watch only, add it as a non-voter node, otherwise add it as a voter node
 					if adminConfig.WatchOnly {
-						ps.Logger().Debug().
+						ps.Logger().Info().
 							Msgf("Adding non-voter: %s", url)
-						resp, err := adminClient.AddNonvoter(context.Background(), raft.ServerAddress(url), &raftadmin.AddNonvoterRequest{
-							ID:      raftId,
-							Address: adminConfig.Replication.AdvertAddr,
-						})
+						resp, err := adminClient.AddNonvoter(
+							context.Background(), raft.ServerAddress(url),
+							&raftadmin.AddNonvoterRequest{
+								ID:      raftId,
+								Address: adminConfig.Replication.AdvertAddr,
+							},
+						)
 						if err != nil {
 							panic(err)
 						}
@@ -205,7 +209,7 @@ func setupRaft(conf *config.DGateConfig, server *chi.Mux, ps *proxy.ProxyState) 
 							panic(resp.Error)
 						}
 					} else {
-						ps.Logger().Debug().
+						ps.Logger().Info().
 							Msgf("Adding voter: %s - leader: %s",
 								adminConfig.Replication.AdvertAddr, url)
 						resp, err := adminClient.AddVoter(context.Background(), raft.ServerAddress(url), &raftadmin.AddVoterRequest{

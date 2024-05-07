@@ -42,6 +42,15 @@ func testDGateProxyRewrite(
 	header.Add("X-Testing", "testing")
 	rp, err := reverse_proxy.NewBuilder().
 		Transport(mockTp).
+		CustomRewrite(func(r1, r2 *http.Request) {
+		}).
+		ModifyResponse(func(r *http.Response) error {
+			r.Header.Set("X-Testing-2",
+				r.Header.Get("X-Testing"))
+			return nil
+		}).
+		ErrorHandler(func(w http.ResponseWriter, r *http.Request, err error) {}).
+		ErrorLogger(nil).
 		ProxyRewrite(
 			rewriteParams.stripPath,
 			rewriteParams.preserveHost,
@@ -77,29 +86,29 @@ func testDGateProxyRewrite(
 		}
 		if rewriteParams.xForwardedHeaders {
 			if req.Header.Get("X-Forwarded-For") == "" {
-				t.Errorf("FAIL: Expected X-Testing header, got %s", req.Header.Get("X-Testing"))
+				t.Errorf("FAIL: Expected X-Forwarded-For header, got empty")
 			}
 			if req.Header.Get("X-Real-IP") == "" {
-				t.Errorf("FAIL: Expected X-Testing header, got %s", req.Header.Get("X-Testing"))
-			}
-			if req.Header.Get("X-Forwarded-Host") == "" {
-				t.Errorf("FAIL: Expected X-Testing header, got %s", req.Header.Get("X-Testing"))
+				t.Errorf("FAIL: Expected X-Real-IP header, got empty")
 			}
 			if req.Header.Get("X-Forwarded-Proto") == "" {
-				t.Errorf("FAIL: Expected X-Testing header, got %s", req.Header.Get("X-Testing"))
+				t.Errorf("FAIL: Expected X-Forwarded-Proto header, got empty")
+			}
+			if req.Header.Get("X-Forwarded-Host") == "" {
+				t.Errorf("FAIL: Expected X-Forwarded-Host header, got empty")
 			}
 		} else {
 			if req.Header.Get("X-Forwarded-For") != "" {
-				t.Errorf("FAIL: Expected no X-Testing header, got %s", req.Header.Get("X-Testing"))
+				t.Errorf("FAIL: Expected no X-Forwarded-For header, got %s", req.Header.Get("X-Fowarded-For"))
 			}
 			if req.Header.Get("X-Real-IP") != "" {
-				t.Errorf("FAIL: Expected X-Testing header, got %s", req.Header.Get("X-Testing"))
-			}
-			if req.Header.Get("X-Forwarded-Host") != "" {
-				t.Errorf("FAIL: Expected X-Testing header, got %s", req.Header.Get("X-Testing"))
+				t.Errorf("FAIL: Expected no X-Real-IP header, got %s", req.Header.Get("X-Real-IP"))
 			}
 			if req.Header.Get("X-Forwarded-Proto") != "" {
-				t.Errorf("FAIL: Expected X-Testing header, got %s", req.Header.Get("X-Testing"))
+				t.Errorf("FAIL: Expected no X-Forwarded-Proto header, got %s", req.Header.Get("X-Forwarded-Proto"))
+			}
+			if req.Header.Get("X-Forwarded-Host") != "" {
+				t.Errorf("FAIL: Expected no X-Forwarded-Host header, got %s", req.Header.Get("X-Forwarded-Host"))
 			}
 		}
 	}).Return(&http.Response{
@@ -152,7 +161,7 @@ func TestDGateProxyError(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	req := proxytest.CreateMockRequest("GET", "http://localhost")
+	req := proxytest.CreateMockRequest("GET", "http://localhost:80")
 	req.RemoteAddr = "::1"
 	mockRw := proxytest.CreateMockResponseWriter()
 	mockRw.On("Header").Return(header)
@@ -288,4 +297,26 @@ func TestDGateProxyRewriteXForwardedHeaders(t *testing.T) {
 		disableQueryParams: false,
 		xForwardedHeaders:  false,
 	})
+}
+
+func TestReverseProxy_DiffClone(t *testing.T) {
+	builder1 := reverse_proxy.NewBuilder().FlushInterval(1)
+	builder2 := builder1.Clone().FlushInterval(-1)
+
+	assert.NotEqual(t, builder1, builder2)
+
+	builder1.FlushInterval(-1)
+	assert.Equal(t, builder1, builder2)
+}
+
+func TestReverseProxy_SameClone(t *testing.T) {
+	builder1 := reverse_proxy.NewBuilder().
+		CustomRewrite(func(r1, r2 *http.Request) {})
+	builder2 := builder1.Clone()
+
+	assert.NotEqual(t, builder1, builder2)
+
+	builder1.CustomRewrite(nil)
+	builder2.CustomRewrite(nil)
+	assert.Equal(t, builder1, builder2)
 }

@@ -1,7 +1,6 @@
 package spec
 
 import (
-	"crypto/tls"
 	"errors"
 	"net/url"
 	"time"
@@ -61,14 +60,15 @@ func (ns *DGateNamespace) GetName() string {
 }
 
 type DGateDomain struct {
-	Name      string           `json:"name"`
-	Namespace *DGateNamespace  `json:"namespace"`
-	Patterns  []string         `json:"pattern"`
-	TLSCert   *tls.Certificate `json:"tls_config"`
+	Name      string          `json:"name"`
+	CreatedAt time.Time       `json:"created_at"`
+	UpdatedAt time.Time       `json:"updated_at"`
+	Namespace *DGateNamespace `json:"namespace"`
+	Patterns  []string        `json:"pattern"`
 	Priority  int             `json:"priority"`
-	Cert      string           `json:"cert"`
-	Key       string           `json:"key"`
-	Tags      []string         `json:"tags,omitempty"`
+	Cert      string          `json:"cert"`
+	Key       string          `json:"key"`
+	Tags      []string        `json:"tags,omitempty"`
 }
 
 var DefaultNamespace = &Namespace{
@@ -138,6 +138,19 @@ func (n *DGateDocument) GetName() string {
 	return n.ID
 }
 
+type DGateSecret struct {
+	Name      string          `json:"name"`
+	CreatedAt time.Time       `json:"created_at"`
+	UpdatedAt time.Time       `json:"updated_at"`
+	Namespace *DGateNamespace `json:"namespace"`
+	Data      string          `json:"data"`
+	Tags      []string        `json:"tags,omitempty"`
+}
+
+func (n *DGateSecret) GetName() string {
+	return n.Name
+}
+
 func ErrNamespaceNotFound(ns string) error {
 	return errors.New("namespace not found: " + ns)
 }
@@ -164,4 +177,8 @@ func ErrRouteNotFound(route string) error {
 
 func ErrDomainNotFound(domain string) error {
 	return errors.New("domain not found: " + domain)
+}
+
+func ErrSecretNotFound(secret string) error {
+	return errors.New("secret not found: " + secret)
 }

@@ -13,3 +13,4 @@ dist/
 .dgate*/
 cov.out
 go.work.sum
+.env

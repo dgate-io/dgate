@@ -3,6 +3,7 @@ package extractors_test
 import (
 	"testing"
 
+	"github.com/dgate-io/dgate/internal/config/configtest"
 	"github.com/dgate-io/dgate/internal/proxy"
 	"github.com/dgate-io/dgate/pkg/modules/extractors"
 	"github.com/dgate-io/dgate/pkg/modules/testutil"
@@ -71,15 +72,15 @@ func TestNewModuleRuntimeJS(t *testing.T) {
 			printer.On("Log", "log 1").Return().Once()
 			printer.On("Warn", "log 2").Return().Once()
 			printer.On("Error", "log 3").Return().Once()
-			modCtx := testutil.NewMockRuntimeContext()
-			loop, err := extractors.NewModuleEventLoop(
-				printer, modCtx, program,
+			rtCtx := testutil.NewMockRuntimeContext()
+			err := extractors.SetupModuleEventLoop(
+				printer, rtCtx, program,
 			)
 			if err != nil {
 				t.Fatal(err)
 			}
-			rt := loop.Start()
-			defer loop.Stop()
+			rt := rtCtx.EventLoop().Start()
+			defer rtCtx.EventLoop().Stop()
 			val := rt.Get("customFunc")
 			if val == nil || goja.IsUndefined(val) || goja.IsNull(val) {
 				t.Fatal("customFunc not found")
@@ -101,31 +102,40 @@ func TestPrinter(t *testing.T) {
 	program := testutil.CreateJSProgram(t, JS_PAYLOAD_CUSTOMFUNC)
 	cp := &consolePrinter{make(map[string]int)}
 	rt := &spec.DGateRoute{Namespace: &spec.DGateNamespace{}}
-	rtCtx := proxy.NewRuntimeContext(nil, rt)
-	loop, err := extractors.NewModuleEventLoop(
+	conf := configtest.NewTestDGateConfig()
+	ps := proxy.NewProxyState(conf)
+	rtCtx := proxy.NewRuntimeContext(ps, rt)
+	if err := extractors.SetupModuleEventLoop(
 		cp, rtCtx, program,
-	)
-	if err != nil {
+	); err != nil {
 		t.Fatal(err)
 	}
-	loop.RunOnLoop(func(rt *goja.Runtime) {
+	rtCtx.EventLoop().Start()
+	defer rtCtx.EventLoop().Stop()
+	wait := make(chan struct{})
+	rtCtx.EventLoop().RunOnLoop(func(rt *goja.Runtime) {
 		val := rt.Get("customFunc")
 		if val == nil || goja.IsUndefined(val) || goja.IsNull(val) {
 			t.Fatal("customFunc not found")
 		}
+		wait <- struct{}{}
 	})
+	<-wait
 }
 
 func BenchmarkNewModuleRuntime(b *testing.B) {
 	program := testutil.CreateTSProgram(b, TS_PAYLOAD_CUSTOMFUNC)
+	conf := configtest.NewTestDGateConfig()
+	ps := proxy.NewProxyState(conf)
 
 	b.ResetTimer()
 	b.Run("CreateModuleRuntime", func(b *testing.B) {
 		for i := 0; i < b.N; i++ {
 			b.StartTimer()
 			rt := &spec.DGateRoute{Namespace: &spec.DGateNamespace{}}
-			rtCtx := proxy.NewRuntimeContext(nil, rt)
-			_, err := extractors.NewModuleEventLoop(nil, rtCtx, program)
+			rtCtx := proxy.NewRuntimeContext(ps, rt)
+			err := extractors.SetupModuleEventLoop(
+				nil, rtCtx, program)
 			b.StopTimer()
 			if err != nil {
 				b.Fatal(err)

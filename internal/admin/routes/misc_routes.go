@@ -19,34 +19,52 @@ func ConfigureChangeLogAPI(server chi.Router, proxyState *proxy.ProxyState, appC
 				util.JsonError(w, http.StatusInternalServerError, err.Error())
 				return
 			}
+			// TODO: find a way to get the raft log hash
+			//  perhaps generate based on current log commands and computed hash
 		}
-		b, err := json.Marshal(map[string]any{
+
+		if b, err := json.Marshal(map[string]any{
 			"hash": proxyState.ChangeHash(),
-		})
-		if err != nil {
+		}); err != nil {
 			util.JsonError(w, http.StatusInternalServerError, err.Error())
-			return
+		} else {
+			w.Header().Set("Content-Type", "application/json")
+			w.Write([]byte(b))
 		}
-		w.Header().Set("Content-Type", "application/json")
-		w.Write([]byte(b))
+	})
+	server.Get("/changelog/rm", func(w http.ResponseWriter, r *http.Request) {
+		if b, err := json.Marshal(proxyState.ResourceManager()); err != nil {
+			util.JsonError(w, http.StatusInternalServerError, err.Error())
+		} else {
+			w.Header().Set("Content-Type", "application/json")
+			w.Write([]byte(b))
+		}
 	})
 }
 
 func ConfigureHealthAPI(server chi.Router, ps *proxy.ProxyState, _ *config.DGateConfig) {
+	healthlyResp := []byte(
+		`{"status":"ok","version":"` +
+			ps.Version() + `"}`,
+	)
 	server.Get("/healthz", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		w.Write([]byte(`{"status":"ok"}`))
+		w.Write(healthlyResp)
 	})
 
 	server.Get("/readyz", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
 		if r := ps.Raft(); r != nil {
 			if r.Leader() == "" {
 				w.WriteHeader(http.StatusServiceUnavailable)
 				w.Write([]byte(`{"status":"no leader"}`))
 				return
+			} else if !ps.Ready() {
+				w.WriteHeader(http.StatusServiceUnavailable)
+				w.Write([]byte(`{"status":"not ready"}`))
+				return
 			}
 		}
-		w.Header().Set("Content-Type", "application/json")
-		w.Write([]byte(`{"status":"ok"}`))
+		w.Write(healthlyResp)
 	})
 }

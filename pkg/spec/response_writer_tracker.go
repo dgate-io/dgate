@@ -12,8 +12,8 @@ type ResponseWriterTracker interface {
 }
 
 type rwTracker struct {
-	rw     http.ResponseWriter
-	status int
+	rw           http.ResponseWriter
+	status       int
 	bytesWritten int64
 }
 
@@ -29,13 +29,13 @@ func NewResponseWriterTracker(rw http.ResponseWriter) ResponseWriterTracker {
 }
 
 func (t *rwTracker) Header() http.Header {
-	// if t.HeadersSent() {
-	// 	panic("headers already sent")
-	// }
 	return t.rw.Header()
 }
 
 func (t *rwTracker) Write(b []byte) (int, error) {
+	if !t.HeadersSent() {
+		t.WriteHeader(http.StatusOK)
+	}
 	n, err := t.rw.Write(b)
 	t.bytesWritten += int64(n)
 	return n, err

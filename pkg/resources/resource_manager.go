@@ -1,9 +1,8 @@
 package resources
 
 import (
-	"crypto/tls"
-	"encoding/json"
 	"errors"
+	"sort"
 	"sync"
 
 	"github.com/dgate-io/dgate/pkg/spec"
@@ -21,6 +20,7 @@ type ResourceManager struct {
 	domains     avlTreeLinker[spec.DGateDomain]
 	modules     avlTreeLinker[spec.DGateModule]
 	routes      avlTreeLinker[spec.DGateRoute]
+	secrets     avlTreeLinker[spec.DGateSecret]
 	collections avlTreeLinker[spec.DGateCollection]
 	mutex       *sync.RWMutex
 }
@@ -35,6 +35,7 @@ func NewManager(opts ...Options) *ResourceManager {
 		modules:     avl.NewTree[string, *linker.Link[string, safe.Ref[spec.DGateModule]]](),
 		routes:      avl.NewTree[string, *linker.Link[string, safe.Ref[spec.DGateRoute]]](),
 		collections: avl.NewTree[string, *linker.Link[string, safe.Ref[spec.DGateCollection]]](),
+		secrets:     avl.NewTree[string, *linker.Link[string, safe.Ref[spec.DGateSecret]]](),
 		mutex:       &sync.RWMutex{},
 	}
 	for _, opt := range opts {
@@ -69,6 +70,28 @@ func (rm *ResourceManager) getNamespace(namespace string) (*spec.DGateNamespace,
 	}
 }
 
+func (rm *ResourceManager) NamespaceCountEquals(target int) bool {
+	if target < 0 {
+		panic("target must be greater than or equal to 0")
+	}
+	rm.mutex.RLock()
+	defer rm.mutex.RUnlock()
+	rm.namespaces.Each(func(_ string, lk *linker.Link[string, safe.Ref[spec.DGateNamespace]]) bool {
+		target -= 1
+		return target > 0
+	})
+	return target == 0
+}
+
+func (rm *ResourceManager) GetFirstNamespace() *spec.DGateNamespace {
+	rm.mutex.RLock()
+	defer rm.mutex.RUnlock()
+	if _, nsLink, ok := rm.namespaces.RootKeyValue(); ok {
+		return nsLink.Item().Read()
+	}
+	return nil
+}
+
 // GetNamespaces returns a list of all namespaces
 func (rm *ResourceManager) GetNamespaces() []*spec.DGateNamespace {
 	rm.mutex.RLock()
@@ -99,7 +122,7 @@ func (rm *ResourceManager) AddNamespace(ns *spec.Namespace) *spec.DGateNamespace
 			safe.NewRef(namespace),
 			"routes", "services",
 			"modules", "domains",
-			"collections",
+			"collections", "secrets",
 		)
 		rm.namespaces.Insert(ns.Name, lk)
 	}
@@ -254,8 +277,6 @@ func (rm *ResourceManager) transformRoute(route *spec.Route) (*spec.DGateRoute, 
 
 // RemoveRoute removes a route from the resource manager
 func (rm *ResourceManager) RemoveRoute(name, namespace string) error {
-	// TODO: this function can be improved by checking if
-	//    the links are valid before unlinking them
 	rm.mutex.Lock()
 	defer rm.mutex.Unlock()
 	if nsLk, ok := rm.namespaces.Find(namespace); !ok {
@@ -440,6 +461,40 @@ func (rm *ResourceManager) GetDomains() []*spec.DGateDomain {
 	return domains
 }
 
+func (rm *ResourceManager) DomainCountEquals(target int) bool {
+	if target < 0 {
+		panic("target must be greater than or equal to 0")
+	}
+	rm.mutex.RLock()
+	defer rm.mutex.RUnlock()
+	rm.domains.Each(func(_ string, lk *linker.Link[string, safe.Ref[spec.DGateDomain]]) bool {
+		target -= 1
+		return target > 0
+	})
+	return target == 0
+}
+
+// GetDomainsByPriority returns a list of all domains sorted by priority and name
+func (rm *ResourceManager) GetDomainsByPriority() []*spec.DGateDomain {
+	rm.mutex.RLock()
+	defer rm.mutex.RUnlock()
+	var domains []*spec.DGateDomain
+	rm.domains.Each(func(_ string, lk *linker.Link[string, safe.Ref[spec.DGateDomain]]) bool {
+		domains = append(domains, lk.Item().Read())
+		return true
+	})
+
+	sort.Slice(domains, func(i, j int) bool {
+		d1, d2 := domains[j], domains[i]
+		if d1.Priority == d2.Priority {
+			return d1.Name < d2.Name
+		}
+		return d1.Priority < d2.Priority
+	})
+
+	return domains
+}
+
 // GetDomainsByNamespace returns a list of all domains in a namespace
 func (rm *ResourceManager) GetDomainsByNamespace(namespace string) []*spec.DGateDomain {
 	rm.mutex.RLock()
@@ -478,22 +533,10 @@ func (rm *ResourceManager) transformDomain(domain *spec.Domain) (*spec.DGateDoma
 	if ns, ok := rm.getNamespace(domain.NamespaceName); !ok {
 		return nil, ErrNamespaceNotFound(domain.NamespaceName)
 	} else {
-		var (
-			serverCert tls.Certificate
-			err        error
-		)
-		if domain.Key != "" && domain.Cert != "" {
-			certBytes, keyBytes := []byte(domain.Key), []byte(domain.Cert)
-			serverCert, err = tls.X509KeyPair(certBytes, keyBytes)
-			if err != nil {
-				return nil, err
-			}
-		}
 		return &spec.DGateDomain{
 			Name:      domain.Name,
 			Namespace: ns,
 			Patterns:  domain.Patterns,
-			TLSCert:   &serverCert,
 			Priority:  domain.Priority,
 			Cert:      domain.Cert,
 			Key:       domain.Key,
@@ -727,59 +770,94 @@ func (rm *ResourceManager) RemoveCollection(name, namespace string) error {
 	return nil
 }
 
-// MarshalJSON marshals the resource manager to json
-func (rm *ResourceManager) MarshalJSON() ([]byte, error) {
+/* Secret functions */
+
+func (rm *ResourceManager) GetSecret(name, namespace string) (*spec.DGateSecret, bool) {
 	rm.mutex.RLock()
 	defer rm.mutex.RUnlock()
-	return json.Marshal(map[string]interface{}{
-		"namespaces":  rm.namespaces,
-		"services":    rm.services,
-		"domains":     rm.domains,
-		"modules":     rm.modules,
-		"routes":      rm.routes,
-		"collections": rm.collections,
-	})
+	return rm.getSecret(name, namespace)
 }
 
-// UnmarshalJSON unmarshals the resource manager from json
-func (rm *ResourceManager) UnmarshalJSON(data []byte) error {
+func (rm *ResourceManager) getSecret(name, namespace string) (*spec.DGateSecret, bool) {
+	if lk, ok := rm.secrets.Find(name + "/" + namespace); ok {
+		return lk.Item().Read(), true
+	}
+	return nil, false
+}
+
+// GetSecrets returns a list of all secrets
+func (rm *ResourceManager) GetSecrets() []*spec.DGateSecret {
 	rm.mutex.RLock()
 	defer rm.mutex.RUnlock()
-	var obj map[string]json.RawMessage
-	if err := json.Unmarshal(data, &obj); err != nil {
-		return err
+	var secrets []*spec.DGateSecret
+	rm.secrets.Each(func(_ string, lk *linker.Link[string, safe.Ref[spec.DGateSecret]]) bool {
+		secrets = append(secrets, lk.Item().Read())
+		return true
+	})
+	return secrets
+}
+
+// GetSecretsByNamespace returns a list of all secrets in a namespace
+func (rm *ResourceManager) GetSecretsByNamespace(namespace string) []*spec.DGateSecret {
+	rm.mutex.RLock()
+	defer rm.mutex.RUnlock()
+	var secrets []*spec.DGateSecret
+	if nsLk, ok := rm.namespaces.Find(namespace); ok {
+		nsLk.Each("secrets", func(_ string, lk linker.Linker[string]) {
+			mdLk := linker.NamedVertexWithVertex[string, safe.Ref[spec.DGateSecret]](lk)
+			secrets = append(secrets, mdLk.Item().Read())
+		})
 	}
-	if collections, ok := obj["collections"]; ok {
-		if err := json.Unmarshal(collections, &rm.collections); err != nil {
-			return err
+	return secrets
+}
+
+func (rm *ResourceManager) AddSecret(secret *spec.Secret) (*spec.DGateSecret, error) {
+	rm.mutex.Lock()
+	defer rm.mutex.Unlock()
+	md, err := rm.transformSecret(secret)
+	if err != nil {
+		return nil, err
+	}
+	rw := safe.NewRef(md)
+	scrtLk := linker.NewNamedVertexWithValue(rw, "namespace")
+	if nsLk, ok := rm.namespaces.Find(secret.NamespaceName); ok {
+		nsLk.LinkOneMany("secrets", secret.Name, scrtLk)
+		scrtLk.LinkOneOne("namespace", secret.NamespaceName, nsLk)
+		rm.secrets.Insert(secret.Name+"/"+secret.NamespaceName, scrtLk)
+		return rw.Read(), nil
+	} else {
+		return nil, ErrNamespaceNotFound(secret.NamespaceName)
+	}
+}
+
+func (rm *ResourceManager) transformSecret(secret *spec.Secret) (*spec.DGateSecret, error) {
+	if ns, ok := rm.getNamespace(secret.NamespaceName); !ok {
+		return nil, ErrNamespaceNotFound(secret.NamespaceName)
+	} else {
+		return spec.TransformSecret(ns, secret)
+	}
+}
+
+func (rm *ResourceManager) RemoveSecret(name, namespace string) error {
+	rm.mutex.Lock()
+	defer rm.mutex.Unlock()
+	if scrtLink, ok := rm.secrets.Find(name + "/" + namespace); ok {
+		if scrtLink.Len("routes") > 0 {
+			return ErrCannotDeleteSecret(name, "routes still linked")
 		}
-	}
-	if routes, ok := obj["routes"]; ok {
-		if err := json.Unmarshal(routes, &rm.routes); err != nil {
-			return err
+		if nsLk, ok := rm.namespaces.Find(namespace); !ok {
+			return ErrNamespaceNotFound(namespace)
+		} else {
+			nsLk.UnlinkOneMany("secrets", name)
+			scrtLink.UnlinkOneOne("namespace")
 		}
-	}
-	if modules, ok := obj["modules"]; ok {
-		if err := json.Unmarshal(modules, &rm.modules); err != nil {
-			return err
+		if !rm.secrets.Delete(name + "/" + namespace) {
+			panic("failed to delete secret")
 		}
+		return nil
+	} else {
+		return ErrSecretNotFound(name)
 	}
-	if domains, ok := obj["domains"]; ok {
-		if err := json.Unmarshal(domains, &rm.domains); err != nil {
-			return err
-		}
-	}
-	if services, ok := obj["services"]; ok {
-		if err := json.Unmarshal(services, &rm.services); err != nil {
-			return err
-		}
-	}
-	if namespaces, ok := obj["namespaces"]; ok {
-		if err := json.Unmarshal(namespaces, &rm.namespaces); err != nil {
-			return err
-		}
-	}
-	return nil
 }
 
 func (rm *ResourceManager) Empty() bool {
@@ -818,6 +896,10 @@ func ErrRouteNotFound(name string) error {
 	return errors.New("route not found: " + name)
 }
 
+func ErrSecretNotFound(name string) error {
+	return errors.New("secret not found: " + name)
+}
+
 func ErrCannotDeleteModule(name, reason string) error {
 	return errors.New("cannot delete module: " + name + ": " + reason)
 }
@@ -840,4 +922,8 @@ func ErrCannotDeleteDomain(name, reason string) error {
 
 func ErrCannotDeleteCollection(name, reason string) error {
 	return errors.New("cannot delete collection: " + name + ": " + reason)
+}
+
+func ErrCannotDeleteSecret(name, reason string) error {
+	return errors.New("cannot delete secret: " + name + ": " + reason)
 }

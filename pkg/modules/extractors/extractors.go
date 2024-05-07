@@ -172,6 +172,9 @@ func ExtractErrorHandlerFunction(
 	rt := loop.Runtime()
 	if call, ok := goja.AssertFunction(rt.Get("errorHandler")); ok {
 		errorHandler = func(modCtx *types.ModuleContext, upstreamErr error) error {
+			if modCtx == nil {
+				return upstreamErr
+			}
 			modCtx = types.ModuleContextWithError(modCtx, upstreamErr)
 			_, err := RunAndWaitForResult(
 				rt, call, rt.ToValue(modCtx),
@@ -191,6 +194,9 @@ func ExtractRequestHandlerFunction(
 	rt := loop.Runtime()
 	if call, ok := goja.AssertFunction(rt.Get("requestHandler")); ok {
 		requestHandler = func(modCtx *types.ModuleContext) error {
+			if modCtx == nil {
+				return errors.New("module context is nil")
+			}
 			_, err := RunAndWaitForResult(
 				rt, call, rt.ToValue(modCtx),
 			)

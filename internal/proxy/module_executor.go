@@ -3,12 +3,11 @@ package proxy
 import (
 	"context"
 	"errors"
-	"time"
 )
 
 type ModuleBuffer interface {
-	Load(cb func())
-	Borrow() (ModuleExtractor, bool)
+	// Load(cb func())
+	Borrow() ModuleExtractor
 	Return(me ModuleExtractor)
 	Close()
 }
@@ -51,50 +50,32 @@ func NewModuleBuffer(
 	return mb, nil
 }
 
-func (mb *moduleBuffer) Load(cb func()) {
-	go func() {
-		for i := 0; i < mb.min; i++ {
-			me := mb.createModuleExtract()
-			if me == nil {
-				panic("could not load moduleExtract")
-			}
-			mb.modExtBuffer <- me
-		}
-		if cb != nil {
-			cb()
-		}
-	}()
-}
-
-func (mb *moduleBuffer) Borrow() (ModuleExtractor, bool) {
+func (mb *moduleBuffer) Borrow() ModuleExtractor {
 	if mb == nil || mb.ctx == nil || mb.ctx.Err() != nil {
-		return nil, false
+		return nil
 	}
 	var me ModuleExtractor
 	select {
 	case me = <-mb.modExtBuffer:
 		break
 	// NOTE: important for performance
-	case <-time.After(2 * time.Millisecond):
 	default:
 		me = mb.createModuleExtract()
-		break
 	}
-	return me, true
+	return me
 }
 
 func (mb *moduleBuffer) Return(me ModuleExtractor) {
-	me.SetModuleContext(nil)
-	if mb.ctx == nil || mb.ctx.Err() != nil {
-		return
+	// if context is canceled, do not return module extract
+	if mb.ctx != nil && mb.ctx.Err() == nil {
+		select {
+		case mb.modExtBuffer <- me:
+			return
+		default:
+			// if buffer is full, discard module extract
+		}
 	}
-
-	select {
-	case mb.modExtBuffer <- me:
-	default:
-		// if buffer is full, discard module extract
-		me.Stop(true)
-	}
+	me.Stop(true)
 }
 
 func (mb *moduleBuffer) Close() {

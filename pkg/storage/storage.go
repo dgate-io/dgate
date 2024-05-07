@@ -2,7 +2,6 @@ package storage
 
 type Storage interface {
 	StorageTxn
-	Txn(bool, func(StorageTxn) error) error
 	Connect() error
 	Close() error
 }

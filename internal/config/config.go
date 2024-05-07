@@ -8,30 +8,34 @@ import (
 
 type (
 	DGateConfig struct {
-		Version                 string                 `koanf:"version"`
-		LogLevel                string                 `koanf:"log_level"`
-		Debug                   bool                   `koanf:"debug"`
-		Tags                    []string               `koanf:"tags"`
-		Storage                 DGateStorageConfig     `koanf:"storage"`
-		ProxyConfig             DGateProxyConfig       `koanf:"proxy"`
-		AdminConfig             *DGateAdminConfig      `koanf:"admin"`
-		TestServerConfig        *DGateTestServerConfig `koanf:"test_server"`
-		DisableDefaultNamespace bool                   `koanf:"disable_default_namespace"`
+		Version          string                 `koanf:"version"`
+		LogLevel         string                 `koanf:"log_level"`
+		NodeId           string                 `koanf:"node_id"`
+		Storage          DGateStorageConfig     `koanf:"storage"`
+		ProxyConfig      DGateProxyConfig       `koanf:"proxy"`
+		AdminConfig      *DGateAdminConfig      `koanf:"admin"`
+		TestServerConfig *DGateTestServerConfig `koanf:"test_server"`
+		Debug            bool                   `koanf:"debug"`
+		Tags             []string               `koanf:"tags"`
+
+		DisableMetrics          bool `koanf:"disable_metrics"`
+		DisableDefaultNamespace bool `koanf:"disable_default_namespace"`
 	}
 
 	DGateProxyConfig struct {
-		Host                     string                   `koanf:"host"`
-		Port                     int                      `koanf:"port"`
-		TLS                      *DGateTLSConfig          `koanf:"tls"`
-		EnableH2C                bool                     `koanf:"enable_h2c"`
-		EnableHTTP2              bool                     `koanf:"enable_http2"`
-		EnableConsoleLogger      bool                     `koanf:"enable_console_logger"`
-		RedirectHttpsDomains     []string                 `koanf:"redirect_https"`
-		AllowedDomains           []string                 `koanf:"allowed_domains"`
-		GlobalHeaders            map[string]string        `koanf:"global_headers"`
-		Transport                DGateHttpTransportConfig `koanf:"client_transport"`
-		InitResources            *DGateResources          `koanf:"init_resources"`
-		DisableXForwardedHeaders bool                     `koanf:"disable_x_forwarded_headers"`
+		Host                 string                   `koanf:"host"`
+		Port                 int                      `koanf:"port"`
+		TLS                  *DGateTLSConfig          `koanf:"tls"`
+		EnableH2C            bool                     `koanf:"enable_h2c"`
+		EnableHTTP2          bool                     `koanf:"enable_http2"`
+		EnableConsoleLogger  bool                     `koanf:"enable_console_logger"`
+		RedirectHttpsDomains []string                 `koanf:"redirect_https"`
+		AllowedDomains       []string                 `koanf:"allowed_domains"`
+		GlobalHeaders        map[string]string        `koanf:"global_headers"`
+		Transport            DGateHttpTransportConfig `koanf:"client_transport"`
+		// WARN: debug use only
+		InitResources            *DGateResources `koanf:"init_resources"`
+		DisableXForwardedHeaders bool            `koanf:"disable_x_forwarded_headers"`
 	}
 
 	DGateTestServerConfig struct {
@@ -135,6 +139,7 @@ type (
 	}
 
 	DGateHttpTransportConfig struct {
+		//
 		DNSServer              string        `koanf:"dns_server"`
 		DNSTimeout             time.Duration `koanf:"dns_timeout"`
 		DNSPreferGo            bool          `koanf:"dns_prefer_go"`
@@ -149,7 +154,6 @@ type (
 		MaxResponseHeaderBytes int64         `koanf:"max_response_header_bytes"`
 		WriteBufferSize        int           `koanf:"write_buffer_size"`
 		ReadBufferSize         int           `koanf:"read_buffer_size"`
-		MaxConnsPerClient      int           `koanf:"max_conns_per_client"`
 		MaxBodyBytes           int           `koanf:"max_body_bytes"`
 		DisableKeepAlives      bool          `koanf:"disable_keep_alives"`
 		KeepAlive              time.Duration `koanf:"keep_alive"`
@@ -173,8 +177,9 @@ type (
 		Routes         []spec.Route      `koanf:"routes"`
 		Modules        []ModuleSpec      `koanf:"modules"`
 		Domains        []DomainSpec      `koanf:"domains"`
-		Collections    []spec.Collection `koanf:"-"`
+		Collections    []spec.Collection `koanf:"collections"`
 		Documents      []spec.Document   `koanf:"documents"`
+		Secrets        []spec.Secret     `koanf:"secrets"`
 	}
 
 	DomainSpec struct {

@@ -1,20 +1,82 @@
 import http from "k6/http";
 import { check, sleep } from 'k6';
 
+const n = 20;
+const inc = 0.5;
+let curWait = -inc;
 export let options = {
-  stages: [
-    { duration: '5s', target: 200},
-    { duration: '1h', target: 300},
-    { duration: '1h', target: 100},
-  ],
+  scenarios: {
+    modtest: {
+      executor: 'constant-vus',
+      vus: n,
+      duration: inc + 'm',
+      startTime: (curWait += inc) + 'm',
+      exec: 'dgatePath',
+      env: { DGATE_PATH: '/modtest' },
+      gracefulStop: '5s',
+    },
+    modtest_wait: {
+      executor: 'constant-vus',
+      vus: n*5,
+      duration: inc + 'm',
+      startTime: (curWait += inc) + 'm',
+      exec: 'dgatePath',
+      env: { DGATE_PATH: '/modtest?wait=30ms' },
+      gracefulStop: '5s',
+    },
+    svctest: {
+      executor: 'constant-vus',
+      vus: n,
+      duration: inc + 'm',
+      startTime: (curWait += inc) + 'm',
+      exec: 'dgatePath',
+      env: { DGATE_PATH: "/svctest" },
+      gracefulStop: '5s',
+    },
+    svctest_wait: {
+      executor: 'constant-vus',
+      vus: n*5,
+      duration: inc + 'm',
+      startTime: (curWait += inc) + 'm',
+      exec: 'dgatePath',
+      env: { DGATE_PATH: "/svctest?wait=30ms" },
+      gracefulStop: '5s',
+    },
+    test_server_direct: {
+      executor: 'constant-vus',
+      vus: n,
+      duration: inc + 'm',
+      startTime: (curWait += inc) + 'm',
+      exec: 'dgatePath',
+      env: { DGATE_PATH: ":8888/direct" },
+      gracefulStop: '5s',
+    },
+    test_server_direct_wait: {
+      executor: 'constant-vus',
+      vus: n*5,
+      duration: inc + 'm',
+      startTime: (curWait += inc) + 'm',
+      exec: 'dgatePath',
+      env: { DGATE_PATH: ":8888/svctest?wait=30ms" },
+      gracefulStop: '5s',
+    },
+  },
+  discardResponseBodies: true,
 };
 
-let url = "http://localhost:80";
 let i = 0;
+let ports = [8888];
+// const raftMode = !!__ENV.RAFT_MODE || false;
+// 'http://localhost:' + ports[i++ % ports.length];
 
-export default async function() {
-  let res = http.get(url + "/modtest", {
+export function dgatePath() {
+  const dgatePath = __ENV._PROXY_URL || 'http://localhost'
+  const path = __ENV.DGATE_PATH;
+  let res = http.get(dgatePath + path, {
     headers: { Host: 'dgate.dev' },
   });
-    check(res, { 'status: 204': (r) => r.status == 204 });
+  let results = {};
+  results[path + ': status is ' + res.status] =
+    (r) => (r.status >= 200 && r.status < 400);
+  check(res, results);
 };

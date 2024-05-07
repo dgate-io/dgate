@@ -58,15 +58,19 @@ type Builder interface {
 var _ Builder = (*reverseProxyBuilder)(nil)
 
 type reverseProxyBuilder struct {
-	rewrite        RewriteFunc
-	errorLogger    *log.Logger
-	customRewrite  RewriteFunc
-	upstreamUrl    *url.URL
-	proxyPattern   string
-	transport      http.RoundTripper
-	flushInterval  time.Duration
-	modifyResponse ModifyResponseFunc
-	errorHandler   ErrorHandlerFunc
+	errorLogger        *log.Logger
+	proxyRewrite       RewriteFunc
+	customRewrite      RewriteFunc
+	upstreamUrl        *url.URL
+	proxyPattern       string
+	transport          http.RoundTripper
+	flushInterval      time.Duration
+	modifyResponse     ModifyResponseFunc
+	errorHandler       ErrorHandlerFunc
+	stripPath          bool
+	preserveHost       bool
+	disableQueryParams bool
+	xForwardedHeaders  bool
 }
 
 func NewBuilder() Builder {
@@ -74,17 +78,8 @@ func NewBuilder() Builder {
 }
 
 func (b *reverseProxyBuilder) Clone() Builder {
-	return &reverseProxyBuilder{
-		rewrite:        b.rewrite,
-		errorLogger:    b.errorLogger,
-		customRewrite:  b.customRewrite,
-		upstreamUrl:    b.upstreamUrl,
-		proxyPattern:   b.proxyPattern,
-		transport:      b.transport,
-		flushInterval:  b.flushInterval,
-		modifyResponse: b.modifyResponse,
-		errorHandler:   b.errorHandler,
-	}
+	bb := *b
+	return &bb
 }
 
 func (b *reverseProxyBuilder) FlushInterval(interval time.Duration) Builder {
@@ -123,19 +118,14 @@ func (b *reverseProxyBuilder) ProxyRewrite(
 	disableQueryParams bool,
 	xForwardedHeaders bool,
 ) Builder {
-	b.rewrite = func(in, out *http.Request) {
-		in.URL.Scheme = b.upstreamUrl.Scheme
-		in.URL.Host = b.upstreamUrl.Host
-
-		b.stripPath(stripPath)(in, out)
-		b.preserveHost(preserveHost)(in, out)
-		b.disableQueryParams(disableQueryParams)(in, out)
-		b.xForwardedHeaders(xForwardedHeaders)(in, out)
-	}
+	b.stripPath = stripPath
+	b.preserveHost = preserveHost
+	b.disableQueryParams = disableQueryParams
+	b.xForwardedHeaders = xForwardedHeaders
 	return b
 }
 
-func (b *reverseProxyBuilder) stripPath(strip bool) RewriteFunc {
+func (b *reverseProxyBuilder) rewriteStripPath(strip bool) RewriteFunc {
 	return func(in, out *http.Request) {
 		reqCall := in.URL.Path
 		proxyPatternPath := b.proxyPattern
@@ -160,7 +150,7 @@ func (b *reverseProxyBuilder) stripPath(strip bool) RewriteFunc {
 	}
 }
 
-func (b *reverseProxyBuilder) preserveHost(preserve bool) RewriteFunc {
+func (b *reverseProxyBuilder) rewritePreserveHost(preserve bool) RewriteFunc {
 	return func(in, out *http.Request) {
 		scheme := "http"
 		out.URL.Host = b.upstreamUrl.Host
@@ -182,7 +172,7 @@ func (b *reverseProxyBuilder) preserveHost(preserve bool) RewriteFunc {
 	}
 }
 
-func (b *reverseProxyBuilder) disableQueryParams(disableQueryParams bool) RewriteFunc {
+func (b *reverseProxyBuilder) rewriteDisableQueryParams(disableQueryParams bool) RewriteFunc {
 	return func(in, out *http.Request) {
 		if !disableQueryParams {
 			targetQuery := b.upstreamUrl.RawQuery
@@ -197,7 +187,7 @@ func (b *reverseProxyBuilder) disableQueryParams(disableQueryParams bool) Rewrit
 	}
 }
 
-func (b *reverseProxyBuilder) xForwardedHeaders(xForwardedHeaders bool) RewriteFunc {
+func (b *reverseProxyBuilder) rewriteXForwardedHeaders(xForwardedHeaders bool) RewriteFunc {
 	return func(in, out *http.Request) {
 		if xForwardedHeaders {
 			clientIP, _, err := net.SplitHostPort(in.RemoteAddr)
@@ -228,10 +218,7 @@ var (
 	ErrEmptyProxyPattern = errors.New("proxy pattern cannot be empty")
 )
 
-func (b *reverseProxyBuilder) Build(
-	upstreamUrl *url.URL,
-	proxyPattern string,
-) (http.Handler, error) {
+func (b *reverseProxyBuilder) Build(upstreamUrl *url.URL, proxyPattern string) (http.Handler, error) {
 	if upstreamUrl == nil {
 		return nil, ErrNilUpstreamUrl
 	}
@@ -262,11 +249,12 @@ func (b *reverseProxyBuilder) Build(
 	proxy.Transport = b.transport
 	proxy.ErrorLog = b.errorLogger
 	proxy.Rewrite = func(pr *httputil.ProxyRequest) {
+		b.rewriteStripPath(b.stripPath)(pr.In, pr.Out)
+		b.rewritePreserveHost(b.preserveHost)(pr.In, pr.Out)
+		b.rewriteDisableQueryParams(b.disableQueryParams)(pr.In, pr.Out)
+		b.rewriteXForwardedHeaders(b.xForwardedHeaders)(pr.In, pr.Out)
 		if b.customRewrite != nil {
 			b.customRewrite(pr.In, pr.Out)
-		}
-		if b.rewrite != nil {
-			b.rewrite(pr.In, pr.Out)
 		}
 		if pr.Out.URL.Path == "/" {
 			pr.Out.URL.Path = ""

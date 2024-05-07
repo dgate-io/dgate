@@ -1,7 +1,7 @@
 import http from "k6/http";
 import { check } from 'k6';
 
-const n = 10;
+const n = 15;
 export let options = {
   scenarios: {
     // modtest: {

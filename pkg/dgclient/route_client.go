@@ -33,7 +33,10 @@ func (d *DGateClient) DeleteRoute(name, namespace string) error {
 	return commonDelete(d.client, uri, name, namespace)
 }
 
-func (d *DGateClient) ListRoute() ([]*spec.Route, error) {
+func (d *DGateClient) ListRoute(namespace string) ([]*spec.Route, error) {
+	query := d.baseUrl.Query()
+	query.Set("namespace", namespace)
+	d.baseUrl.RawQuery = query.Encode()
 	uri, err := url.JoinPath(d.baseUrl.String(), "/api/v1/route")
 	if err != nil {
 		return nil, err

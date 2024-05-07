@@ -170,15 +170,13 @@ func asyncDo(client http.Client, req *http.Request) chan AsyncResults[*http.Resp
 	ch := make(chan AsyncResults[*http.Response], 1)
 	go func() {
 		start := time.Now()
-		resp, err := client.Do(req)
-		if err != nil {
+		if resp, err := client.Do(req); err != nil {
 			ch <- AsyncResults[*http.Response]{Error: err}
-			return
-		}
-		elapsed := time.Since(start)
-		ch <- AsyncResults[*http.Response]{
-			Data: resp,
-			Time: elapsed,
+		} else {
+			ch <- AsyncResults[*http.Response]{
+				Data: resp,
+				Time: time.Since(start),
+			}
 		}
 	}()
 	return ch

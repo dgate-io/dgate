@@ -48,15 +48,14 @@ func Test_runAndWaitForResult(t *testing.T) {
 		t.Fatal(err)
 	}
 	printer := testutil.NewMockPrinter()
-	modCtx := testutil.NewMockRuntimeContext()
-	loop, err := extractors.NewModuleEventLoop(
-		printer, modCtx, program,
-	)
+	rtCtx := testutil.NewMockRuntimeContext()
+	err = extractors.SetupModuleEventLoop(
+		printer, rtCtx, program)
 	if err != nil {
 		t.Fatal(err)
 	}
-	rt := loop.Start()
-	defer loop.Stop()
+	rt := rtCtx.EventLoop().Start()
+	defer rtCtx.EventLoop().Stop()
 	funcs := []string{"customFunc", "customFunc2", "customFunc3", "customFunc4"}
 	printer.On("Log", "log").Times(len(funcs))
 	for _, fn := range funcs {
@@ -107,16 +106,17 @@ func TestExportedInformation(t *testing.T) {
 	}
 	printer := testutil.NewMockPrinter()
 	printer.On("Log", "testing").Twice()
-	modCtx := testutil.NewMockRuntimeContext()
-	modCtx.On("func1", "node_modules/test").
+	rtCtx := testutil.NewMockRuntimeContext()
+	rtCtx.On("func1", "node_modules/test").
 		Return([]byte("exports.test = 'testing';"), nil).
 		Once()
-	loop, err := extractors.NewModuleEventLoop(printer, modCtx, program)
+	err = extractors.SetupModuleEventLoop(
+		printer, rtCtx, program)
 	if err != nil {
 		t.Fatal(err)
 	}
-	rt := loop.Runtime()
-	defer loop.Stop()
+	rt := rtCtx.EventLoop().Runtime()
+	defer rtCtx.EventLoop().Stop()
 	v, err := rt.RunString("exports.default")
 	if err != nil {
 		t.Fatal(err)
@@ -181,14 +181,14 @@ func TestExportedPromiseErrors(t *testing.T) {
 		t.Fatal(err)
 	}
 	printer := testutil.NewMockPrinter()
-	modCtx := testutil.NewMockRuntimeContext()
-	loop, err := extractors.NewModuleEventLoop(printer, modCtx, program)
+	rtCtx := testutil.NewMockRuntimeContext()
+	err = extractors.SetupModuleEventLoop(printer, rtCtx, program)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	rt := loop.Start()
-	defer loop.Stop()
+	rt := rtCtx.EventLoop().Start()
+	defer rtCtx.EventLoop().Stop()
 
 	v, err := rt.RunString("exports.test1")
 	if err != nil {

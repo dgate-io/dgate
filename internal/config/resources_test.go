@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"github.com/dgate-io/dgate/pkg/spec"
+	"github.com/stretchr/testify/assert"
 )
 
 func TestValidate(t *testing.T) {
@@ -49,8 +50,9 @@ func TestValidate(t *testing.T) {
 			},
 		},
 	}
-	err := resources.Validate()
+	changes, err := resources.Validate()
 	if err != nil {
 		t.Error(err)
 	}
+	assert.Equal(t, 5, changes)
 }

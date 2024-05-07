@@ -6,46 +6,47 @@ import (
 	"github.com/urfave/cli/v2"
 )
 
-func ServiceCommand(client *dgclient.DGateClient) *cli.Command {
+func SecretCommand(client *dgclient.DGateClient) *cli.Command {
 	return &cli.Command{
-		Name:      "service",
-		Aliases:   []string{"svc"},
+		Name:      "secret",
+		Aliases:   []string{"sec"},
 		Args:      true,
 		ArgsUsage: "<command> <name>",
-		Usage:     "service commands",
+		Usage:     "secret commands",
 		Subcommands: []*cli.Command{
 			{
 				Name:    "create",
 				Aliases: []string{"mk"},
-				Usage:   "create a service",
+				Usage:   "create a secret",
 				Action: func(ctx *cli.Context) error {
-					svc, err := createMapFromArgs[spec.Service](
-						ctx.Args().Slice(), "name", "urls",
+					sec, err := createMapFromArgs[spec.Secret](
+						ctx.Args().Slice(), "name", "data",
 					)
 					if err != nil {
 						return err
 					}
-					err = client.CreateService(svc)
+					err = client.CreateSecret(sec)
 					if err != nil {
 						return err
 					}
-					return jsonPrettyPrint(svc)
+					// redact the data field
+					sec.Data = "**redacted**"
+					return jsonPrettyPrint(sec)
 				},
 			},
 			{
 				Name:    "delete",
 				Aliases: []string{"rm"},
-				Usage:   "delete a service",
+				Usage:   "delete a secret",
 				Action: func(ctx *cli.Context) error {
-					svc, err := createMapFromArgs[spec.Service](
+					sec, err := createMapFromArgs[spec.Secret](
 						ctx.Args().Slice(), "name",
 					)
 					if err != nil {
 						return err
 					}
-					err = client.DeleteService(
-						svc.Name, svc.NamespaceName,
-					)
+					err = client.DeleteSecret(
+						sec.Name, sec.NamespaceName)
 					if err != nil {
 						return err
 					}
@@ -57,30 +58,36 @@ func ServiceCommand(client *dgclient.DGateClient) *cli.Command {
 				Aliases: []string{"ls"},
 				Usage:   "list services",
 				Action: func(ctx *cli.Context) error {
-					svc, err := client.ListService()
+					nsp, err := createMapFromArgs[dgclient.NamespacePayload](
+						ctx.Args().Slice(),
+					)
 					if err != nil {
 						return err
 					}
-					return jsonPrettyPrint(svc)
+					sec, err := client.ListSecret(nsp.Namespace)
+					if err != nil {
+						return err
+					}
+					return jsonPrettyPrint(sec)
 				},
 			},
 			{
 				Name:  "get",
-				Usage: "get a service",
+				Usage: "get a secret",
 				Action: func(ctx *cli.Context) error {
-					svc, err := createMapFromArgs[spec.Service](
+					s, err := createMapFromArgs[spec.Secret](
 						ctx.Args().Slice(), "name",
 					)
 					if err != nil {
 						return err
 					}
-					ns, err := client.GetService(
-						svc.Name, svc.NamespaceName,
+					sec, err := client.GetSecret(
+						s.Name, s.NamespaceName,
 					)
 					if err != nil {
 						return err
 					}
-					return jsonPrettyPrint(ns)
+					return jsonPrettyPrint(sec)
 				},
 			},
 		},

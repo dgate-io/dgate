@@ -27,28 +27,29 @@ func TestProxyHandler_ReverseProxy(t *testing.T) {
 	}
 	for _, conf := range configs {
 		ps := proxy.NewProxyState(conf)
-		rpBuilder := proxytest.CreateMockReverseProxyBuilder()
-		rpBuilder.On("FlushInterval", mock.Anything).Return(rpBuilder).Once()
-		// rpBuilder.On("CustomRewrite", mock.Anything).Return(rpBuilder).Times(0)
-		rpBuilder.On("ModifyResponse", mock.Anything).Return(rpBuilder).Once()
-		rpBuilder.On("ErrorHandler", mock.Anything).Return(rpBuilder).Once()
-		rpBuilder.On("Transport", mock.Anything).Return(rpBuilder).Once()
-		rpBuilder.On("ProxyRewrite", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(rpBuilder).Once()
-		rpBuilder.On("Clone").Return(rpBuilder).Once()
-		rpe := proxytest.CreateMockReverseProxyExecutor()
-		rpe.On("ServeHTTP", mock.Anything, mock.Anything).Return().Once()
-		rpBuilder.On("Build", mock.Anything, mock.Anything).Return(rpe, nil).Once()
-		defer rpBuilder.AssertExpectations(t)
-		defer rpe.AssertExpectations(t)
-		ps.ReverseProxyBuilder = rpBuilder
 
-		rm := ps.ResourceManager()
-		rt, ok := rm.GetRoute("test", "test")
+		rt, ok := ps.ResourceManager().GetRoute("test", "test")
 		if !ok {
 			t.Fatal("namespace not found")
 		}
+		rpBuilder := proxytest.CreateMockReverseProxyBuilder()
+		// rpBuilder.On("FlushInterval", mock.Anything).Return(rpBuilder).Once()
+		rpBuilder.On("ModifyResponse", mock.Anything).Return(rpBuilder).Once()
+		rpBuilder.On("ErrorHandler", mock.Anything).Return(rpBuilder).Once()
+		rpBuilder.On("Clone").Return(rpBuilder).Times(2)
+		rpBuilder.On("Transport", mock.Anything).Return(rpBuilder).Once()
+		rpBuilder.On("ProxyRewrite",
+			rt.StripPath,
+			rt.PreserveHost,
+			rt.Service.DisableQueryParams,
+			conf.ProxyConfig.DisableXForwardedHeaders,
+		).Return(rpBuilder).Once()
+		rpe := proxytest.CreateMockReverseProxyExecutor()
+		rpe.On("ServeHTTP", mock.Anything, mock.Anything).Return().Once()
+		rpBuilder.On("Build", mock.Anything, mock.Anything).Return(rpe, nil).Once()
+		ps.ReverseProxyBuilder = rpBuilder
 
-		reqCtxProvider := proxy.NewRequestContextProvider(rt)
+		reqCtxProvider := proxy.NewRequestContextProvider(rt, ps)
 
 		req, wr := proxytest.NewMockRequestAndResponseWriter("GET", "http://localhost:8080/test", []byte{})
 		// wr.On("WriteHeader", 200).Return().Once()
@@ -61,15 +62,16 @@ func TestProxyHandler_ReverseProxy(t *testing.T) {
 		modExt := NewMockModuleExtractor()
 		modExt.ConfigureDefaultMock(req, wr, ps, rt)
 		modBuf := NewMockModuleBuffer()
-		modBuf.On("Borrow").Return(modExt, true).Once()
+		modBuf.On("Borrow").Return(modExt).Once()
 		modBuf.On("Return", modExt).Return().Once()
 		reqCtxProvider.SetModuleBuffer(modBuf)
-
 		ps.ProxyHandlerFunc(ps, reqCtx)
 
 		wr.AssertExpectations(t)
 		modBuf.AssertExpectations(t)
 		modExt.AssertExpectations(t)
+		rpBuilder.AssertExpectations(t)
+		// rpe.AssertExpectations(t)
 	}
 }
 
@@ -107,16 +109,16 @@ func TestProxyHandler_ProxyHandler(t *testing.T) {
 		req, wr := proxytest.NewMockRequestAndResponseWriter("GET", "http://localhost:8080/test", []byte("123"))
 		wr.On("WriteHeader", resp.StatusCode).Return().Maybe()
 		wr.On("Header").Return(http.Header{}).Maybe()
-		wr.On("Write", mock.Anything).Return(0, nil).Once().Run(func(args mock.Arguments) {
+		wr.On("Write", mock.Anything).Return(3, nil).Once().Run(func(args mock.Arguments) {
 			b := args.Get(0).([]byte)
 			assert.Equal(t, b, []byte("abc"))
 		})
 
-		reqCtxProvider := proxy.NewRequestContextProvider(rt)
+		reqCtxProvider := proxy.NewRequestContextProvider(rt, ps)
 		modExt := NewMockModuleExtractor()
 		modExt.ConfigureDefaultMock(req, wr, ps, rt)
 		modBuf := NewMockModuleBuffer()
-		modBuf.On("Borrow").Return(modExt, true).Once()
+		modBuf.On("Borrow").Return(modExt).Once()
 		modBuf.On("Return", modExt).Return().Once()
 		reqCtxProvider.SetModuleBuffer(modBuf)
 
@@ -168,10 +170,10 @@ func TestProxyHandler_ProxyHandlerError(t *testing.T) {
 		modExt := NewMockModuleExtractor()
 		modExt.ConfigureDefaultMock(req, wr, ps, rt)
 		modBuf := NewMockModuleBuffer()
-		modBuf.On("Borrow").Return(modExt, true).Once()
+		modBuf.On("Borrow").Return(modExt).Once()
 		modBuf.On("Return", modExt).Return().Once()
 
-		reqCtxProvider := proxy.NewRequestContextProvider(rt)
+		reqCtxProvider := proxy.NewRequestContextProvider(rt, ps)
 		reqCtxProvider.SetModuleBuffer(modBuf)
 		reqCtx := reqCtxProvider.CreateRequestContext(
 			context.Background(), wr, req, "/")

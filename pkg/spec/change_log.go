@@ -62,6 +62,7 @@ const (
 	Domains     Resource = "domain"
 	Collections Resource = "collection"
 	Documents   Resource = "document"
+	Secrets     Resource = "secret"
 )
 
 var (
@@ -72,6 +73,7 @@ var (
 	AddDomainCommand        Command = newCommand(Add, Domains)
 	AddCollectionCommand    Command = newCommand(Add, Collections)
 	AddDocumentCommand      Command = newCommand(Add, Documents)
+	AddSecretCommand        Command = newCommand(Add, Secrets)
 	DeleteRouteCommand      Command = newCommand(Delete, Routes)
 	DeleteServiceCommand    Command = newCommand(Delete, Services)
 	DeleteNamespaceCommand  Command = newCommand(Delete, Namespaces)
@@ -79,7 +81,10 @@ var (
 	DeleteDomainCommand     Command = newCommand(Delete, Domains)
 	DeleteCollectionCommand Command = newCommand(Delete, Collections)
 	DeleteDocumentCommand   Command = newCommand(Delete, Documents)
-	NoopCommand             Command = Command("noop")
+	DeleteSecretCommand     Command = newCommand(Delete, Secrets)
+
+	NoopCommand Command = Command("noop")
+	StopCommand Command = Command("stop")
 )
 
 func newCommand(action Action, resource Resource) Command {
@@ -156,6 +161,8 @@ func (clc Command) Resource() Resource {
 		return Collections
 	case strings.HasSuffix(cmdString, "_document"):
 		return Documents
+	case strings.HasSuffix(cmdString, "_secret"):
+		return Secrets
 	default:
 		panic("change log: invalid command")
 	}

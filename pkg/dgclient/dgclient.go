@@ -55,10 +55,11 @@ func WithHttpClient(client *http.Client) Options {
 }
 
 type customTransport struct {
-	UserAgent string
-	Username  string
-	Password  string
-	Transport http.RoundTripper
+	UserAgent  string
+	Username   string
+	Password   string
+	VerboseLog bool
+	Transport  http.RoundTripper
 }
 
 func (ct *customTransport) RoundTrip(req *http.Request) (*http.Response, error) {
@@ -73,8 +74,12 @@ func (ct *customTransport) RoundTrip(req *http.Request) (*http.Response, error) 
 	if err != nil {
 		return nil, err
 	}
-	fmt.Printf("%s %s - %s %v\n", req.Method,
-		req.URL.String(), resp.Status, time.Since(start))
+	if ct.VerboseLog {
+		fmt.Printf("%s %s %s - %s %v\n",
+			resp.Proto, req.Method, req.URL,
+			resp.Status, time.Since(start),
+		)
+	}
 	return resp, err
 }
 
@@ -99,6 +104,17 @@ func WithBasicAuth(username, password string) Options {
 	}
 }
 
+func WithFollowRedirect(follow bool) Options {
+	return func(d *DGateClient) {
+		if follow {
+			return
+		}
+		d.client.CheckRedirect = func(req *http.Request, via []*http.Request) error {
+			return http.ErrUseLastResponse
+		}
+	}
+}
+
 func WithUserAgent(ua string) Options {
 	if ua == "" {
 		return func(dc *DGateClient) {}
@@ -114,6 +130,22 @@ func WithUserAgent(ua string) Options {
 			d.client.Transport = &customTransport{
 				UserAgent: ua,
 				Transport: d.client.Transport,
+			}
+		}
+	}
+}
+
+func WithVerboseLogging(on bool) Options {
+	return func(d *DGateClient) {
+		if d.client.Transport == nil {
+			d.client.Transport = http.DefaultTransport
+		}
+		if ct, ok := d.client.Transport.(*customTransport); ok {
+			ct.VerboseLog = on
+		} else {
+			d.client.Transport = &customTransport{
+				VerboseLog: on,
+				Transport:  d.client.Transport,
 			}
 		}
 	}

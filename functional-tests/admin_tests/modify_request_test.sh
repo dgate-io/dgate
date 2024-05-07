@@ -2,10 +2,12 @@
 
 set -eo xtrace
 
-ADMIN_URL=${ADMIN_URL:-"http://localhost:9080/api/v1"}
+ADMIN_URL=${ADMIN_URL:-"http://localhost:9080"}
 PROXY_URL=${PROXY_URL:-"http://localhost"}
 
 DIR="$( cd "$( dirname "$0" )" && pwd )"
+
+export DGATE_ADMIN_API=$ADMIN_URL
 
 dgate-cli namespace create \
     name=modify_request_test-ns

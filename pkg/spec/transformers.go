@@ -170,6 +170,23 @@ func TransformDGateDocument(document *DGateDocument) *Document {
 	}
 }
 
+func TransformDGateSecrets(secrets ...*DGateSecret) []*Secret {
+	newSecrets := make([]*Secret, len(secrets))
+	for i, secret := range secrets {
+		newSecrets[i] = TransformDGateSecret(secret)
+	}
+	return newSecrets
+}
+
+func TransformDGateSecret(sec *DGateSecret) *Secret {
+	return &Secret{
+		Name:          sec.Name,
+		NamespaceName: sec.Namespace.Name,
+		Data:          "**redacted**",
+		Tags:          sec.Tags,
+	}
+}
+
 func TransformRoutes(routes ...Route) []*DGateRoute {
 	rts := make([]*DGateRoute, len(routes))
 	for i, r := range routes {
@@ -314,8 +331,8 @@ func TransformCollection(ns *DGateNamespace, mods []*DGateModule, col *Collectio
 		SchemaPayload: string(schemaData),
 		Type:          col.Type,
 		// Modules:       mods,
-		Visibility:    col.Visibility,
-		Tags:          col.Tags,
+		Visibility: col.Visibility,
+		Tags:       col.Tags,
 	}
 }
 
@@ -349,4 +366,34 @@ func or[T any](v *T, def T) T {
 		return def
 	}
 	return *v
+}
+
+func TransformSecrets(ns *DGateNamespace, secrets ...*Secret) ([]*DGateSecret, error) {
+	var err error
+	scrts := make([]*DGateSecret, len(secrets))
+	for i, secret := range secrets {
+		scrts[i], err = TransformSecret(ns, secret)
+		if err != nil {
+			return nil, err
+		}
+	}
+	return scrts, nil
+}
+
+func TransformSecret(ns *DGateNamespace, secret *Secret) (*DGateSecret, error) {
+	var payload string = ""
+	if secret.Data != "" {
+		var err error
+		plBytes, err := base64.RawStdEncoding.DecodeString(secret.Data)
+		if err != nil {
+			return nil, err
+		}
+		payload = string(plBytes)
+	}
+	return &DGateSecret{
+		Name:      secret.Name,
+		Namespace: ns,
+		Data:      payload,
+		Tags:      secret.Tags,
+	}, nil
 }

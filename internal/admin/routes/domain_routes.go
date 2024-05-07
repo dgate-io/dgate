@@ -54,7 +54,8 @@ func ConfigureDomainAPI(server chi.Router, proxyState *proxy.ProxyState, appConf
 				return
 			}
 		}
-		util.JsonResponse(w, http.StatusCreated, spec.TransformDGateDomains(rm.GetDomainsByNamespace(domain.NamespaceName)...))
+		util.JsonResponse(w, http.StatusCreated, spec.TransformDGateDomains(
+			rm.GetDomainsByNamespace(domain.NamespaceName)...))
 	})
 
 	server.Delete("/domain", func(w http.ResponseWriter, r *http.Request) {
@@ -91,8 +92,7 @@ func ConfigureDomainAPI(server chi.Router, proxyState *proxy.ProxyState, appConf
 		}
 
 		cl := spec.NewChangeLog(&domain, domain.NamespaceName, spec.DeleteDomainCommand)
-		err = proxyState.ApplyChangeLog(cl)
-		if err != nil {
+		if err = proxyState.ApplyChangeLog(cl); err != nil {
 			util.JsonError(w, http.StatusBadRequest, err.Error())
 			return
 		}
@@ -118,5 +118,23 @@ func ConfigureDomainAPI(server chi.Router, proxyState *proxy.ProxyState, appConf
 			dgateDomains = rm.GetDomainsByNamespace(nsName)
 		}
 		util.JsonResponse(w, http.StatusOK, spec.TransformDGateDomains(dgateDomains...))
+	})
+
+	server.Get("/domain/{name}", func(w http.ResponseWriter, r *http.Request) {
+		name := chi.URLParam(r, "name")
+		nsName := r.URL.Query().Get("namespace")
+		if nsName == "" {
+			if appConfig.DisableDefaultNamespace {
+				util.JsonError(w, http.StatusBadRequest, "namespace is required")
+				return
+			}
+			nsName = spec.DefaultNamespace.Name
+		}
+		dom, ok := rm.GetDomain(name, nsName)
+		if !ok {
+			util.JsonError(w, http.StatusNotFound, "domain not found")
+			return
+		}
+		util.JsonResponse(w, http.StatusOK, dom)
 	})
 }

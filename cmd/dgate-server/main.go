@@ -3,6 +3,9 @@ package main
 import (
 	"fmt"
 	"os"
+	"os/signal"
+	"runtime"
+	"syscall"
 
 	"runtime/debug"
 
@@ -34,7 +37,8 @@ func main() {
 	}
 
 	if version == "dev" {
-		version = fmt.Sprintf("dev/PID:%d", os.Getpid())
+		fmt.Printf("PID:%d\n", os.Getpid())
+		fmt.Printf("GOMAXPROCS:%d\n", runtime.GOMAXPROCS(0))
 	}
 
 	if *showVersion {
@@ -52,16 +56,26 @@ func main() {
 					"-----------------------------------\n",
 			)
 		}
-		dgateConfig, err := config.LoadConfig(*configPath)
-		if err != nil {
-			panic(err)
-		}
+		if dgateConfig, err := config.LoadConfig(*configPath); err != nil {
+			fmt.Printf("Error loading config: %s\n", err)
+			os.Exit(1)
+		} else {
+			proxyState := proxy.StartProxyGateway(version, dgateConfig)
+			admin.StartAdminAPI(dgateConfig, proxyState)
+			if err := proxyState.Start(); err != nil {
+				fmt.Printf("Error loading config: %s\n", err)
+				os.Exit(1)
+			}
 
-		proxyState, err := proxy.StartProxyGateway(dgateConfig)
-		if err != nil {
-			panic(err)
+			sigchan := make(chan os.Signal, 1)
+			signal.Notify(sigchan,
+				syscall.SIGINT,
+				syscall.SIGTERM,
+				syscall.SIGQUIT,
+			)
+			<-sigchan
+			proxyState.Stop()
+			os.Exit(1)
 		}
-
-		admin.StartAdminAPI(dgateConfig, proxyState)
 	}
 }
