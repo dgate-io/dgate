@@ -7,16 +7,12 @@ import (
 	"net/url"
 	"time"
 
-	"github.com/dgate-io/chi-router"
-	"github.com/dgate-io/dgate/pkg/modules/types"
 	"github.com/dgate-io/dgate/pkg/util"
 )
 
 type ProxyHandlerFunc func(ps *ProxyState, reqCtx *RequestContext)
 
 func proxyHandler(ps *ProxyState, reqCtx *RequestContext) {
-	defer ps.metrics.MeasureProxyRequest(reqCtx, time.Now())
-
 	defer func() {
 		if reqCtx.req.Body != nil {
 			// Ensure that the request body is drained/closed, so the connection can be reused
@@ -32,8 +28,10 @@ func proxyHandler(ps *ProxyState, reqCtx *RequestContext) {
 			event = event.
 				Str("service", reqCtx.route.Service.Name)
 		}
-		event.Msg("Request")
+		event.Msg("Request Log")
 	}()
+
+	defer ps.metrics.MeasureProxyRequest(reqCtx, time.Now())
 
 	var modExt ModuleExtractor
 	if len(reqCtx.route.Modules) != 0 {
@@ -43,48 +41,19 @@ func proxyHandler(ps *ProxyState, reqCtx *RequestContext) {
 			util.WriteStatusCodeError(reqCtx.rw, http.StatusInternalServerError)
 			return
 		}
-		var ok bool
-		modExt, ok = reqCtx.provider.modBuf.Borrow()
-		if !ok || modExt == nil {
+		if modExt = reqCtx.provider.modBuf.Borrow(); modExt == nil {
+			ps.metrics.MeasureModuleDuration(
+				reqCtx, "module_extract",
+				runtimeStart, errors.New("error borrowing module"),
+			)
 			ps.logger.Error().Msg("Error borrowing module")
 			util.WriteStatusCodeError(reqCtx.rw, http.StatusInternalServerError)
 			return
 		}
+		defer reqCtx.provider.modBuf.Return(modExt)
 
-		if rtCtx, ok := modExt.RuntimeContext().(*runtimeContext); ok {
-			pathParams := make(map[string]string)
-			if chiCtx := chi.RouteContext(reqCtx.req.Context()); chiCtx != nil {
-				for i, key := range chiCtx.URLParams.Keys {
-					pathParams[key] = chiCtx.URLParams.Values[i]
-				}
-			}
-			// set request context for runtime
-			rtCtx.SetRequestContext(reqCtx, pathParams)
-			// set module context for runtime
-			modExt.SetModuleContext(
-				types.NewModuleContext(
-					rtCtx.loop, reqCtx.rw, reqCtx.req,
-					rtCtx.reqCtx.route, pathParams,
-				),
-			)
-			// TODO: consider passing context to properly close
-			modExt.Start()
-
-			defer func() {
-				rtCtx.Clean()
-				modExt.Stop(true)
-				reqCtx.provider.modBuf.Return(modExt)
-			}()
-		} else {
-			ps.metrics.MeasureModuleDuration(
-				reqCtx, "module_extract",
-				runtimeStart, errors.New("invalid runtime context"),
-			)
-			ps.logger.Error().Msg("Error getting runtime context")
-			util.WriteStatusCodeError(reqCtx.rw, http.StatusInternalServerError)
-			return
-		}
-
+		modExt.Start(reqCtx)
+		defer modExt.Stop(true)
 		ps.metrics.MeasureModuleDuration(
 			reqCtx, "module_extract",
 			runtimeStart, nil,
@@ -244,7 +213,8 @@ func requestHandlerModule(ps *ProxyState, reqCtx *RequestContext, modExt ModuleE
 			requestHandlerStart, err,
 		)
 		if err != nil {
-			ps.logger.Error().Err(err).Msg("Error @ request_handler module")
+			ps.logger.Error().Err(err).
+				Msg("Error @ request_handler module")
 			if errorHandler, ok := modExt.ErrorHandlerFunc(); ok {
 				// extract error handler function from module
 				errorHandlerStart := time.Now()

@@ -1,56 +1,82 @@
 import http from "k6/http";
 import { check, sleep } from 'k6';
 
-// export let options = {
-//   stages: [
-//     { duration: '5s', target: 200},
-//     { duration: '1h', target: 300},
-//     { duration: '1h', target: 100},
-//   ],
-// };
-
-const n = 15;
+const n = 20;
+const inc = 0.5;
+let curWait = -inc;
 export let options = {
   scenarios: {
     modtest: {
       executor: 'constant-vus',
       vus: n,
-      duration: '20m',
+      duration: inc + 'm',
+      startTime: (curWait += inc) + 'm',
       exec: 'dgatePath',
       env: { DGATE_PATH: '/modtest' },
-      // startTime: '25s',
-      gracefulStop: '10s',
+      gracefulStop: '5s',
+    },
+    modtest_wait: {
+      executor: 'constant-vus',
+      vus: n*5,
+      duration: inc + 'm',
+      startTime: (curWait += inc) + 'm',
+      exec: 'dgatePath',
+      env: { DGATE_PATH: '/modtest?wait=30ms' },
+      gracefulStop: '5s',
     },
     svctest: {
       executor: 'constant-vus',
       vus: n,
-      duration: '20m',
+      duration: inc + 'm',
+      startTime: (curWait += inc) + 'm',
       exec: 'dgatePath',
       env: { DGATE_PATH: "/svctest" },
-      // startTime: '10m',
       gracefulStop: '5s',
     },
-    svctest_500ms: {
+    svctest_wait: {
       executor: 'constant-vus',
-      vus: n,
-      duration: '20m',
+      vus: n*5,
+      duration: inc + 'm',
+      startTime: (curWait += inc) + 'm',
       exec: 'dgatePath',
       env: { DGATE_PATH: "/svctest?wait=30ms" },
-      // startTime: '20m',
+      gracefulStop: '5s',
+    },
+    test_server_direct: {
+      executor: 'constant-vus',
+      vus: n,
+      duration: inc + 'm',
+      startTime: (curWait += inc) + 'm',
+      exec: 'dgatePath',
+      env: { DGATE_PATH: ":8888/direct" },
+      gracefulStop: '5s',
+    },
+    test_server_direct_wait: {
+      executor: 'constant-vus',
+      vus: n*5,
+      duration: inc + 'm',
+      startTime: (curWait += inc) + 'm',
+      exec: 'dgatePath',
+      env: { DGATE_PATH: ":8888/svctest?wait=30ms" },
       gracefulStop: '5s',
     },
   },
   discardResponseBodies: true,
 };
 
+let i = 0;
+let ports = [8888];
+// const raftMode = !!__ENV.RAFT_MODE || false;
+// 'http://localhost:' + ports[i++ % ports.length];
+
 export function dgatePath() {
-  const dgatePath = __ENV.PROXY_URL || 'http://localhost';
+  const dgatePath = __ENV._PROXY_URL || 'http://localhost'
   const path = __ENV.DGATE_PATH;
   let res = http.get(dgatePath + path, {
     headers: { Host: 'dgate.dev' },
   });
   let results = {};
   results[path + ': status is ' + res.status] =
-    (r) => r.status >= 200 && r.status < 400;
+    (r) => (r.status >= 200 && r.status < 400);
   check(res, results);
 };

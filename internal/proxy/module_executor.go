@@ -7,7 +7,7 @@ import (
 
 type ModuleBuffer interface {
 	// Load(cb func())
-	Borrow() (ModuleExtractor, bool)
+	Borrow() ModuleExtractor
 	Return(me ModuleExtractor)
 	Close()
 }
@@ -50,24 +50,9 @@ func NewModuleBuffer(
 	return mb, nil
 }
 
-// func (mb *moduleBuffer) Load(cb func()) {
-// 	go func() {
-// 		for i := 0; i < mb.min; i++ {
-// 			me := mb.createModuleExtract()
-// 			if me == nil {
-// 				panic("could not load moduleExtract")
-// 			}
-// 			mb.modExtBuffer <- me
-// 		}
-// 		if cb != nil {
-// 			cb()
-// 		}
-// 	}()
-// }
-
-func (mb *moduleBuffer) Borrow() (ModuleExtractor, bool) {
+func (mb *moduleBuffer) Borrow() ModuleExtractor {
 	if mb == nil || mb.ctx == nil || mb.ctx.Err() != nil {
-		return nil, false
+		return nil
 	}
 	var me ModuleExtractor
 	select {
@@ -77,11 +62,10 @@ func (mb *moduleBuffer) Borrow() (ModuleExtractor, bool) {
 	default:
 		me = mb.createModuleExtract()
 	}
-	return me, true
+	return me
 }
 
 func (mb *moduleBuffer) Return(me ModuleExtractor) {
-	defer me.SetModuleContext(nil)
 	// if context is canceled, do not return module extract
 	if mb.ctx != nil && mb.ctx.Err() == nil {
 		select {

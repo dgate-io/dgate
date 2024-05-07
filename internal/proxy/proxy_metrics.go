@@ -26,6 +26,9 @@ func NewProxyMetrics() *ProxyMetrics {
 }
 
 func (pm *ProxyMetrics) Setup(config *config.DGateConfig) {
+	if config.DisableMetrics {
+		return
+	}
 	meter := otel.Meter("dgate-proxy-metrics", api.WithInstrumentationAttributes(
 		attribute.KeyValue{
 			Key: "storage", Value: attribute.StringValue(string(config.Storage.StorageType)),
@@ -66,7 +69,6 @@ func (pm *ProxyMetrics) MeasureProxyRequest(
 	if reqCtx.route.Service != nil {
 		serviceAttr = attribute.NewSet(
 			attribute.String("service", reqCtx.route.Service.Name),
-			// attribute.StringSlice("service_tag", reqCtx.route.Service.Tags),
 		)
 	}
 
@@ -87,7 +89,6 @@ func (pm *ProxyMetrics) MeasureProxyRequest(
 		attribute.String("proto", reqCtx.req.Proto),
 		attribute.Int64("content_length", reqCtx.req.ContentLength),
 		attribute.Int("status_code", reqCtx.rw.Status()),
-		// attribute.StringSlice("route_tag", reqCtx.route.Tags),
 	)
 
 	pm.proxyDurInstrument.Record(reqCtx.ctx,
@@ -115,7 +116,6 @@ func (pm *ProxyMetrics) MeasureModuleDuration(
 		attribute.String("path", reqCtx.req.URL.Path),
 		attribute.String("pattern", reqCtx.pattern),
 		attribute.String("host", reqCtx.req.Host),
-		// attribute.StringSlice("route_tag", reqCtx.route.Tags),
 	)
 	pm.addError(moduleFunc, err, attrSet)
 
@@ -145,8 +145,6 @@ func (pm *ProxyMetrics) MeasureUpstreamDuration(
 		attribute.String("host", reqCtx.req.Host),
 		attribute.String("service", reqCtx.route.Service.Name),
 		attribute.String("upstream_host", upstreamHost),
-		// attribute.StringSlice("service_tag", reqCtx.route.Service.Tags),
-		// attribute.StringSlice("route_tag", reqCtx.route.Tags),
 	)
 	pm.addError("upstream_request", err, attrSet)
 
@@ -197,7 +195,7 @@ func (pm *ProxyMetrics) addError(
 	namespace string, err error,
 	attrs ...attribute.Set,
 ) {
-	if pm.errorCountInstrument == nil {
+	if pm.errorCountInstrument == nil || err == nil {
 		return
 	}
 	attrSet := attribute.NewSet(

@@ -184,20 +184,17 @@ func configureRoutes(server *chi.Mux, proxyState *proxy.ProxyState, conf *config
 	server.Group(func(misc chi.Router) {
 		routes.ConfigureChangeLogAPI(misc, proxyState, conf)
 		routes.ConfigureHealthAPI(misc, proxyState, conf)
+		setupMetricProvider(conf)
+		misc.Handle("/metrics", promhttp.Handler())
 
-		setupMetricProvider(conf, func() {
-			misc.Handle("/metrics", promhttp.Handler())
-		})
 	})
 }
 
 func setupMetricProvider(
 	config *config.DGateConfig,
-	callback func(),
 ) {
 	var provider api.MeterProvider
 	if !config.DisableMetrics {
-		defer callback()
 		exporter, err := prometheus.New()
 		if err != nil {
 			log.Fatal(err)

@@ -75,14 +75,14 @@ func (ps *ProxyState) setupModules() error {
 					return errors.New("invalid module type: " + mod.Type.String())
 				}
 
-				rtCtx := NewRuntimeContext(ps, route, mod)
-				loop, err := extractors.NewModuleEventLoop(ps.printer, rtCtx)
+				testRtCtx := NewRuntimeContext(ps, route, mod)
+				defer testRtCtx.Clean()
+				err = extractors.SetupModuleEventLoop(ps.printer, testRtCtx)
 				if err != nil {
 					ps.logger.Err(err).
 						Msgf("Error applying module '%s' changes", mod.Name)
 					return err
 				}
-				defer loop.Stop()
 				newModPrograms.Insert(mod.Name+"/"+mod.Namespace.Name, program)
 				elapsed := time.Since(start)
 				ps.logger.Debug().
@@ -169,10 +169,11 @@ func (ps *ProxyState) createModuleExtractorFunc(r *spec.DGateRoute) ModuleExtrac
 			return program
 		})
 		rtCtx := NewRuntimeContext(ps, r, r.Modules...)
-		if loop, err := extractors.NewModuleEventLoop(ps.printer, rtCtx, programs...); err != nil {
+		if err := extractors.SetupModuleEventLoop(ps.printer, rtCtx, programs...); err != nil {
 			ps.logger.Err(err).Msg("Error creating runtime for route: " + reqCtx.route.Name)
 			return nil
 		} else {
+			loop := rtCtx.EventLoop()
 			errorHandler, err := extractors.ExtractErrorHandlerFunction(loop)
 			if err != nil {
 				ps.logger.Err(err).Msg("Error extracting error handler function")
@@ -211,7 +212,8 @@ func (ps *ProxyState) startChangeLoop() {
 	ps.proxyLock.Lock()
 	if err := ps.reconfigureState(true, nil); err != nil {
 		ps.logger.Err(err).Msg("Error initiating state")
-		os.Exit(1)
+		ps.Stop()
+		return
 	}
 	ps.proxyLock.Unlock()
 
@@ -227,9 +229,9 @@ func (ps *ProxyState) startChangeLoop() {
 		func() {
 			ps.proxyLock.Lock()
 			defer ps.proxyLock.Unlock()
+			
 			err := ps.reconfigureState(false, log)
-			defer log.PushError(err)
-			if err != nil {
+			if log.PushError(err); err != nil {
 				ps.logger.Err(err).
 					Msgf("Error reconfiguring state @namespace:%s", log.Namespace)
 				// ps.rollbackChange(log)

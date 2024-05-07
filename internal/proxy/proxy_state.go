@@ -248,9 +248,14 @@ func (ps *ProxyState) SetupRaft(r *raft.Raft, rc *raft.Config) {
 	ps.replicationSettings = NewProxyReplication(r, rc)
 }
 
-func (ps *ProxyState) WaitForChanges() {
+func (ps *ProxyState) WaitForChanges() error {
 	ps.proxyLock.RLock()
+	if len(ps.changeChan) > 0 {
+		ps.proxyLock.RUnlock()
+		return <-ps.applyChange(nil)
+	}
 	defer ps.proxyLock.RUnlock()
+	return nil
 }
 
 func (ps *ProxyState) ApplyChangeLog(log *spec.ChangeLog) error {

@@ -6,6 +6,7 @@ import (
 	"net"
 	"net/http"
 
+	"github.com/dgate-io/chi-router"
 	"github.com/dgate-io/dgate/internal/proxy/reverse_proxy"
 	"github.com/dgate-io/dgate/pkg/spec"
 )
@@ -26,12 +27,10 @@ type RequestContext struct {
 	rw       spec.ResponseWriterTracker
 	req      *http.Request
 	provider *RequestContextProvider
+	params   map[string]string
 }
 
-func NewRequestContextProvider(
-	route *spec.DGateRoute,
-	ps *ProxyState,
-) *RequestContextProvider {
+func NewRequestContextProvider(route *spec.DGateRoute, ps *ProxyState) *RequestContextProvider {
 	ctx := context.Background()
 
 	ctx = context.WithValue(ctx, spec.Name("route"), route.Name)
@@ -87,13 +86,20 @@ func (reqCtxProvider *RequestContextProvider) CreateRequestContext(
 	req *http.Request,
 	pattern string,
 ) *RequestContext {
+	pathParams := make(map[string]string)
+	if chiCtx := chi.RouteContext(req.Context()); chiCtx != nil {
+		for i, key := range chiCtx.URLParams.Keys {
+			pathParams[key] = chiCtx.URLParams.Values[i]
+		}
+	}
 	return &RequestContext{
-		rw:       spec.NewResponseWriterTracker(rw),
-		req:      req.WithContext(ctx),
-		route:    reqCtxProvider.route,
-		provider: reqCtxProvider,
-		pattern:  pattern,
 		ctx:      ctx,
+		pattern:  pattern,
+		params:   pathParams,
+		provider: reqCtxProvider,
+		route:    reqCtxProvider.route,
+		req:      req.WithContext(ctx),
+		rw:       spec.NewResponseWriterTracker(rw),
 	}
 }
 

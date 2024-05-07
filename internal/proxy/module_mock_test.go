@@ -22,9 +22,9 @@ func NewMockModuleBuffer() *mockModuleBuffer {
 }
 
 // Borrow implements proxy.ModuleBuffer.
-func (mb *mockModuleBuffer) Borrow() (proxy.ModuleExtractor, bool) {
+func (mb *mockModuleBuffer) Borrow() proxy.ModuleExtractor {
 	args := mb.Called()
-	return args.Get(0).(proxy.ModuleExtractor), args.Bool(1)
+	return args.Get(0).(proxy.ModuleExtractor)
 }
 
 // Close implements proxy.ModuleBuffer.
@@ -54,7 +54,7 @@ func NewMockModuleExtractor() *mockModuleExtractor {
 
 func (m *mockModuleExtractor) ConfigureEmptyMock() {
 	rtCtx := proxy.NewRuntimeContext(nil, nil)
-	m.On("Start").Return()
+	m.On("Start", mock.Anything).Return()
 	m.On("Stop", mock.Anything).Return()
 	m.On("RuntimeContext").Return(rtCtx)
 	m.On("ModuleContext").Return(nil)
@@ -76,7 +76,7 @@ func (m *mockModuleExtractor) ConfigureDefaultMock(
 ) {
 	rtCtx := proxy.NewRuntimeContext(ps, rt, mods...)
 	modCtx := types.NewModuleContext(nil, rw, req, rt, nil)
-	m.On("Start").Return().Maybe()
+	m.On("Start", mock.Anything).Return().Maybe()
 	m.On("Stop", mock.Anything).Return().Maybe()
 	m.On("RuntimeContext").Return(rtCtx).Maybe()
 	m.On("ModuleContext").Return(modCtx).Maybe()
@@ -89,27 +89,22 @@ func (m *mockModuleExtractor) ConfigureDefaultMock(
 	m.On("RequestHandlerFunc").Return(nil, false).Maybe()
 }
 
-func (m *mockModuleExtractor) Start() {
-	m.Called()
+func (m *mockModuleExtractor) Start(reqCtx *proxy.RequestContext) {
+	m.Called(reqCtx)
 }
 
 func (m *mockModuleExtractor) Stop(wait bool) {
 	m.Called(wait)
 }
 
-func (m *mockModuleExtractor) RuntimeContext() modules.RuntimeContext {
+func (m *mockModuleExtractor) RuntimeContext(*proxy.RequestContext) (modules.RuntimeContext, error) {
 	args := m.Called()
-	return args.Get(0).(modules.RuntimeContext)
+	return args.Get(0).(modules.RuntimeContext), args.Error(1)
 }
 
 func (m *mockModuleExtractor) ModuleContext() *types.ModuleContext {
 	args := m.Called()
 	return args.Get(0).(*types.ModuleContext)
-}
-
-func (m *mockModuleExtractor) ModHash() uint32 {
-	args := m.Called()
-	return args.Get(0).(uint32)
 }
 
 func (m *mockModuleExtractor) SetModuleContext(modCtx *types.ModuleContext) {

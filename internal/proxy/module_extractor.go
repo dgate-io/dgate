@@ -8,17 +8,13 @@ import (
 
 type ModuleExtractor interface {
 	// Start starts the event loop for the module extractor; ret is true if the event loop was started, false otherwise
-	Start()
+	Start(*RequestContext)
 	// Stop stops the event loop for the module extractor
 	Stop(wait bool)
 	// RuntimeContext returns the runtime context for the module extractor
-	RuntimeContext() modules.RuntimeContext
-	// SetModuleContext sets the module context for the module extractor
-	SetModuleContext(*types.ModuleContext)
+	RuntimeContext(*RequestContext) (modules.RuntimeContext, error)
 	// ModuleContext returns the module context for the module extractor
 	ModuleContext() *types.ModuleContext
-	// ModHash returns the hash of the module
-	ModHash() uint32
 
 	FetchUpstreamUrlFunc() (extractors.FetchUpstreamUrlFunc, bool)
 	RequestModifierFunc() (extractors.RequestModifierFunc, bool)
@@ -28,19 +24,17 @@ type ModuleExtractor interface {
 }
 
 type moduleExtract struct {
-	runtimeContext   modules.RuntimeContext
+	runtimeContext   *runtimeContext
 	moduleContext    *types.ModuleContext
 	fetchUpstreamUrl extractors.FetchUpstreamUrlFunc
 	requestModifier  extractors.RequestModifierFunc
 	responseModifier extractors.ResponseModifierFunc
 	errorHandler     extractors.ErrorHandlerFunc
 	requestHandler   extractors.RequestHandlerFunc
-	numUses          int
-	modHash          uint32
 }
 
 func NewModuleExtractor(
-	runtimeContext modules.RuntimeContext,
+	runtimeCtx *runtimeContext,
 	fetchUpstreamUrl extractors.FetchUpstreamUrlFunc,
 	requestModifier extractors.RequestModifierFunc,
 	responseModifier extractors.ResponseModifierFunc,
@@ -48,7 +42,7 @@ func NewModuleExtractor(
 	requestHandler extractors.RequestHandlerFunc,
 ) ModuleExtractor {
 	return &moduleExtract{
-		runtimeContext:   runtimeContext,
+		runtimeContext:   runtimeCtx,
 		fetchUpstreamUrl: fetchUpstreamUrl,
 		requestModifier:  requestModifier,
 		responseModifier: responseModifier,
@@ -57,14 +51,20 @@ func NewModuleExtractor(
 	}
 }
 
-func (me *moduleExtract) Start() {
-	me.runtimeContext.EventLoop().Start()
-	me.numUses++
+func (me *moduleExtract) Start(reqCtx *RequestContext) {
+	me.moduleContext = types.NewModuleContext(
+		me.runtimeContext.loop,
+		reqCtx.rw, reqCtx.req,
+		reqCtx.route, reqCtx.params,
+	)
+	me.runtimeContext.loop.Start()
+	me.runtimeContext.reqCtx = reqCtx
 }
 
 // Stop stops the event loop for the module extractor
 func (me *moduleExtract) Stop(wait bool) {
 	me.moduleContext = nil
+	me.runtimeContext.reqCtx = nil
 	if wait {
 		me.runtimeContext.EventLoop().Stop()
 	} else {
@@ -72,20 +72,12 @@ func (me *moduleExtract) Stop(wait bool) {
 	}
 }
 
-func (me *moduleExtract) SetModuleContext(moduleContext *types.ModuleContext) {
-	me.moduleContext = moduleContext
-}
-
-func (me *moduleExtract) RuntimeContext() modules.RuntimeContext {
-	return me.runtimeContext
+func (me *moduleExtract) RuntimeContext(reqCtx *RequestContext) (modules.RuntimeContext, error) {
+	return me.runtimeContext.Use(reqCtx)
 }
 
 func (me *moduleExtract) ModuleContext() *types.ModuleContext {
 	return me.moduleContext
-}
-
-func (me *moduleExtract) ModHash() uint32 {
-	return me.modHash
 }
 
 func (me *moduleExtract) FetchUpstreamUrlFunc() (extractors.FetchUpstreamUrlFunc, bool) {

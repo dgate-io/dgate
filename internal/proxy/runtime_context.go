@@ -2,24 +2,17 @@ package proxy
 
 import (
 	"context"
-	"errors"
-	"sort"
-	"strings"
-	"time"
 
 	"github.com/dgate-io/dgate/pkg/eventloop"
 	"github.com/dgate-io/dgate/pkg/modules"
 	"github.com/dgate-io/dgate/pkg/resources"
 	"github.com/dgate-io/dgate/pkg/spec"
-	"github.com/dgate-io/dgate/pkg/typescript"
 	"github.com/dop251/goja"
-	"github.com/dop251/goja_nodejs/require"
 )
 
 // RuntimeContext is the context for the runtime. one per request
 type runtimeContext struct {
-	reqCtx *RequestContext
-
+	reqCtx  *RequestContext
 	loop    *eventloop.EventLoop
 	state   modules.StateManager
 	rm      *resources.ResourceManager
@@ -37,60 +30,65 @@ func NewRuntimeContext(
 		rm:      proxyState.ResourceManager(),
 		modules: spec.TransformDGateModules(modules...),
 		route:   spec.TransformDGateRoute(route),
-		// cache:   proxyState.sharedCache,
 	}
-	sort.Slice(rtCtx.modules, func(i, j int) bool {
-		return rtCtx.modules[i].Name < rtCtx.modules[j].Name
-	})
-	// func (r *Registry) getCompiledSource(p string) wraps the code in a modular function
-	reg := require.NewRegistryWithLoader(func(path string) ([]byte, error) {
-		requireMod := strings.Replace(path, "node_modules/", "", 1)
-		// 'https://' - requires network permissions and must be enabled in the config
-		// 'file://' - requires file system permissions and must be enabled in the config
-		// 'module://' - requires a module lookup and module permissions
-		if mod, ok := findInSortedWith(rtCtx.modules, requireMod,
-			func(m *spec.Module) string { return m.Name }); !ok {
-			return nil, errors.New(requireMod + " not found")
-		} else {
-			if mod.Type == spec.ModuleTypeJavascript {
-				return []byte(mod.Payload), nil
-			}
-			var err error
-			var key string
-			transpileBucket := proxyState.sharedCache.Bucket("ts-transpile")
-			if key, err = HashString(0, mod.Payload); err == nil {
-				if code, ok := transpileBucket.Get(key); ok {
-					return code.([]byte), nil
-				}
-			}
-			payload, err := typescript.Transpile(mod.Payload)
-			if err != nil {
-				return nil, err
-			}
-			transpileBucket.SetWithTTL(key, []byte(payload), time.Minute*30)
-			return []byte(payload), nil
-		}
-	})
-	rtCtx.loop = eventloop.NewEventLoop(eventloop.WithRegistry(reg))
+
+	// TODO: setup module import logic
+	// sort.Slice(rtCtx.modules, func(i, j int) bool {
+	// 	return rtCtx.modules[i].Name < rtCtx.modules[j].Name
+	// })
+	// reg := require.NewRegistryWithLoader(func(path string) ([]byte, error) {
+	// 	requireMod := strings.Replace(path, "node_modules/", "", 1)
+	// 	// 'https://' - requires network permissions and must be enabled in the config
+	// 	// 'file://' - requires file system permissions and must be enabled in the config
+	// 	// 'module://' - requires a module lookup and module permissions
+	// 	if mod, ok := findInSortedWith(rtCtx.modules, requireMod,
+	// 		func(m *spec.Module) string { return m.Name }); !ok {
+	// 		return nil, errors.New(requireMod + " not found")
+	// 	} else {
+	// 		if mod.Type == spec.ModuleTypeJavascript {
+	// 			return []byte(mod.Payload), nil
+	// 		}
+	// 		var err error
+	// 		var key string
+	// 		transpileBucket := proxyState.sharedCache.Bucket("ts-transpile")
+	// 		if key, err = HashString(0, mod.Payload); err == nil {
+	// 			if code, ok := transpileBucket.Get(key); ok {
+	// 				return code.([]byte), nil
+	// 			}
+	// 		}
+	// 		payload, err := typescript.Transpile(mod.Payload)
+	// 		if err != nil {
+	// 			return nil, err
+	// 		}
+	// 		transpileBucket.SetWithTTL(key, []byte(payload), time.Minute*30)
+	// 		return []byte(payload), nil
+	// 	}
+	// })
+	rtCtx.loop = eventloop.NewEventLoop(
+	// eventloop.WithRegistry(reg),
+	)
 	return rtCtx
 }
 
 var _ modules.RuntimeContext = &runtimeContext{}
 
 // UseRequestContext sets the request context
-func (rtCtx *runtimeContext) SetRequestContext(
-	reqCtx *RequestContext, pathParams map[string]string,
-) {
+func (rtCtx *runtimeContext) Use(reqCtx *RequestContext) (*runtimeContext, error) {
 	if reqCtx != nil {
 		if err := reqCtx.ctx.Err(); err != nil {
-			panic("context is already closed: " + err.Error())
+			return nil, err
 		}
 	}
 	rtCtx.reqCtx = reqCtx
+	return rtCtx, nil
 }
 
 func (rtCtx *runtimeContext) Clean() {
+	rtCtx.loop.StopNoWait()
+	rtCtx.loop = nil
 	rtCtx.reqCtx = nil
+	rtCtx.route = nil
+	rtCtx.modules = nil
 }
 
 func (rtCtx *runtimeContext) Context() context.Context {

@@ -100,23 +100,23 @@ type retryRoundTripper struct {
 }
 
 func (m *retryRoundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
-	if req.URL.Scheme == "ws" || req.URL.Scheme == "wss" {
-		return m.transport.RoundTrip(req)
-	}
 	var (
 		resp *http.Response
 		err  error
 	)
-	ogReq := req
+	oreq := req
 	for i := 0; i <= m.retries; i++ {
 		if m.requestTimeout != 0 {
-			ctx, cancel := context.WithTimeout(ogReq.Context(), m.requestTimeout)
+			ctx, cancel := context.WithTimeout(oreq.Context(), m.requestTimeout)
 			req = req.WithContext(ctx)
 			defer cancel()
 		}
 		resp, err = m.transport.RoundTrip(req)
-		if err == nil {
+		if err == nil || req.Method == http.MethodPut || req.Method == http.MethodPost {
 			break
+		}
+		if m.retryTimeout != 0 {
+			<-time.After(m.retryTimeout)
 		}
 	}
 	return resp, err

@@ -42,11 +42,9 @@ func ConfigureServiceAPI(server chi.Router, proxyState *proxy.ProxyState, appCon
 		if svc.Retries == nil {
 			retries := 3
 			svc.Retries = &retries
-		} else {
-			if *svc.Retries < 0 {
-				util.JsonError(w, http.StatusBadRequest, "retries must be greater than 0")
-				return
-			}
+		} else if *svc.Retries < 0 {
+			util.JsonError(w, http.StatusBadRequest, "retries must be greater than 0")
+			return
 		}
 		if svc.RetryTimeout != nil && *svc.RetryTimeout < 0 {
 			util.JsonError(w, http.StatusBadRequest, "retry timeout must be greater than 0")

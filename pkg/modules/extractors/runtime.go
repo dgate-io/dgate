@@ -4,7 +4,6 @@ import (
 	"errors"
 	"reflect"
 
-	"github.com/dgate-io/dgate/pkg/eventloop"
 	"github.com/dgate-io/dgate/pkg/modules"
 	"github.com/dgate-io/dgate/pkg/modules/dgate"
 	"github.com/dop251/goja"
@@ -45,12 +44,12 @@ func processObject(rt *goja.Runtime) *goja.Object {
 	return obj
 }
 
-func NewModuleEventLoop(
+func SetupModuleEventLoop(
 	printer console.Printer,
-	modCtx modules.RuntimeContext,
+	rtCtx modules.RuntimeContext,
 	programs ...*goja.Program,
-) (*eventloop.EventLoop, error) {
-	loop := modCtx.EventLoop()
+) error {
+	loop := rtCtx.EventLoop()
 
 	rt := loop.Runtime()
 	prepareRuntime(rt)
@@ -58,7 +57,7 @@ func NewModuleEventLoop(
 	registry := loop.Registry()
 
 	if registerModules("dgate", rt,
-		registry, modCtx, dgate.New(modCtx),
+		registry, dgate.New(rtCtx),
 	); printer == nil {
 		printer = &NoopPrinter{}
 	}
@@ -79,32 +78,30 @@ func NewModuleEventLoop(
 	for _, program := range programs {
 		_, err := rt.RunProgram(program)
 		if err != nil {
-			return nil, err
+			return err
 		}
 	}
 
-	return loop, nil
+	return nil
 }
 
 // registerModules registers a module and its children with the registry (recursively)
 func registerModules(
-	modName string,
+	name string,
 	rt *goja.Runtime,
 	reg *require.Registry,
-	modCtx modules.RuntimeContext,
 	mod modules.GoModule,
 ) *goja.Object {
 	exports := rt.NewObject()
 	// defaultExports := rt.NewObject()
 	// TODO: Default exports are being ignore, check to see how we can use both named and default together
-
 	if exportsRaw := mod.Exports(); exportsRaw != nil {
 		for childName, childMod := range exportsRaw.Named {
 			if inst, ok := childMod.(modules.GoModule); ok {
 				// only register children if they are modules
 				m := registerModules(
-					modName+"/"+childName,
-					rt, reg, modCtx, inst,
+					name+"/"+childName,
+					rt, reg, inst,
 				)
 				exports.Set(childName, m)
 				// defaultExports.Set(childName, childMod)
@@ -113,7 +110,7 @@ func registerModules(
 			exports.Set(childName, childMod)
 			// defaultExports.Set(childName, childMod)
 
-			reg.RegisterNativeModule(modName, func(runtime *goja.Runtime, module *goja.Object) {
+			reg.RegisterNativeModule(name, func(runtime *goja.Runtime, module *goja.Object) {
 				if exportsRaw.Default != nil {
 					exports.Set("default", exportsRaw.Default)
 				}

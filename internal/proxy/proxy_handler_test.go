@@ -62,7 +62,7 @@ func TestProxyHandler_ReverseProxy(t *testing.T) {
 		modExt := NewMockModuleExtractor()
 		modExt.ConfigureDefaultMock(req, wr, ps, rt)
 		modBuf := NewMockModuleBuffer()
-		modBuf.On("Borrow").Return(modExt, true).Once()
+		modBuf.On("Borrow").Return(modExt).Once()
 		modBuf.On("Return", modExt).Return().Once()
 		reqCtxProvider.SetModuleBuffer(modBuf)
 		ps.ProxyHandlerFunc(ps, reqCtx)
@@ -118,7 +118,7 @@ func TestProxyHandler_ProxyHandler(t *testing.T) {
 		modExt := NewMockModuleExtractor()
 		modExt.ConfigureDefaultMock(req, wr, ps, rt)
 		modBuf := NewMockModuleBuffer()
-		modBuf.On("Borrow").Return(modExt, true).Once()
+		modBuf.On("Borrow").Return(modExt).Once()
 		modBuf.On("Return", modExt).Return().Once()
 		reqCtxProvider.SetModuleBuffer(modBuf)
 
@@ -170,7 +170,7 @@ func TestProxyHandler_ProxyHandlerError(t *testing.T) {
 		modExt := NewMockModuleExtractor()
 		modExt.ConfigureDefaultMock(req, wr, ps, rt)
 		modBuf := NewMockModuleBuffer()
-		modBuf.On("Borrow").Return(modExt, true).Once()
+		modBuf.On("Borrow").Return(modExt).Once()
 		modBuf.On("Return", modExt).Return().Once()
 
 		reqCtxProvider := proxy.NewRequestContextProvider(rt, ps)

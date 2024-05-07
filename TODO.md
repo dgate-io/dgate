@@ -11,11 +11,6 @@
 
 ## Replace zerolog with slog
 
-## Improve async function performance
-
-There is a pretty significant difference in performance when using async function.
-
-
 ## Add Module Tests
 
 - Test multiple modules being used at the same time
@@ -93,38 +88,6 @@ DGate Runtime is a JavaScript/TypeScript runtime that can be used to test module
 
 RuntimePool is a pool of runtimes that can be used to execute modules. It can be used to manage the different modules and clean up resources when they are no longer needed or idle for a certain amount of time.
 
-## TCP Proxy/Gateway (L4LB) (low priority)
-
-Using the same architecture as the HTTP Proxy/Gateway, create a TCP Proxy/Gateway that can be used to proxy TCP connections to upstream servers.
-
-A 'Custom Protocols API'can  allow users to define custom protocols that can be used to proxy TCP connections to upstream servers or handle the connections themselves.
-
-The custom protocols can be defined using JavaScript/TypeScript function or using protocol definitions (API) which will allow these values to be passed to the JavaScript/TypeScript code.
-
-```
-{
-  "name": "custom_protocol",
-  "version": "1",
-  "description": "Custom Protocol",
-  "modules": ["module_x"]
-  "format_definitions": [
-    {
-      "name": "command",
-      "type": "uint8"
-    }
-    {
-      "name": "data_len",
-      "type": "int16"
-    }
-    {
-      "name": "data",
-      "type": "string",
-      "length": "variable.data_len.length"
-    }
-  ]
-}
-```
-
 ## Server Tags
 
 No special characters are allowed in the tag name or value
@@ -174,6 +137,17 @@ A good example of a bundle would be a bundle that adds support for OAuth2 authen
 
 Differing from common resource versioning, modules can have multiple versions that can be used at the same time. This can be used to test new versions of modules before deploying them to the cluster.
 
-## Secrets
 
-- Add support for secrets that can be used in modules. Secrets can be used to store sensitive information like API keys, passwords, etc. Secrets can only be used in modules and cannot be accessed by the API. Explicit permissions can be set to allow certain modules to access certain secrets. Secrets are also versioned and can be rolled back if necessary. This also allows different modules to use different versions of the same secret.
+## DGate CLI - argument variable suggestions
+
+For example, if the user types an argument that is not recognized, the CLI can suggest the correct argument by search the available arguments and finding the closest match.
+```
+dgate-cli ns mk my-ns nmae=my-ns
+Variable 'nmae' is not recognized. Did you mean 'name'?
+```
+
+## Improve Module Debugability
+
+Make it easier to debug modules by adding more logging and error handling. This can be done by adding more logging to the modules and making it easier to see the logs in the Admin Console.
+
+Add stack tracing for typescript modules.

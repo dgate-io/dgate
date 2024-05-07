@@ -2,23 +2,24 @@
 
 set -eo xtrace
 
-ADMIN_URL=${ADMIN_URL:-"http://localhost:9080/api/v1"}
+ADMIN_URL=${ADMIN_URL:-"http://localhost:9080"}
 PROXY_URL=${PROXY_URL:-"http://localhost"}
 
 DIR="$( cd "$( dirname "$0" )" && pwd )"
 
-# domain setup
 
-dgate-cli namespace create \
+export DGATE_ADMIN_API=$ADMIN_URL
+
+dgate-cli -V -f namespace create \
     name=test-ns1
 
 dgate-cli domain create \
     name=test-dm patterns:='["dgate.dev"]' \
-    namespace=test-ns1
+    namespace=test-ns1 priority:=100
 
 dgate-cli service create \
     name=test-svc urls:='["http://localhost:8888"]' \
-    namespace=test-ns1 retries=5
+    namespace=test-ns1 retries:=3 retryTimeout=50ms
     
 MOD_B64="$(base64 < $DIR/performance_test_prep.ts)"
 dgate-cli module create \

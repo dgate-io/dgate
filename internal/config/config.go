@@ -154,7 +154,6 @@ type (
 		MaxResponseHeaderBytes int64         `koanf:"max_response_header_bytes"`
 		WriteBufferSize        int           `koanf:"write_buffer_size"`
 		ReadBufferSize         int           `koanf:"read_buffer_size"`
-		MaxConnsPerClient      int           `koanf:"max_conns_per_client"`
 		MaxBodyBytes           int           `koanf:"max_body_bytes"`
 		DisableKeepAlives      bool          `koanf:"disable_keep_alives"`
 		KeepAlive              time.Duration `koanf:"keep_alive"`

@@ -45,20 +45,14 @@ dgate-cli -f route create \
     preserveHost:=false \
     stripPath:=true
 
+curl -f $ADMIN_URL1/readyz
+
 for i in {1..5}; do
-    curl -f $PROXY_URL1/$id/$i -H Host:$id.example.com
-    curl -f $PROXY_URL2/$id/$i -H Host:$id.example.com
-    curl -f $PROXY_URL3/$id/$i -H Host:$id.example.com
-    curl -f $PROXY_URL4/$id/$i -H Host:$id.example.com
-    curl -f $PROXY_URL5/$id/$i -H Host:$id.example.com
+    for j in {1..3}; do
+        proxy_url=PROXY_URL$i
+        curl -f ${!proxy_url}/$id/$j -H Host:$id.example.com
+    done
 done
-
-dgate-cli -V --admin $ADMIN_URL1 route get name=rt-$id namespace=ns-$id
-dgate-cli -V --admin $ADMIN_URL2 route get name=rt-$id namespace=ns-$id
-dgate-cli -V --admin $ADMIN_URL3 route get name=rt-$id namespace=ns-$id
-dgate-cli -V --admin $ADMIN_URL4 route get name=rt-$id namespace=ns-$id
-dgate-cli -V --admin $ADMIN_URL5 route get name=rt-$id namespace=ns-$id
-
 
 if dgate-cli --admin $ADMIN_URL4 namespace create name=0; then
     echo "Expected error when creating namespace"

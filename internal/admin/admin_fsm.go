@@ -81,7 +81,11 @@ func (fsm *dgateAdminFSM) applyLog(log *raft.Log) (*spec.ChangeLog, error) {
 				Msgf("%d: config update - server: %s", i, server.Address)
 		}
 	case raft.LogBarrier:
-		fsm.ps.WaitForChanges()
+		err := fsm.ps.WaitForChanges()
+		if err != nil {
+			fsm.logger.Err(err).
+				Msg("Error waiting for changes")
+		}
 	default:
 		fsm.ps.Logger().Error().
 			Msg("Unknown log type in FSM Apply")
