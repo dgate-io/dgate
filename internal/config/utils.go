@@ -12,15 +12,21 @@ import (
 )
 
 type FoundFunc func(string, map[string]string) (string, error)
-
 type ErrorFunc func(map[string]string, error)
 
-func resolveConfigStringPattern(data map[string]any, re *regexp.Regexp, foundFunc FoundFunc, errorFunc ErrorFunc) {
+func resolveConfigStringPattern(
+	data map[string]any,
+	re *regexp.Regexp,
+	foundFunc FoundFunc,
+	errorFunc ErrorFunc,
+) {
 	for k, v := range data {
 		var values []string
 		switch vt := v.(type) {
 		case string:
 			values = []string{vt}
+		case []string:
+			values = vt
 		case []any:
 			values = sliceMap(vt, func(val any) string {
 				if s, ok := val.(string); ok {
@@ -29,6 +35,12 @@ func resolveConfigStringPattern(data map[string]any, re *regexp.Regexp, foundFun
 				return fmt.Sprint(val)
 			})
 			if len(values) == 0 {
+				continue
+			}
+		case any:
+			if vv, ok := vt.(string); ok {
+				values = []string{vv}
+			} else {
 				continue
 			}
 		default:

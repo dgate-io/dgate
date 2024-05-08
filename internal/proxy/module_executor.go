@@ -5,14 +5,13 @@ import (
 	"errors"
 )
 
-type ModuleBuffer interface {
-	// Load(cb func())
+type ModulePool interface {
 	Borrow() ModuleExtractor
 	Return(me ModuleExtractor)
 	Close()
 }
 
-type moduleBuffer struct {
+type modulePool struct {
 	modExtBuffer chan ModuleExtractor
 	min, max     int
 
@@ -22,11 +21,11 @@ type moduleBuffer struct {
 	createModuleExtract func() ModuleExtractor
 }
 
-func NewModuleBuffer(
+func NewModulePool(
 	minBuffers, maxBuffers int,
 	reqCtxProvider *RequestContextProvider,
 	createModExts func(*RequestContextProvider) ModuleExtractor,
-) (ModuleBuffer, error) {
+) (ModulePool, error) {
 	if minBuffers < 1 {
 		panic("module concurrency must be greater than 0")
 	}
@@ -38,7 +37,7 @@ func NewModuleBuffer(
 	if me == nil {
 		return nil, errors.New("could not load moduleExtract")
 	}
-	mb := &moduleBuffer{
+	mb := &modulePool{
 		min:          minBuffers,
 		max:          maxBuffers,
 		modExtBuffer: make(chan ModuleExtractor, maxBuffers),
@@ -50,7 +49,7 @@ func NewModuleBuffer(
 	return mb, nil
 }
 
-func (mb *moduleBuffer) Borrow() ModuleExtractor {
+func (mb *modulePool) Borrow() ModuleExtractor {
 	if mb == nil || mb.ctx == nil || mb.ctx.Err() != nil {
 		return nil
 	}
@@ -65,7 +64,7 @@ func (mb *moduleBuffer) Borrow() ModuleExtractor {
 	return me
 }
 
-func (mb *moduleBuffer) Return(me ModuleExtractor) {
+func (mb *modulePool) Return(me ModuleExtractor) {
 	// if context is canceled, do not return module extract
 	if mb.ctx != nil && mb.ctx.Err() == nil {
 		select {
@@ -78,7 +77,7 @@ func (mb *moduleBuffer) Return(me ModuleExtractor) {
 	me.Stop(true)
 }
 
-func (mb *moduleBuffer) Close() {
+func (mb *modulePool) Close() {
 	if mb.ctxCancel != nil {
 		mb.ctxCancel()
 	}

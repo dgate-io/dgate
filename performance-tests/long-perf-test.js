@@ -17,7 +17,7 @@ export let options = {
     },
     modtest_wait: {
       executor: 'constant-vus',
-      vus: n*5,
+      vus: n*3,
       duration: inc + 'm',
       startTime: (curWait += inc) + 'm',
       exec: 'dgatePath',
@@ -35,7 +35,7 @@ export let options = {
     },
     svctest_wait: {
       executor: 'constant-vus',
-      vus: n*5,
+      vus: n*3,
       duration: inc + 'm',
       startTime: (curWait += inc) + 'm',
       exec: 'dgatePath',
@@ -61,6 +61,24 @@ export let options = {
       gracefulStop: '5s',
     },
   },
+    // test_server_direct: {
+    //   executor: 'constant-vus',
+    //   vus: n,
+    //   duration: inc + 'm',
+    //   startTime: (curWait += inc) + 'm',
+    //   exec: 'dgatePath',
+    //   env: { DGATE_PATH: ":8888/direct" },
+    //   gracefulStop: '5s',
+    // },
+    // test_server_direct_wait: {
+    //   executor: 'constant-vus',
+    //   vus: n*3,
+    //   duration: inc + 'm',
+    //   startTime: (curWait += inc) + 'm',
+    //   exec: 'dgatePath',
+    //   env: { DGATE_PATH: ":8888/svctest?wait=30ms" },
+    //   gracefulStop: '5s',
+    // },
   discardResponseBodies: true,
 };
 

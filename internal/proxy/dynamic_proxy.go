@@ -110,7 +110,7 @@ func (ps *ProxyState) setupRoutes() (err error) {
 			reqCtxProvider := NewRequestContextProvider(r, ps)
 			reqCtxProviders.Insert(r.Namespace.Name+"/"+r.Name, reqCtxProvider)
 			if len(r.Modules) > 0 {
-				modBuf, err := NewModuleBuffer(
+				modPool, err := NewModulePool(
 					256, 1024, reqCtxProvider,
 					ps.createModuleExtractorFunc(r),
 				)
@@ -118,7 +118,7 @@ func (ps *ProxyState) setupRoutes() (err error) {
 					ps.logger.Err(err).Msg("Error creating module buffer")
 					return err
 				}
-				reqCtxProvider.SetModuleBuffer(modBuf)
+				reqCtxProvider.SetModulePool(modPool)
 			}
 			err = func() (err error) {
 				defer func() {
@@ -229,7 +229,7 @@ func (ps *ProxyState) startChangeLoop() {
 		func() {
 			ps.proxyLock.Lock()
 			defer ps.proxyLock.Unlock()
-			
+
 			err := ps.reconfigureState(false, log)
 			if log.PushError(err); err != nil {
 				ps.logger.Err(err).
@@ -352,7 +352,7 @@ func (ps *ProxyState) Stop() {
 
 func (ps *ProxyState) HandleRoute(requestCtxProvider *RequestContextProvider, pattern string) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		// ctx, cancel := context.WithCancel(requestCtxProvider.ctx)
+		// ctx, cancel := context.WithCancel(requestCtxPrdovider.ctx)
 		// defer cancel()
 		ps.ProxyHandlerFunc(ps, requestCtxProvider.
 			CreateRequestContext(requestCtxProvider.ctx, w, r, pattern))

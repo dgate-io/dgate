@@ -10,7 +10,6 @@ import (
 	"path"
 	"regexp"
 	"strings"
-	"time"
 
 	"github.com/dgate-io/dgate/pkg/util"
 	"github.com/hashicorp/raft"
@@ -24,13 +23,13 @@ import (
 	"github.com/mitchellh/mapstructure"
 )
 
-func LoadConfig(dgateConfigPath string) (*DGateConfig, error) {
-	ctx, cancel := context.WithTimeout(
-		context.Background(),
-		time.Second*10,
-	)
-	defer cancel()
+var (
+	EnvVarRegex  = regexp.MustCompile(`\${(?P<var_name>[a-zA-Z0-9_]{1,})(:-(?P<default>.*?)?)?}`)
+	CommandRegex = regexp.MustCompile(`\$\((?P<cmd>.*?)\)`)
+)
 
+func LoadConfig(dgateConfigPath string) (*DGateConfig, error) {
+	ctx := context.Background()
 	var dgateConfigData string
 	if dgateConfigPath == "" {
 		dgateConfigPath = os.Getenv("DG_CONFIG_PATH")
@@ -91,33 +90,34 @@ func LoadConfig(dgateConfigPath string) (*DGateConfig, error) {
 	}
 
 	panicVars := []string{}
-	data := k.All()
 	if !util.EnvVarCheckBool("DG_DISABLE_SHELL_PARSER") {
-		commandRegex := regexp.MustCompile(`\$\((?P<cmd>.*?)\)`)
+		data := k.All()
 		shell := "/bin/sh"
-		if shellEnv, exists := os.LookupEnv("SHELL"); exists {
+		if shellEnv := os.Getenv("SHELL"); shellEnv != "" {
 			shell = shellEnv
-		}
-		resolveConfigStringPattern(data, commandRegex, func(value string, results map[string]string) (string, error) {
-			cmdResult, err := exec.CommandContext(ctx, shell, "-c", results["cmd"]).Output()
+		} 
+		resolveConfigStringPattern(data, CommandRegex, func(value string, results map[string]string) (string, error) {
+			cmdResult, err := exec.CommandContext(
+				ctx, shell, "-c", results["cmd"]).Output()
 			if err != nil {
+				panicVars = append(panicVars, results["cmd"])
 				return "", err
 			}
 			return strings.TrimSpace(string(cmdResult)), nil
 		}, func(results map[string]string, err error) {
 			panic("error on command - `" + results["cmd"] + "`: " + err.Error())
 		})
+		k.Load(confmap.Provider(data, "."), nil)
 	}
 
 	if !util.EnvVarCheckBool("DG_DISABLE_ENV_PARSER") {
-		envVarRe := regexp.MustCompile(`\${(?P<var_name>[a-zA-Z0-9_]{1,})(:-(?P<default>.*?)?)?}`)
-		resolveConfigStringPattern(data, envVarRe, func(value string, results map[string]string) (string, error) {
+		data := k.All()
+		resolveConfigStringPattern(data, EnvVarRegex, func(value string, results map[string]string) (string, error) {
 			if envVar := os.Getenv(results["var_name"]); envVar != "" {
 				return envVar, nil
 			} else if strings.Contains(value, results["var_name"]+":-") {
 				return results["default"], nil
 			}
-			panicVars = append(panicVars, results["var_name"])
 			return "", nil
 		}, func(results map[string]string, err error) {
 			panicVars = append(panicVars, results["var_name"])
@@ -126,9 +126,8 @@ func LoadConfig(dgateConfigPath string) (*DGateConfig, error) {
 		if len(panicVars) > 0 {
 			panic("required env vars not set: " + strings.Join(panicVars, ", "))
 		}
+		k.Load(confmap.Provider(data, "."), nil)
 	}
-
-	k.Load(confmap.Provider(data, "."), nil)
 
 	// validate configuration
 	var err error
@@ -168,11 +167,11 @@ func LoadConfig(dgateConfigPath string) (*DGateConfig, error) {
 		return nil, err
 	}
 
-	kDefault(k, "proxy.transport.max_idle_conns", 100)
-	kDefault(k, "proxy.transport.force_attempt_http2", true)
-	kDefault(k, "proxy.transport.idle_conn_timeout", "90s")
-	kDefault(k, "proxy.transport.tls_handshake_timeout", "10s")
-	kDefault(k, "proxy.transport.expect_continue_timeout", "1s")
+	// kDefault(k, "proxy.transport.max_idle_conns", 100)
+	// kDefault(k, "proxy.transport.force_attempt_http2", true)
+	// kDefault(k, "proxy.transport.idle_conn_timeout", "90s")
+	// kDefault(k, "proxy.transport.tls_handshake_timeout", "10s")
+	// kDefault(k, "proxy.transport.expect_continue_timeout", "1s")
 	if k.Exists("test_server") {
 		kDefault(k, "test_server.enable_h2c", true)
 		kDefault(k, "test_server.enable_http2", true)

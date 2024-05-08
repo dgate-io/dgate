@@ -61,14 +61,19 @@ func TestProxyHandler_ReverseProxy(t *testing.T) {
 
 		modExt := NewMockModuleExtractor()
 		modExt.ConfigureDefaultMock(req, wr, ps, rt)
-		modBuf := NewMockModuleBuffer()
+		modBuf := NewMockModulePool()
 		modBuf.On("Borrow").Return(modExt).Once()
 		modBuf.On("Return", modExt).Return().Once()
-		reqCtxProvider.SetModuleBuffer(modBuf)
+		reqCtxProvider.SetModulePool(modBuf)
+
+		modPool := NewMockModulePool()
+		modPool.On("Borrow").Return(modExt).Once()
+		modPool.On("Return", modExt).Return().Once()
+		reqCtxProvider.SetModulePool(modPool)
 		ps.ProxyHandlerFunc(ps, reqCtx)
 
 		wr.AssertExpectations(t)
-		modBuf.AssertExpectations(t)
+		modPool.AssertExpectations(t)
 		modExt.AssertExpectations(t)
 		rpBuilder.AssertExpectations(t)
 		// rpe.AssertExpectations(t)
@@ -117,17 +122,17 @@ func TestProxyHandler_ProxyHandler(t *testing.T) {
 		reqCtxProvider := proxy.NewRequestContextProvider(rt, ps)
 		modExt := NewMockModuleExtractor()
 		modExt.ConfigureDefaultMock(req, wr, ps, rt)
-		modBuf := NewMockModuleBuffer()
-		modBuf.On("Borrow").Return(modExt).Once()
-		modBuf.On("Return", modExt).Return().Once()
-		reqCtxProvider.SetModuleBuffer(modBuf)
+		modPool := NewMockModulePool()
+		modPool.On("Borrow").Return(modExt).Once()
+		modPool.On("Return", modExt).Return().Once()
+		reqCtxProvider.SetModulePool(modPool)
 
 		reqCtx := reqCtxProvider.CreateRequestContext(
 			context.Background(), wr, req, "/")
 		ps.ProxyHandlerFunc(ps, reqCtx)
 
 		wr.AssertExpectations(t)
-		modBuf.AssertExpectations(t)
+		modPool.AssertExpectations(t)
 		modExt.AssertExpectations(t)
 	}
 }
@@ -169,18 +174,18 @@ func TestProxyHandler_ProxyHandlerError(t *testing.T) {
 
 		modExt := NewMockModuleExtractor()
 		modExt.ConfigureDefaultMock(req, wr, ps, rt)
-		modBuf := NewMockModuleBuffer()
-		modBuf.On("Borrow").Return(modExt).Once()
-		modBuf.On("Return", modExt).Return().Once()
+		modPool := NewMockModulePool()
+		modPool.On("Borrow").Return(modExt).Once()
+		modPool.On("Return", modExt).Return().Once()
 
 		reqCtxProvider := proxy.NewRequestContextProvider(rt, ps)
-		reqCtxProvider.SetModuleBuffer(modBuf)
+		reqCtxProvider.SetModulePool(modPool)
 		reqCtx := reqCtxProvider.CreateRequestContext(
 			context.Background(), wr, req, "/")
 		ps.ProxyHandlerFunc(ps, reqCtx)
 
 		wr.AssertExpectations(t)
-		modBuf.AssertExpectations(t)
+		modPool.AssertExpectations(t)
 		modExt.AssertExpectations(t)
 	}
 }

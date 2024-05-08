@@ -405,17 +405,3 @@ func clone[K cmp.Ordered, V any](root *node[K, V], fn func(K, V) V) *node[K, V] 
 		right: clone(root.right, fn),
 	}
 }
-
-// MarshalJSON returns the JSON encoding of the AVL tree.
-// func (t *tree[K, V]) MarshalJSON() ([]byte, error) {
-// 	t.mtx.RLock()
-// 	defer t.mtx.RUnlock()
-// 	return json.Marshal(t.root)
-// }
-
-// UnmarshalJSON decodes the JSON encoding of the AVL tree.
-// func (t *tree[K, V]) UnmarshalJSON(data []byte) error {
-// 	t.mtx.Lock()
-// 	defer t.mtx.Unlock()
-// 	return json.Unmarshal(data, &t.root)
-// }
