@@ -12,7 +12,7 @@ import (
 	"golang.org/x/term"
 )
 
-func Run(client dgclient.DGateClient, version string) {
+func Run(client dgclient.DGateClient, version string) error {
 	if buildInfo, ok := debug.ReadBuildInfo(); ok {
 		bv := buildInfo.Main.Version
 		if bv != "" && bv != "(devel)" {
@@ -106,8 +106,5 @@ func Run(client dgclient.DGateClient, version string) {
 		},
 	}
 
-	if err := app.Run(os.Args); err != nil {
-		fmt.Println(err)
-		os.Exit(1)
-	}
+	return app.Run(os.Args)
 }
