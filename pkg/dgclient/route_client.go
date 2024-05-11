@@ -6,7 +6,16 @@ import (
 	"github.com/dgate-io/dgate/pkg/spec"
 )
 
-func (d *DGateClient) GetRoute(name, namespace string) (*spec.Route, error) {
+type DGateRouteClient interface {
+	GetRoute(name, namespace string) (*spec.Route, error)
+	CreateRoute(rt *spec.Route) error
+	DeleteRoute(name, namespace string) error
+	ListRoute(namespace string) ([]*spec.Route, error)
+}
+
+var _ DGateRouteClient = &dgateClient{}
+
+func (d *dgateClient) GetRoute(name, namespace string) (*spec.Route, error) {
 	query := d.baseUrl.Query()
 	query.Set("namespace", namespace)
 	d.baseUrl.RawQuery = query.Encode()
@@ -17,7 +26,7 @@ func (d *DGateClient) GetRoute(name, namespace string) (*spec.Route, error) {
 	return commonGet[spec.Route](d.client, uri)
 }
 
-func (d *DGateClient) CreateRoute(rt *spec.Route) error {
+func (d *dgateClient) CreateRoute(rt *spec.Route) error {
 	uri, err := url.JoinPath(d.baseUrl.String(), "/api/v1/route")
 	if err != nil {
 		return err
@@ -25,7 +34,7 @@ func (d *DGateClient) CreateRoute(rt *spec.Route) error {
 	return commonPut(d.client, uri, rt)
 }
 
-func (d *DGateClient) DeleteRoute(name, namespace string) error {
+func (d *dgateClient) DeleteRoute(name, namespace string) error {
 	uri, err := url.JoinPath(d.baseUrl.String(), "/api/v1/route")
 	if err != nil {
 		return err
@@ -33,7 +42,7 @@ func (d *DGateClient) DeleteRoute(name, namespace string) error {
 	return commonDelete(d.client, uri, name, namespace)
 }
 
-func (d *DGateClient) ListRoute(namespace string) ([]*spec.Route, error) {
+func (d *dgateClient) ListRoute(namespace string) ([]*spec.Route, error) {
 	query := d.baseUrl.Query()
 	query.Set("namespace", namespace)
 	d.baseUrl.RawQuery = query.Encode()

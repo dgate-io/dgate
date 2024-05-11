@@ -6,7 +6,14 @@ import (
 	"github.com/dgate-io/dgate/pkg/spec"
 )
 
-func (d *DGateClient) GetService(name, namespace string) (*spec.Service, error) {
+type DGateServiceClient interface {
+	GetService(name, namespace string) (*spec.Service, error)
+	CreateService(svc *spec.Service) error
+	DeleteService(name, namespace string) error
+	ListService(namespace string) ([]*spec.Service, error)
+}
+
+func (d *dgateClient) GetService(name, namespace string) (*spec.Service, error) {
 	query := d.baseUrl.Query()
 	query.Set("namespace", namespace)
 	d.baseUrl.RawQuery = query.Encode()
@@ -17,7 +24,7 @@ func (d *DGateClient) GetService(name, namespace string) (*spec.Service, error) 
 	return commonGet[spec.Service](d.client, uri)
 }
 
-func (d *DGateClient) CreateService(svc *spec.Service) error {
+func (d *dgateClient) CreateService(svc *spec.Service) error {
 	uri, err := url.JoinPath(d.baseUrl.String(), "/api/v1/service")
 	if err != nil {
 		return err
@@ -25,7 +32,7 @@ func (d *DGateClient) CreateService(svc *spec.Service) error {
 	return commonPut(d.client, uri, svc)
 }
 
-func (d *DGateClient) DeleteService(name, namespace string) error {
+func (d *dgateClient) DeleteService(name, namespace string) error {
 	uri, err := url.JoinPath(d.baseUrl.String(), "/api/v1/service")
 	if err != nil {
 		return err
@@ -33,7 +40,7 @@ func (d *DGateClient) DeleteService(name, namespace string) error {
 	return commonDelete(d.client, uri, name, namespace)
 }
 
-func (d *DGateClient) ListService(namespace string) ([]*spec.Service, error) {
+func (d *dgateClient) ListService(namespace string) ([]*spec.Service, error) {
 	query := d.baseUrl.Query()
 	query.Set("namespace", namespace)
 	d.baseUrl.RawQuery = query.Encode()

@@ -6,7 +6,7 @@ import (
 	"github.com/urfave/cli/v2"
 )
 
-func DocumentCommand(client *dgclient.DGateClient) *cli.Command {
+func DocumentCommand(client dgclient.DGateClient) *cli.Command {
 	return &cli.Command{
 		Name:      "document",
 		Aliases:   []string{"doc"},

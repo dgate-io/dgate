@@ -6,7 +6,7 @@ import (
 	"github.com/urfave/cli/v2"
 )
 
-func NamespaceCommand(client *dgclient.DGateClient) *cli.Command {
+func NamespaceCommand(client dgclient.DGateClient) *cli.Command {
 	return &cli.Command{
 		Name:    "namespace",
 		Aliases: []string{"ns"},

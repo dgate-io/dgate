@@ -6,45 +6,45 @@ import (
 	"github.com/urfave/cli/v2"
 )
 
-func ModuleCommand(client *dgclient.DGateClient) *cli.Command {
+func DomainCommand(client dgclient.DGateClient) *cli.Command {
 	return &cli.Command{
-		Name:      "module",
-		Aliases:   []string{"mod"},
+		Name:      "domain",
+		Aliases:   []string{"dom"},
 		Args:      true,
 		ArgsUsage: "<command> <name>",
-		Usage:     "module commands",
+		Usage:     "domain commands",
 		Subcommands: []*cli.Command{
 			{
 				Name:    "create",
 				Aliases: []string{"mk"},
-				Usage:   "create a module",
+				Usage:   "create a domain",
 				Action: func(ctx *cli.Context) error {
-					mod, err := createMapFromArgs[spec.Module](
-						ctx.Args().Slice(), "name", "payload",
+					dom, err := createMapFromArgs[spec.Domain](
+						ctx.Args().Slice(), "name", "patterns",
 					)
 					if err != nil {
 						return err
 					}
-					err = client.CreateModule(mod)
+					err = client.CreateDomain(dom)
 					if err != nil {
 						return err
 					}
-					return jsonPrettyPrint(mod)
+					return jsonPrettyPrint(dom)
 				},
 			},
 			{
 				Name:    "delete",
 				Aliases: []string{"rm"},
-				Usage:   "delete a module",
+				Usage:   "delete a domain",
 				Action: func(ctx *cli.Context) error {
-					mod, err := createMapFromArgs[spec.Module](
+					dom, err := createMapFromArgs[spec.Domain](
 						ctx.Args().Slice(), "name",
 					)
 					if err != nil {
 						return err
 					}
-					err = client.DeleteModule(
-						mod.Name, mod.NamespaceName,
+					err = client.DeleteDomain(
+						dom.Name, dom.NamespaceName,
 					)
 					if err != nil {
 						return err
@@ -55,7 +55,7 @@ func ModuleCommand(client *dgclient.DGateClient) *cli.Command {
 			{
 				Name:    "list",
 				Aliases: []string{"ls"},
-				Usage:   "list modules",
+				Usage:   "list domains",
 				Action: func(ctx *cli.Context) error {
 					nsp, err := createMapFromArgs[dgclient.NamespacePayload](
 						ctx.Args().Slice(),
@@ -63,30 +63,30 @@ func ModuleCommand(client *dgclient.DGateClient) *cli.Command {
 					if err != nil {
 						return err
 					}
-					mod, err := client.ListModule(nsp.Namespace)
+					dom, err := client.ListDomain(nsp.Namespace)
 					if err != nil {
 						return err
 					}
-					return jsonPrettyPrint(mod)
+					return jsonPrettyPrint(dom)
 				},
 			},
 			{
 				Name:  "get",
-				Usage: "get a module",
+				Usage: "get a domain",
 				Action: func(ctx *cli.Context) error {
-					mod, err := createMapFromArgs[spec.Module](
+					dom, err := createMapFromArgs[spec.Domain](
 						ctx.Args().Slice(), "name",
 					)
 					if err != nil {
 						return err
 					}
-					mod, err = client.GetModule(
-						mod.Name, mod.NamespaceName,
+					dom, err = client.GetDomain(
+						dom.Name, dom.NamespaceName,
 					)
 					if err != nil {
 						return err
 					}
-					return jsonPrettyPrint(mod)
+					return jsonPrettyPrint(dom)
 				},
 			},
 		},

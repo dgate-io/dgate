@@ -6,47 +6,46 @@ import (
 	"github.com/urfave/cli/v2"
 )
 
-func SecretCommand(client *dgclient.DGateClient) *cli.Command {
+func ModuleCommand(client dgclient.DGateClient) *cli.Command {
 	return &cli.Command{
-		Name:      "secret",
-		Aliases:   []string{"sec"},
+		Name:      "module",
+		Aliases:   []string{"mod"},
 		Args:      true,
 		ArgsUsage: "<command> <name>",
-		Usage:     "secret commands",
+		Usage:     "module commands",
 		Subcommands: []*cli.Command{
 			{
 				Name:    "create",
 				Aliases: []string{"mk"},
-				Usage:   "create a secret",
+				Usage:   "create a module",
 				Action: func(ctx *cli.Context) error {
-					sec, err := createMapFromArgs[spec.Secret](
-						ctx.Args().Slice(), "name", "data",
+					mod, err := createMapFromArgs[spec.Module](
+						ctx.Args().Slice(), "name", "payload",
 					)
 					if err != nil {
 						return err
 					}
-					err = client.CreateSecret(sec)
+					err = client.CreateModule(mod)
 					if err != nil {
 						return err
 					}
-					// redact the data field
-					sec.Data = "**redacted**"
-					return jsonPrettyPrint(sec)
+					return jsonPrettyPrint(mod)
 				},
 			},
 			{
 				Name:    "delete",
 				Aliases: []string{"rm"},
-				Usage:   "delete a secret",
+				Usage:   "delete a module",
 				Action: func(ctx *cli.Context) error {
-					sec, err := createMapFromArgs[spec.Secret](
+					mod, err := createMapFromArgs[spec.Module](
 						ctx.Args().Slice(), "name",
 					)
 					if err != nil {
 						return err
 					}
-					err = client.DeleteSecret(
-						sec.Name, sec.NamespaceName)
+					err = client.DeleteModule(
+						mod.Name, mod.NamespaceName,
+					)
 					if err != nil {
 						return err
 					}
@@ -56,7 +55,7 @@ func SecretCommand(client *dgclient.DGateClient) *cli.Command {
 			{
 				Name:    "list",
 				Aliases: []string{"ls"},
-				Usage:   "list services",
+				Usage:   "list modules",
 				Action: func(ctx *cli.Context) error {
 					nsp, err := createMapFromArgs[dgclient.NamespacePayload](
 						ctx.Args().Slice(),
@@ -64,30 +63,30 @@ func SecretCommand(client *dgclient.DGateClient) *cli.Command {
 					if err != nil {
 						return err
 					}
-					sec, err := client.ListSecret(nsp.Namespace)
+					mod, err := client.ListModule(nsp.Namespace)
 					if err != nil {
 						return err
 					}
-					return jsonPrettyPrint(sec)
+					return jsonPrettyPrint(mod)
 				},
 			},
 			{
 				Name:  "get",
-				Usage: "get a secret",
+				Usage: "get a module",
 				Action: func(ctx *cli.Context) error {
-					s, err := createMapFromArgs[spec.Secret](
+					mod, err := createMapFromArgs[spec.Module](
 						ctx.Args().Slice(), "name",
 					)
 					if err != nil {
 						return err
 					}
-					sec, err := client.GetSecret(
-						s.Name, s.NamespaceName,
+					mod, err = client.GetModule(
+						mod.Name, mod.NamespaceName,
 					)
 					if err != nil {
 						return err
 					}
-					return jsonPrettyPrint(sec)
+					return jsonPrettyPrint(mod)
 				},
 			},
 		},

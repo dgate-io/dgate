@@ -6,45 +6,46 @@ import (
 	"github.com/urfave/cli/v2"
 )
 
-func DomainCommand(client *dgclient.DGateClient) *cli.Command {
+func RouteCommand(client dgclient.DGateClient) *cli.Command {
 	return &cli.Command{
-		Name:      "domain",
-		Aliases:   []string{"dom"},
+		Name:      "route",
+		Aliases:   []string{"rt"},
 		Args:      true,
 		ArgsUsage: "<command> <name>",
-		Usage:     "domain commands",
+		Usage:     "route commands",
 		Subcommands: []*cli.Command{
 			{
 				Name:    "create",
 				Aliases: []string{"mk"},
-				Usage:   "create a domain",
+				Usage:   "create a route",
 				Action: func(ctx *cli.Context) error {
-					dom, err := createMapFromArgs[spec.Domain](
-						ctx.Args().Slice(), "name", "patterns",
+					rt, err := createMapFromArgs[spec.Route](
+						ctx.Args().Slice(), "name",
+						"paths", "methods",
 					)
 					if err != nil {
 						return err
 					}
-					err = client.CreateDomain(dom)
+					err = client.CreateRoute(rt)
 					if err != nil {
 						return err
 					}
-					return jsonPrettyPrint(dom)
+					return jsonPrettyPrint(rt)
 				},
 			},
 			{
 				Name:    "delete",
 				Aliases: []string{"rm"},
-				Usage:   "delete a domain",
+				Usage:   "delete a route",
 				Action: func(ctx *cli.Context) error {
-					dom, err := createMapFromArgs[spec.Domain](
+					rt, err := createMapFromArgs[spec.Route](
 						ctx.Args().Slice(), "name",
 					)
 					if err != nil {
 						return err
 					}
-					err = client.DeleteDomain(
-						dom.Name, dom.NamespaceName,
+					err = client.DeleteRoute(
+						rt.Name, rt.NamespaceName,
 					)
 					if err != nil {
 						return err
@@ -55,7 +56,7 @@ func DomainCommand(client *dgclient.DGateClient) *cli.Command {
 			{
 				Name:    "list",
 				Aliases: []string{"ls"},
-				Usage:   "list domains",
+				Usage:   "list routes",
 				Action: func(ctx *cli.Context) error {
 					nsp, err := createMapFromArgs[dgclient.NamespacePayload](
 						ctx.Args().Slice(),
@@ -63,30 +64,30 @@ func DomainCommand(client *dgclient.DGateClient) *cli.Command {
 					if err != nil {
 						return err
 					}
-					dom, err := client.ListDomain(nsp.Namespace)
+					rt, err := client.ListRoute(nsp.Namespace)
 					if err != nil {
 						return err
 					}
-					return jsonPrettyPrint(dom)
+					return jsonPrettyPrint(rt)
 				},
 			},
 			{
 				Name:  "get",
-				Usage: "get a domain",
+				Usage: "get a route",
 				Action: func(ctx *cli.Context) error {
-					dom, err := createMapFromArgs[spec.Domain](
+					rt, err := createMapFromArgs[spec.Route](
 						ctx.Args().Slice(), "name",
 					)
 					if err != nil {
 						return err
 					}
-					dom, err = client.GetDomain(
-						dom.Name, dom.NamespaceName,
+					rt, err = client.GetRoute(
+						rt.Name, rt.NamespaceName,
 					)
 					if err != nil {
 						return err
 					}
-					return jsonPrettyPrint(dom)
+					return jsonPrettyPrint(rt)
 				},
 			},
 		},

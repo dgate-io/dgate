@@ -6,46 +6,45 @@ import (
 	"github.com/urfave/cli/v2"
 )
 
-func RouteCommand(client *dgclient.DGateClient) *cli.Command {
+func ServiceCommand(client dgclient.DGateClient) *cli.Command {
 	return &cli.Command{
-		Name:      "route",
-		Aliases:   []string{"rt"},
+		Name:      "service",
+		Aliases:   []string{"svc"},
 		Args:      true,
 		ArgsUsage: "<command> <name>",
-		Usage:     "route commands",
+		Usage:     "service commands",
 		Subcommands: []*cli.Command{
 			{
 				Name:    "create",
 				Aliases: []string{"mk"},
-				Usage:   "create a route",
+				Usage:   "create a service",
 				Action: func(ctx *cli.Context) error {
-					rt, err := createMapFromArgs[spec.Route](
-						ctx.Args().Slice(), "name",
-						"paths", "methods",
+					svc, err := createMapFromArgs[spec.Service](
+						ctx.Args().Slice(), "name", "urls",
 					)
 					if err != nil {
 						return err
 					}
-					err = client.CreateRoute(rt)
+					err = client.CreateService(svc)
 					if err != nil {
 						return err
 					}
-					return jsonPrettyPrint(rt)
+					return jsonPrettyPrint(svc)
 				},
 			},
 			{
 				Name:    "delete",
 				Aliases: []string{"rm"},
-				Usage:   "delete a route",
+				Usage:   "delete a service",
 				Action: func(ctx *cli.Context) error {
-					rt, err := createMapFromArgs[spec.Route](
+					svc, err := createMapFromArgs[spec.Service](
 						ctx.Args().Slice(), "name",
 					)
 					if err != nil {
 						return err
 					}
-					err = client.DeleteRoute(
-						rt.Name, rt.NamespaceName,
+					err = client.DeleteService(
+						svc.Name, svc.NamespaceName,
 					)
 					if err != nil {
 						return err
@@ -56,7 +55,7 @@ func RouteCommand(client *dgclient.DGateClient) *cli.Command {
 			{
 				Name:    "list",
 				Aliases: []string{"ls"},
-				Usage:   "list routes",
+				Usage:   "list services",
 				Action: func(ctx *cli.Context) error {
 					nsp, err := createMapFromArgs[dgclient.NamespacePayload](
 						ctx.Args().Slice(),
@@ -64,30 +63,30 @@ func RouteCommand(client *dgclient.DGateClient) *cli.Command {
 					if err != nil {
 						return err
 					}
-					rt, err := client.ListRoute(nsp.Namespace)
+					svc, err := client.ListService(nsp.Namespace)
 					if err != nil {
 						return err
 					}
-					return jsonPrettyPrint(rt)
+					return jsonPrettyPrint(svc)
 				},
 			},
 			{
 				Name:  "get",
-				Usage: "get a route",
+				Usage: "get a service",
 				Action: func(ctx *cli.Context) error {
-					rt, err := createMapFromArgs[spec.Route](
+					svc, err := createMapFromArgs[spec.Service](
 						ctx.Args().Slice(), "name",
 					)
 					if err != nil {
 						return err
 					}
-					rt, err = client.GetRoute(
-						rt.Name, rt.NamespaceName,
+					ns, err := client.GetService(
+						svc.Name, svc.NamespaceName,
 					)
 					if err != nil {
 						return err
 					}
-					return jsonPrettyPrint(rt)
+					return jsonPrettyPrint(ns)
 				},
 			},
 		},
