@@ -119,7 +119,7 @@ func WithFollowRedirect(follow bool) Options {
 		if d, ok := dc.(*dgateClient); ok {
 			d.client.CheckRedirect = func(req *http.Request, via []*http.Request) error {
 				if follow {
-					d.client.CheckRedirect = nil
+					return nil
 				}
 				return http.ErrUseLastResponse
 			}
