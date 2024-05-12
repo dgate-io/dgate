@@ -6,7 +6,16 @@ import (
 	"github.com/dgate-io/dgate/pkg/spec"
 )
 
-func (d *DGateClient) GetModule(name, namespace string) (*spec.Module, error) {
+type DGateModuleClient interface {
+	GetModule(name, namespace string) (*spec.Module, error)
+	CreateModule(mod *spec.Module) error
+	DeleteModule(name, namespace string) error
+	ListModule(namespace string) ([]*spec.Module, error)
+}
+
+var _ DGateModuleClient = &dgateClient{}
+
+func (d *dgateClient) GetModule(name, namespace string) (*spec.Module, error) {
 	query := d.baseUrl.Query()
 	query.Set("namespace", namespace)
 	d.baseUrl.RawQuery = query.Encode()
@@ -17,7 +26,7 @@ func (d *DGateClient) GetModule(name, namespace string) (*spec.Module, error) {
 	return commonGet[spec.Module](d.client, uri)
 }
 
-func (d *DGateClient) CreateModule(mod *spec.Module) error {
+func (d *dgateClient) CreateModule(mod *spec.Module) error {
 	uri, err := url.JoinPath(d.baseUrl.String(), "/api/v1/module")
 	if err != nil {
 		return err
@@ -25,7 +34,7 @@ func (d *DGateClient) CreateModule(mod *spec.Module) error {
 	return commonPut(d.client, uri, mod)
 }
 
-func (d *DGateClient) DeleteModule(name, namespace string) error {
+func (d *dgateClient) DeleteModule(name, namespace string) error {
 	uri, err := url.JoinPath(d.baseUrl.String(), "/api/v1/module")
 	if err != nil {
 		return err
@@ -33,7 +42,7 @@ func (d *DGateClient) DeleteModule(name, namespace string) error {
 	return commonDelete(d.client, uri, name, namespace)
 }
 
-func (d *DGateClient) ListModule(namespace string) ([]*spec.Module, error) {
+func (d *dgateClient) ListModule(namespace string) ([]*spec.Module, error) {
 	query := d.baseUrl.Query()
 	query.Set("namespace", namespace)
 	d.baseUrl.RawQuery = query.Encode()

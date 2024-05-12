@@ -6,6 +6,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"strings"
 	"time"
 
 	"github.com/dgate-io/dgate/pkg/eventloop"
@@ -83,7 +84,6 @@ func DefaultFetchUpstreamFunction() FetchUpstreamUrlFunc {
 	}
 }
 
-// const _ goja.AsyncContextTracker = ExtractorContextTracker{""}
 func ExtractFetchUpstreamFunction(
 	loop *eventloop.EventLoop,
 ) (fetchUpstream FetchUpstreamUrlFunc, err error) {
@@ -100,6 +100,9 @@ func ExtractFetchUpstreamFunction(
 			upstreamUrlString := res.String()
 			if goja.IsUndefined(res) || goja.IsNull(res) || upstreamUrlString == "" {
 				return nil, errors.New("fetchUpstream returned an invalid URL")
+			}
+			if !strings.Contains(upstreamUrlString, "://") {
+				upstreamUrlString += "http://"
 			}
 			upstreamUrl, err := url.Parse(upstreamUrlString)
 			if err != nil {
@@ -121,7 +124,7 @@ func ExtractRequestModifierFunction(
 	if call, ok := goja.AssertFunction(rt.Get("requestModifier")); ok {
 		requestModifier = func(modCtx *types.ModuleContext) error {
 			_, err := RunAndWaitForResult(
-				rt, call, types.ToValue(rt, modCtx),
+				rt, call, rt.ToValue(modCtx),
 			)
 			return err
 		}
@@ -137,7 +140,7 @@ func ExtractResponseModifierFunction(
 		responseModifier = func(modCtx *types.ModuleContext, res *http.Response) error {
 			modCtx = types.ModuleContextWithResponse(modCtx, res)
 			_, err := RunAndWaitForResult(
-				rt, call, types.ToValue(rt, modCtx),
+				rt, call, rt.ToValue(modCtx),
 			)
 			return err
 		}

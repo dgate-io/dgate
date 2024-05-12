@@ -6,7 +6,16 @@ import (
 	"github.com/dgate-io/dgate/pkg/spec"
 )
 
-func (d *DGateClient) GetCollection(name, namespace string) (*spec.Collection, error) {
+type DGateCollectionClient interface {
+	GetCollection(name, namespace string) (*spec.Collection, error)
+	CreateCollection(svc *spec.Collection) error
+	DeleteCollection(name, namespace string) error
+	ListCollection(namespace string) ([]*spec.Collection, error)
+}
+
+var _ DGateCollectionClient = &dgateClient{}
+
+func (d *dgateClient) GetCollection(name, namespace string) (*spec.Collection, error) {
 	query := d.baseUrl.Query()
 	query.Set("namespace", namespace)
 	d.baseUrl.RawQuery = query.Encode()
@@ -17,7 +26,7 @@ func (d *DGateClient) GetCollection(name, namespace string) (*spec.Collection, e
 	return commonGet[spec.Collection](d.client, uri)
 }
 
-func (d *DGateClient) CreateCollection(svc *spec.Collection) error {
+func (d *dgateClient) CreateCollection(svc *spec.Collection) error {
 	uri, err := url.JoinPath(d.baseUrl.String(), "/api/v1/collection")
 	if err != nil {
 		return err
@@ -25,7 +34,7 @@ func (d *DGateClient) CreateCollection(svc *spec.Collection) error {
 	return commonPut(d.client, uri, svc)
 }
 
-func (d *DGateClient) DeleteCollection(name, namespace string) error {
+func (d *dgateClient) DeleteCollection(name, namespace string) error {
 	uri, err := url.JoinPath(d.baseUrl.String(), "/api/v1/collection")
 	if err != nil {
 		return err
@@ -33,7 +42,7 @@ func (d *DGateClient) DeleteCollection(name, namespace string) error {
 	return commonDelete(d.client, uri, name, namespace)
 }
 
-func (d *DGateClient) ListCollection(namespace string) ([]*spec.Collection, error) {
+func (d *dgateClient) ListCollection(namespace string) ([]*spec.Collection, error) {
 	query := d.baseUrl.Query()
 	query.Set("namespace", namespace)
 	d.baseUrl.RawQuery = query.Encode()

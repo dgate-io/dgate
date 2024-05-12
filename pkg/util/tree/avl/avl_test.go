@@ -242,8 +242,8 @@ func treeLength(t *testing.T, tree avl.Tree[int, int]) int {
 	return totalTreeLength
 }
 
-// Benchmark AVL Tree Insertion
-func BenchmarkAVLTreeInsert(b *testing.B) {
+// Benchmark AVL Tree Insertion in ascending order
+func BenchmarkAVLTreeInsertAsc(b *testing.B) {
 	tree := avl.NewTree[int, int]() // Example with string keys and int values
 
 	// Run the insertion operation b.N times
@@ -252,7 +252,17 @@ func BenchmarkAVLTreeInsert(b *testing.B) {
 	}
 }
 
-// Benchmark AVL Tree Insertion
+// Benchmark AVL Tree Insertion in descending order
+func BenchmarkAVLTreeInsertDesc(b *testing.B) {
+	tree := avl.NewTree[int, int]() // Example with string keys and int values
+
+	// Run the insertion operation b.N times
+	for i := 0; i < b.N; i++ {
+		tree.Insert(b.N-i, i)
+	}
+}
+
+// Benchmark AVL Tree Find operation
 func BenchmarkAVLTreeFind(b *testing.B) {
 	tree := avl.NewTree[int, int]()
 
@@ -269,6 +279,28 @@ func BenchmarkAVLTreeFind(b *testing.B) {
 	// Run the find operation b.N times
 	for i := 0; i < b.N; i++ {
 		tree.Find(i % k)
+	}
+}
+
+// Benchmark AVL Tree Each operation
+func BenchmarkAVLTreeEach(b *testing.B) {
+	tree := avl.NewTree[int, int]()
+
+	// Insert k nodes into the tree
+	k := 10_000
+	{
+		b.StopTimer()
+		for i := 0; i < k; i++ {
+			tree.Insert(i, i)
+		}
+		b.StartTimer()
+	}
+
+	// Run the each operation b.N times
+	for i := 0; i < b.N; i++ {
+		tree.Each(func(k int, v int) bool {
+			return true
+		})
 	}
 }
 

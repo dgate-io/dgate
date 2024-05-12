@@ -6,7 +6,7 @@ import (
 	"github.com/urfave/cli/v2"
 )
 
-func CollectionCommand(client *dgclient.DGateClient) *cli.Command {
+func CollectionCommand(client dgclient.DGateClient) *cli.Command {
 	return &cli.Command{
 		Name:      "collection",
 		Aliases:   []string{"col"},

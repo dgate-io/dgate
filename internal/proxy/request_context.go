@@ -14,10 +14,10 @@ import (
 type S string
 
 type RequestContextProvider struct {
-	ctx    context.Context
-	route  *spec.DGateRoute
-	rpb    reverse_proxy.Builder
-	modBuf ModuleBuffer
+	ctx     context.Context
+	route   *spec.DGateRoute
+	rpb     reverse_proxy.Builder
+	modPool ModulePool
 }
 
 type RequestContext struct {
@@ -76,15 +76,13 @@ func NewRequestContextProvider(route *spec.DGateRoute, ps *ProxyState) *RequestC
 	}
 }
 
-func (reqCtxProvider *RequestContextProvider) SetModuleBuffer(mb ModuleBuffer) {
-	reqCtxProvider.modBuf = mb
+func (reqCtxProvider *RequestContextProvider) SetModulePool(mb ModulePool) {
+	reqCtxProvider.modPool = mb
 }
 
 func (reqCtxProvider *RequestContextProvider) CreateRequestContext(
-	ctx context.Context,
-	rw http.ResponseWriter,
-	req *http.Request,
-	pattern string,
+	ctx context.Context, rw http.ResponseWriter,
+	req *http.Request, pattern string,
 ) *RequestContext {
 	pathParams := make(map[string]string)
 	if chiCtx := chi.RouteContext(req.Context()); chiCtx != nil {

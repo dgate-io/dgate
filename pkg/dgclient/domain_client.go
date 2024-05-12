@@ -6,7 +6,16 @@ import (
 	"github.com/dgate-io/dgate/pkg/spec"
 )
 
-func (d *DGateClient) GetDomain(name, namespace string) (*spec.Domain, error) {
+type DGateDomainClient interface {
+	GetDomain(name, namespace string) (*spec.Domain, error)
+	CreateDomain(dom *spec.Domain) error
+	DeleteDomain(name, namespace string) error
+	ListDomain(namespace string) ([]*spec.Domain, error)
+}
+
+var _ DGateDomainClient = &dgateClient{}
+
+func (d *dgateClient) GetDomain(name, namespace string) (*spec.Domain, error) {
 	query := d.baseUrl.Query()
 	query.Set("namespace", namespace)
 	d.baseUrl.RawQuery = query.Encode()
@@ -17,7 +26,7 @@ func (d *DGateClient) GetDomain(name, namespace string) (*spec.Domain, error) {
 	return commonGet[spec.Domain](d.client, uri)
 }
 
-func (d *DGateClient) CreateDomain(dm *spec.Domain) error {
+func (d *dgateClient) CreateDomain(dm *spec.Domain) error {
 	uri, err := url.JoinPath(d.baseUrl.String(), "/api/v1/domain")
 	if err != nil {
 		return err
@@ -25,7 +34,7 @@ func (d *DGateClient) CreateDomain(dm *spec.Domain) error {
 	return commonPut(d.client, uri, dm)
 }
 
-func (d *DGateClient) DeleteDomain(name, namespace string) error {
+func (d *dgateClient) DeleteDomain(name, namespace string) error {
 	uri, err := url.JoinPath(d.baseUrl.String(), "/api/v1/domain")
 	if err != nil {
 		return err
@@ -33,7 +42,7 @@ func (d *DGateClient) DeleteDomain(name, namespace string) error {
 	return commonDelete(d.client, uri, name, namespace)
 }
 
-func (d *DGateClient) ListDomain(namespace string) ([]*spec.Domain, error) {
+func (d *dgateClient) ListDomain(namespace string) ([]*spec.Domain, error) {
 	query := d.baseUrl.Query()
 	query.Set("namespace", namespace)
 	d.baseUrl.RawQuery = query.Encode()

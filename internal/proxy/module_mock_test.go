@@ -11,34 +11,34 @@ import (
 	"github.com/stretchr/testify/mock"
 )
 
-type mockModuleBuffer struct {
+type mockModulePool struct {
 	mock.Mock
 }
 
-var _ proxy.ModuleBuffer = &mockModuleBuffer{}
+var _ proxy.ModulePool = &mockModulePool{}
 
-func NewMockModuleBuffer() *mockModuleBuffer {
-	return &mockModuleBuffer{}
+func NewMockModulePool() *mockModulePool {
+	return &mockModulePool{}
 }
 
-// Borrow implements proxy.ModuleBuffer.
-func (mb *mockModuleBuffer) Borrow() proxy.ModuleExtractor {
+// Borrow implements proxy.ModulePool.
+func (mb *mockModulePool) Borrow() proxy.ModuleExtractor {
 	args := mb.Called()
 	return args.Get(0).(proxy.ModuleExtractor)
 }
 
-// Close implements proxy.ModuleBuffer.
-func (mb *mockModuleBuffer) Close() {
+// Close implements proxy.ModulePool.
+func (mb *mockModulePool) Close() {
 	mb.Called()
 }
 
-// Load implements proxy.ModuleBuffer.
-func (mb *mockModuleBuffer) Load(cb func()) {
+// Load implements proxy.ModulePool.
+func (mb *mockModulePool) Load(cb func()) {
 	mb.Called(cb)
 }
 
-// Return implements proxy.ModuleBuffer.
-func (mb *mockModuleBuffer) Return(me proxy.ModuleExtractor) {
+// Return implements proxy.ModulePool.
+func (mb *mockModulePool) Return(me proxy.ModuleExtractor) {
 	mb.Called(me)
 }
 

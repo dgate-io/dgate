@@ -1,57 +1,71 @@
 package dgclient
 
 import (
+	"errors"
 	"fmt"
 	"net/http"
 	"net/url"
+	"strings"
 	"time"
 )
 
-type DGateClient struct {
+type DGateClient interface {
+	Init(string, *http.Client, ...Options) error
+	DGateNamespaceClient
+	DGateModuleClient
+	DGateRouteClient
+	DGateServiceClient
+	DGateDomainClient
+	DGateCollectionClient
+	DGateDocumentClient
+	DGateSecretClient
+}
+
+type dgateClient struct {
 	client  *http.Client
 	baseUrl *url.URL
 }
 
-type Options func(*DGateClient)
+type Options func(DGateClient)
 
-func NewDGateClient(baseUrl string, opts ...Options) (*DGateClient, error) {
-	dgc := &DGateClient{}
-	err := dgc.Init(baseUrl)
-	if err != nil {
-		return nil, err
-	}
-	return dgc, nil
+func NewDGateClient() DGateClient {
+	return &dgateClient{}
 }
 
-func (d *DGateClient) Init(baseUrl string, opts ...Options) error {
+func (d *dgateClient) Init(
+	baseUrl string,
+	client *http.Client,
+	opts ...Options,
+) error {
+	if !strings.Contains(baseUrl, "://") {
+		baseUrl = "http://" + baseUrl
+	}
 	bUrl, err := url.Parse(baseUrl)
 	if err != nil {
 		return err
 	}
 
-	if bUrl.Scheme == "" {
-		bUrl.Scheme = "http"
-	} else if bUrl.Host == "" {
-		return url.InvalidHostError("host is empty")
+	if bUrl.Host == "" {
+		return errors.New("host is empty")
+	} else {
+		d.baseUrl = bUrl
 	}
 
-	d.client = http.DefaultClient
-	d.baseUrl = bUrl
-
-	for _, opt := range opts {
-		opt(d)
-	}
-	return nil
-}
-
-func (d *DGateClient) BaseUrl() string {
-	return d.baseUrl.String()
-}
-
-func WithHttpClient(client *http.Client) Options {
-	return func(d *DGateClient) {
+	if client == nil {
+		d.client = http.DefaultClient
+	} else {
 		d.client = client
 	}
+	if d.client.Transport == nil {
+		d.client.Transport = http.DefaultTransport
+	}
+
+	for _, opt := range opts {
+		if opt != nil {
+			opt(d)
+		}
+	}
+	return nil
 }
 
 type customTransport struct {
@@ -84,68 +98,61 @@ func (ct *customTransport) RoundTrip(req *http.Request) (*http.Response, error) 
 }
 
 func WithBasicAuth(username, password string) Options {
-	if username == "" || password == "" {
-		return func(d *DGateClient) {}
-	}
-	return func(d *DGateClient) {
-		if d.client.Transport == nil {
-			d.client.Transport = http.DefaultTransport
-		}
-		if ct, ok := d.client.Transport.(*customTransport); ok {
-			ct.Username = username
-			ct.Password = password
-		} else {
-			d.client.Transport = &customTransport{
-				Username:  username,
-				Password:  password,
-				Transport: d.client.Transport,
+	return func(dc DGateClient) {
+		if d, ok := dc.(*dgateClient); ok {
+			if ct, ok := d.client.Transport.(*customTransport); ok {
+				ct.Username = username
+				ct.Password = password
+			} else {
+				d.client.Transport = &customTransport{
+					Username:  username,
+					Password:  password,
+					Transport: d.client.Transport,
+				}
 			}
 		}
 	}
 }
 
 func WithFollowRedirect(follow bool) Options {
-	return func(d *DGateClient) {
-		if follow {
-			return
-		}
-		d.client.CheckRedirect = func(req *http.Request, via []*http.Request) error {
-			return http.ErrUseLastResponse
+	return func(dc DGateClient) {
+		if d, ok := dc.(*dgateClient); ok {
+			d.client.CheckRedirect = func(req *http.Request, via []*http.Request) error {
+				if follow {
+					return nil
+				}
+				return http.ErrUseLastResponse
+			}
 		}
 	}
 }
 
 func WithUserAgent(ua string) Options {
-	if ua == "" {
-		return func(dc *DGateClient) {}
-	}
-	return func(d *DGateClient) {
-		if d.client.Transport == nil {
-			d.client.Transport = http.DefaultTransport
-		}
-		if ct, ok := d.client.Transport.(*customTransport); ok {
-			ct.UserAgent = ua
-			ct.Transport = http.DefaultTransport
-		} else {
-			d.client.Transport = &customTransport{
-				UserAgent: ua,
-				Transport: d.client.Transport,
+	return func(dc DGateClient) {
+		if d, ok := dc.(*dgateClient); ok {
+			if ct, ok := d.client.Transport.(*customTransport); ok {
+				ct.UserAgent = ua
+				ct.Transport = http.DefaultTransport
+			} else {
+				d.client.Transport = &customTransport{
+					UserAgent: ua,
+					Transport: d.client.Transport,
+				}
 			}
 		}
 	}
 }
 
 func WithVerboseLogging(on bool) Options {
-	return func(d *DGateClient) {
-		if d.client.Transport == nil {
-			d.client.Transport = http.DefaultTransport
-		}
-		if ct, ok := d.client.Transport.(*customTransport); ok {
-			ct.VerboseLog = on
-		} else {
-			d.client.Transport = &customTransport{
-				VerboseLog: on,
-				Transport:  d.client.Transport,
+	return func(dc DGateClient) {
+		if d, ok := dc.(*dgateClient); ok {
+			if ct, ok := d.client.Transport.(*customTransport); ok {
+				ct.VerboseLog = on
+			} else {
+				d.client.Transport = &customTransport{
+					VerboseLog: on,
+					Transport:  d.client.Transport,
+				}
 			}
 		}
 	}

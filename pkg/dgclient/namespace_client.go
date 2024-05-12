@@ -6,7 +6,16 @@ import (
 	"github.com/dgate-io/dgate/pkg/spec"
 )
 
-func (d *DGateClient) GetNamespace(name string) (*spec.Namespace, error) {
+type DGateNamespaceClient interface {
+	GetNamespace(name string) (*spec.Namespace, error)
+	CreateNamespace(ns *spec.Namespace) error
+	DeleteNamespace(name string) error
+	ListNamespace() ([]*spec.Namespace, error)
+}
+
+var _ DGateNamespaceClient = &dgateClient{}
+
+func (d *dgateClient) GetNamespace(name string) (*spec.Namespace, error) {
 	uri, err := url.JoinPath(d.baseUrl.String(), "/api/v1/namespace", name)
 	if err != nil {
 		return nil, err
@@ -14,7 +23,7 @@ func (d *DGateClient) GetNamespace(name string) (*spec.Namespace, error) {
 	return commonGet[spec.Namespace](d.client, uri)
 }
 
-func (d *DGateClient) CreateNamespace(ns *spec.Namespace) error {
+func (d *dgateClient) CreateNamespace(ns *spec.Namespace) error {
 	uri, err := url.JoinPath(d.baseUrl.String(), "/api/v1/namespace")
 	if err != nil {
 		return err
@@ -22,7 +31,7 @@ func (d *DGateClient) CreateNamespace(ns *spec.Namespace) error {
 	return commonPut(d.client, uri, ns)
 }
 
-func (d *DGateClient) DeleteNamespace(name string) error {
+func (d *dgateClient) DeleteNamespace(name string) error {
 	uri, err := url.JoinPath(d.baseUrl.String(), "/api/v1/namespace")
 	if err != nil {
 		return err
@@ -30,7 +39,7 @@ func (d *DGateClient) DeleteNamespace(name string) error {
 	return commonDelete(d.client, uri, name, "")
 }
 
-func (d *DGateClient) ListNamespace() ([]*spec.Namespace, error) {
+func (d *dgateClient) ListNamespace() ([]*spec.Namespace, error) {
 	uri, err := url.JoinPath(d.baseUrl.String(), "/api/v1/namespace")
 	if err != nil {
 		return nil, err

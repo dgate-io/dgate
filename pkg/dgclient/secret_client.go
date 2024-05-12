@@ -6,7 +6,16 @@ import (
 	"github.com/dgate-io/dgate/pkg/spec"
 )
 
-func (d *DGateClient) GetSecret(name, namespace string) (*spec.Secret, error) {
+type DGateSecretClient interface {
+	GetSecret(name, namespace string) (*spec.Secret, error)
+	CreateSecret(svc *spec.Secret) error
+	DeleteSecret(name, namespace string) error
+	ListSecret(namespace string) ([]*spec.Secret, error)
+}
+
+var _ DGateSecretClient = &dgateClient{}
+
+func (d *dgateClient) GetSecret(name, namespace string) (*spec.Secret, error) {
 	query := d.baseUrl.Query()
 	query.Set("namespace", namespace)
 	d.baseUrl.RawQuery = query.Encode()
@@ -17,7 +26,7 @@ func (d *DGateClient) GetSecret(name, namespace string) (*spec.Secret, error) {
 	return commonGet[spec.Secret](d.client, uri)
 }
 
-func (d *DGateClient) CreateSecret(sec *spec.Secret) error {
+func (d *dgateClient) CreateSecret(sec *spec.Secret) error {
 	uri, err := url.JoinPath(d.baseUrl.String(), "/api/v1/secret")
 	if err != nil {
 		return err
@@ -25,7 +34,7 @@ func (d *DGateClient) CreateSecret(sec *spec.Secret) error {
 	return commonPut(d.client, uri, sec)
 }
 
-func (d *DGateClient) DeleteSecret(name, namespace string) error {
+func (d *dgateClient) DeleteSecret(name, namespace string) error {
 	uri, err := url.JoinPath(d.baseUrl.String(), "/api/v1/secret")
 	if err != nil {
 		return err
@@ -33,7 +42,7 @@ func (d *DGateClient) DeleteSecret(name, namespace string) error {
 	return commonDelete(d.client, uri, name, namespace)
 }
 
-func (d *DGateClient) ListSecret(namespace string) ([]*spec.Secret, error) {
+func (d *dgateClient) ListSecret(namespace string) ([]*spec.Secret, error) {
 	query := d.baseUrl.Query()
 	query.Set("namespace", namespace)
 	d.baseUrl.RawQuery = query.Encode()
