@@ -162,6 +162,14 @@ func TestCommands_ClientError(t *testing.T) {
 			if assert.NotNil(t, err, "no error on %s:%s", action, resource) {
 				assert.Equal(t, "error", err.Error())
 			}
+			if action == "delete" && resource == "document" {
+				mockClient.On("DeleteAllDocument", "test", "test").
+					Return(errors.New("error"))
+				err = Run(mockClient, version)
+				if assert.NotNil(t, err, "no error on %s:%s", action, resource) {
+					assert.Equal(t, "error", err.Error())
+				}
+			}
 		}
 	}
 }
@@ -184,11 +192,6 @@ var _ dgclient.DGateClient = &mockDGClient{}
 func (m *mockDGClient) Init(baseUrl string, opts ...dgclient.Options) error {
 	args := m.Called(baseUrl)
 	return args.Error(0)
-}
-
-func (m *mockDGClient) BaseUrl() string {
-	args := m.Called()
-	return args.String(0)
 }
 
 func (m *mockDGClient) GetRoute(name, namespace string) (*spec.Route, error) {

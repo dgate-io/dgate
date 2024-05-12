@@ -9,9 +9,6 @@ import (
 )
 
 type DebugStoreConfig struct {
-	// Path to the directory where the files will be stored.
-	// If the directory does not exist, it will be created.
-	// If the directory exists, it will be used.
 	Logger zerolog.Logger
 }
 
