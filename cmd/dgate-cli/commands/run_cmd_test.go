@@ -2,6 +2,7 @@ package commands
 
 import (
 	"errors"
+	"net/http"
 	"os"
 	"strings"
 	"testing"
@@ -189,7 +190,11 @@ type mockDGClient struct {
 
 var _ dgclient.DGateClient = &mockDGClient{}
 
-func (m *mockDGClient) Init(baseUrl string, opts ...dgclient.Options) error {
+func (m *mockDGClient) Init(
+	baseUrl string,
+	client *http.Client,
+	opts ...dgclient.Options,
+) error {
 	args := m.Called(baseUrl)
 	return args.Error(0)
 }

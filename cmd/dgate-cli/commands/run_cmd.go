@@ -2,6 +2,7 @@ package commands
 
 import (
 	"fmt"
+	"net/http"
 	"os"
 	"runtime"
 	"runtime/debug"
@@ -75,9 +76,8 @@ func Run(client dgclient.DGateClient, version string) error {
 					auth, string(password),
 				)
 			}
-			return client.Init(
-				ctx.String("admin"),
-				authOption,
+			return client.Init(ctx.String("admin"),
+				http.DefaultClient,
 				dgclient.WithFollowRedirect(
 					ctx.Bool("follow"),
 				),
@@ -89,6 +89,7 @@ func Run(client dgclient.DGateClient, version string) error {
 				dgclient.WithVerboseLogging(
 					ctx.Bool("verbose"),
 				),
+				authOption,
 			)
 		},
 		Action: func(ctx *cli.Context) error {

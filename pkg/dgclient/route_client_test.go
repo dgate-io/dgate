@@ -24,7 +24,7 @@ func TestDGClient_GetRoute(t *testing.T) {
 		})
 	}))
 	client := dgclient.NewDGateClient()
-	err := client.Init(server.URL)
+	err := client.Init(server.URL, server.Client())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -44,7 +44,7 @@ func TestDGClient_CreateRoute(t *testing.T) {
 		w.WriteHeader(http.StatusCreated)
 	}))
 	client := dgclient.NewDGateClient()
-	err := client.Init(server.URL)
+	err := client.Init(server.URL, server.Client())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -65,7 +65,7 @@ func TestDGClient_DeleteRoute(t *testing.T) {
 		w.WriteHeader(http.StatusNoContent)
 	}))
 	client := dgclient.NewDGateClient()
-	err := client.Init(server.URL)
+	err := client.Init(server.URL, server.Client())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -91,7 +91,7 @@ func TestDGClient_ListRoute(t *testing.T) {
 		})
 	}))
 	client := dgclient.NewDGateClient()
-	err := client.Init(server.URL)
+	err := client.Init(server.URL, server.Client())
 	if err != nil {
 		t.Fatal(err)
 	}

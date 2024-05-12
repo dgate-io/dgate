@@ -53,7 +53,10 @@ func (d *dgateClient) Init(
 
 	if client == nil {
 		d.client = http.DefaultClient
-	} else if d.client.Transport == nil {
+	} else {
+		d.client = client
+	}
+	if d.client.Transport == nil {
 		d.client.Transport = http.DefaultTransport
 	}
 
