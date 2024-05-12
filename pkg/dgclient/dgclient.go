@@ -117,11 +117,12 @@ func WithBasicAuth(username, password string) Options {
 func WithFollowRedirect(follow bool) Options {
 	return func(dc DGateClient) {
 		if d, ok := dc.(*dgateClient); ok {
-			d.client.CheckRedirect = func(req *http.Request, via []*http.Request) error {
-				if follow {
-					return nil
+			if follow {
+				d.client.CheckRedirect = nil
+			} else {
+				d.client.CheckRedirect = func(req *http.Request, via []*http.Request) error {
+					return http.ErrUseLastResponse
 				}
-				return http.ErrUseLastResponse
 			}
 		}
 	}
