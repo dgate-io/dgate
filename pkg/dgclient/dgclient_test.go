@@ -23,8 +23,7 @@ func TestDGClient_OptionsWithRedirect(t *testing.T) {
 	}))
 	defer server.Close()
 
-	err := client.Init(server.URL,
-		dgclient.WithHttpClient(server.Client()),
+	err := client.Init(server.URL, server.Client(),
 		dgclient.WithFollowRedirect(true),
 	)
 	if err != nil {
@@ -55,8 +54,7 @@ func TestDGClient_OptionsRedirectError(t *testing.T) {
 	}))
 	defer server.Close()
 
-	err := client.Init(server.URL,
-		dgclient.WithHttpClient(server.Client()),
+	err := client.Init(server.URL, server.Client(),
 		dgclient.WithBasicAuth("user", "password"),
 		dgclient.WithFollowRedirect(false),
 	)
@@ -84,8 +82,7 @@ func TestDGClient_OptionsWithBasicAuth(t *testing.T) {
 	}))
 	defer server.Close()
 
-	err := client.Init(server.URL,
-		dgclient.WithHttpClient(server.Client()),
+	err := client.Init(server.URL, server.Client(),
 		dgclient.WithVerboseLogging(true),
 		dgclient.WithBasicAuth("user", "password"),
 	)
@@ -113,8 +110,7 @@ func TestDGClient_OptionsBasicAuthError(t *testing.T) {
 	}))
 	defer server.Close()
 
-	err := client.Init(server.URL,
-		dgclient.WithHttpClient(server.Client()),
+	err := client.Init(server.URL, server.Client(),
 		dgclient.WithBasicAuth("user", "wrongpassword"),
 		dgclient.WithVerboseLogging(true),
 	)
@@ -142,8 +138,7 @@ func TestDGClient_OptionsWithUserAgent(t *testing.T) {
 	}))
 	defer server.Close()
 
-	err := client.Init(server.URL,
-		dgclient.WithHttpClient(server.Client()),
+	err := client.Init(server.URL, server.Client(),
 		dgclient.WithVerboseLogging(true),
 		dgclient.WithUserAgent("test"),
 	)
@@ -171,8 +166,7 @@ func TestDGClient_OptionsWithUserAgent2(t *testing.T) {
 	}))
 	defer server.Close()
 
-	err := client.Init(server.URL,
-		dgclient.WithHttpClient(server.Client()),
+	err := client.Init(server.URL, server.Client(),
 		dgclient.WithUserAgent("test"),
 		dgclient.WithVerboseLogging(true),
 	)
@@ -188,7 +182,7 @@ func TestDGClient_OptionsWithUserAgent2(t *testing.T) {
 
 func TestDGClient_Init_ParseURLError(t *testing.T) {
 	var client = dgclient.NewDGateClient()
-	err := client.Init("://#/:asdm")
+	err := client.Init("://#/:asdm", nil)
 	if err == nil {
 		t.Fatal("expected error")
 	}
@@ -196,7 +190,7 @@ func TestDGClient_Init_ParseURLError(t *testing.T) {
 
 func TestDGClient_Init_EmptyHostError(t *testing.T) {
 	var client = dgclient.NewDGateClient()
-	err := client.Init("")
+	err := client.Init("", nil)
 	if err == nil {
 		t.Fatal("expected error")
 	}

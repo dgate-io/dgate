@@ -10,7 +10,7 @@ import (
 )
 
 type DGateClient interface {
-	Init(baseUrl string, opts ...Options) error
+	Init(string, *http.Client, ...Options) error
 	DGateNamespaceClient
 	DGateModuleClient
 	DGateRouteClient
@@ -32,7 +32,11 @@ func NewDGateClient() DGateClient {
 	return &dgateClient{}
 }
 
-func (d *dgateClient) Init(baseUrl string, opts ...Options) error {
+func (d *dgateClient) Init(
+	baseUrl string,
+	client *http.Client,
+	opts ...Options,
+) error {
 	if !strings.Contains(baseUrl, "://") {
 		baseUrl = "http://" + baseUrl
 	}
@@ -47,25 +51,18 @@ func (d *dgateClient) Init(baseUrl string, opts ...Options) error {
 		d.baseUrl = bUrl
 	}
 
+	if client == nil {
+		d.client = http.DefaultClient
+	} else if d.client.Transport == nil {
+		d.client.Transport = http.DefaultTransport
+	}
+
 	for _, opt := range opts {
 		if opt != nil {
 			opt(d)
 		}
 	}
-	if d.client == nil {
-		d.client = http.DefaultClient
-	} else if d.client.Transport == nil {
-		d.client.Transport = http.DefaultTransport
-	}
 	return nil
-}
-
-func WithHttpClient(client *http.Client) Options {
-	return func(dc DGateClient) {
-		if d, ok := dc.(*dgateClient); ok {
-			d.client = client
-		}
-	}
 }
 
 type customTransport struct {
@@ -117,12 +114,11 @@ func WithBasicAuth(username, password string) Options {
 func WithFollowRedirect(follow bool) Options {
 	return func(dc DGateClient) {
 		if d, ok := dc.(*dgateClient); ok {
-			if follow {
-				d.client.CheckRedirect = nil
-			} else {
-				d.client.CheckRedirect = func(req *http.Request, via []*http.Request) error {
-					return http.ErrUseLastResponse
+			d.client.CheckRedirect = func(req *http.Request, via []*http.Request) error {
+				if follow {
+					d.client.CheckRedirect = nil
 				}
+				return http.ErrUseLastResponse
 			}
 		}
 	}
