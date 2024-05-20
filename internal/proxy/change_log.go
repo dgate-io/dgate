@@ -353,7 +353,7 @@ START:
 			if prevLog.Cmd.IsNoop() {
 				removeList = append(removeList, prevLog)
 				logs = append(logs[:i-1], logs[i:]...)
-				continue
+				goto START
 			}
 
 			commonResource := prevLog.Cmd.Resource() == curLog.Cmd.Resource()

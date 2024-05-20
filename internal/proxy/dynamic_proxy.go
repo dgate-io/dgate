@@ -1,7 +1,6 @@
 package proxy
 
 import (
-	"context"
 	"errors"
 	"fmt"
 	"log"
@@ -19,7 +18,6 @@ import (
 	"github.com/rs/zerolog"
 	"golang.org/x/net/http2"
 	"golang.org/x/net/http2/h2c"
-	"golang.org/x/sync/errgroup"
 )
 
 func (state *ProxyState) reconfigureState(init bool, _ *spec.ChangeLog) error {
@@ -46,9 +44,7 @@ func (state *ProxyState) reconfigureState(init bool, _ *spec.ChangeLog) error {
 
 func (ps *ProxyState) setupModules() error {
 	ps.logger.Debug().Msg("Setting up modules")
-	eg, _ := errgroup.WithContext(context.TODO())
 	for _, route := range ps.rm.GetRoutes() {
-		route := route
 		if len(route.Modules) > 0 {
 			mod := route.Modules[0]
 			var (
@@ -84,12 +80,7 @@ func (ps *ProxyState) setupModules() error {
 			elapsed := time.Since(start)
 			ps.logger.Debug().
 				Msgf("Module '%s/%s' changed applied in %s", mod.Name, mod.Namespace.Name, elapsed)
-			return nil
 		}
-	}
-	if err := eg.Wait(); err != nil {
-		ps.logger.Err(err).Msg("Error setting up modules")
-		return err
 	}
 	return nil
 }
