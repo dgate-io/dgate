@@ -37,6 +37,6 @@ dgate-cli route create \
     namespace=test-ns \
     service='base_svc'
 
-curl ${PROXY_URL}/test -H Host:test.com
+curl -s ${PROXY_URL}/test -H Host:test.com
 
 echo "Modify Response Test Passed"

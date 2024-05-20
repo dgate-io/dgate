@@ -61,16 +61,16 @@ func (modCtx *ModuleContext) Params() map[string]string {
 	return modCtx.params
 }
 
-func (modCtx *ModuleContext) Route() spec.Route {
-	return *modCtx.route
+func (modCtx *ModuleContext) Route() *spec.Route {
+	return modCtx.route
 }
 
-func (modCtx *ModuleContext) Service() spec.Service {
-	return *modCtx.svc
+func (modCtx *ModuleContext) Service() *spec.Service {
+	return modCtx.svc
 }
 
-func (modCtx *ModuleContext) Namespace() spec.Namespace {
-	return *modCtx.ns
+func (modCtx *ModuleContext) Namespace() *spec.Namespace {
+	return modCtx.ns
 }
 
 func (modCtx *ModuleContext) Request() *RequestWrapper {

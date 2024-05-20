@@ -101,10 +101,7 @@ func (me *moduleExtract) RequestHandlerFunc() (extractors.RequestHandlerFunc, bo
 }
 
 func NewDefaultModuleExtractor() ModuleExtractor {
-	return &moduleExtract{
-		fetchUpstreamUrl: extractors.DefaultFetchUpstreamFunction(),
-		errorHandler:     extractors.DefaultErrorHandlerFunction(),
-	}
+	return &moduleExtract{}
 }
 
 type ModuleExtractorFunc func(*RequestContextProvider) (ModuleExtractor, error)
