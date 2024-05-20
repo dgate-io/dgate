@@ -14,6 +14,7 @@ import (
 type TCache interface {
 	Bucket(string) Bucket
 	BucketWithOpts(string, BucketOptions) Bucket
+	Clear()
 }
 
 type Bucket interface {
@@ -226,4 +227,18 @@ func (b *bucketImpl) delete(key string) bool {
 	}
 	delete(b.items, key)
 	return true
+}
+
+func (cache *cacheImpl) Clear() {
+	cache.mutex.Lock()
+	defer cache.mutex.Unlock()
+	for _, b := range cache.buckets {
+		if bkt, ok := b.(*bucketImpl); ok {
+			bkt.mutex.Lock()
+			bkt.items = make(map[string]*cacheEntry)
+			bkt.ttlQueue = heap.NewHeap[int64, *cacheEntry](heap.MinHeapType)
+			bkt.limitQueue = heap.NewHeap[int64, *cacheEntry](heap.MinHeapType)
+			bkt.mutex.Unlock()
+		}
+	}
 }

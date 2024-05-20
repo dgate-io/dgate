@@ -115,7 +115,7 @@ func TestScheduleTask_Overwrite(t *testing.T) {
 	assert.True(t, test2Flag.Load())
 }
 
-func TestScheduleTask_TimeoutIntervalFail(t *testing.T) {
+func TestScheduleTask_TimeoutIntervalError(t *testing.T) {
 	sch := scheduler.New(scheduler.Options{
 		Interval: time.Millisecond * 10,
 		AutoRun:  true,

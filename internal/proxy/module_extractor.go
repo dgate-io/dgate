@@ -104,4 +104,4 @@ func NewEmptyModuleExtractor() ModuleExtractor {
 	return &moduleExtract{}
 }
 
-type ModuleExtractorFunc func(*RequestContextProvider) ModuleExtractor
+type ModuleExtractorFunc func(*RequestContextProvider) (ModuleExtractor, error)

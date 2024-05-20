@@ -33,6 +33,7 @@ func (t *rwTracker) Header() http.Header {
 }
 
 func (t *rwTracker) Write(b []byte) (int, error) {
+	// to write the body, we need to write the headers first
 	if !t.HeadersSent() {
 		t.WriteHeader(http.StatusOK)
 	}

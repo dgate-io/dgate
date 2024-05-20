@@ -192,7 +192,6 @@ func handleServiceProxy(ps *ProxyState, reqCtx *RequestContext, modExt ModuleExt
 func requestHandlerModule(ps *ProxyState, reqCtx *RequestContext, modExt ModuleExtractor) {
 	var err error
 	if requestModifier, ok := modExt.RequestModifierFunc(); ok {
-		// extract request modifier function from module
 		reqModifierStart := time.Now()
 		err = requestModifier(modExt.ModuleContext())
 		ps.metrics.MeasureModuleDuration(

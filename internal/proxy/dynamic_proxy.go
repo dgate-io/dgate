@@ -1,7 +1,6 @@
 package proxy
 
 import (
-	"context"
 	"errors"
 	"fmt"
 	"log"
@@ -14,13 +13,11 @@ import (
 	"github.com/dgate-io/dgate/pkg/modules/extractors"
 	"github.com/dgate-io/dgate/pkg/spec"
 	"github.com/dgate-io/dgate/pkg/typescript"
-	"github.com/dgate-io/dgate/pkg/util/sliceutil"
 	"github.com/dgate-io/dgate/pkg/util/tree/avl"
 	"github.com/dop251/goja"
 	"github.com/rs/zerolog"
 	"golang.org/x/net/http2"
 	"golang.org/x/net/http2/h2c"
-	"golang.org/x/sync/errgroup"
 )
 
 func (state *ProxyState) reconfigureState(init bool, log *spec.ChangeLog) error {
@@ -31,72 +28,59 @@ func (state *ProxyState) reconfigureState(init bool, log *spec.ChangeLog) error 
 	if err := state.setupRoutes(); err != nil {
 		return err
 	}
-	if !init && log != nil {
+	if !init {
 		state.logger.Debug().Msgf(
-			"State reloaded in %s",
-			time.Since(start))
-	} else if init {
+			"State reloaded in %s: %v",
+			time.Since(start), log,
+		)
+	} else {
 		state.logger.Info().Msgf(
 			"State initialized in %s",
-			time.Since(start))
+			time.Since(start),
+		)
 	}
 	return nil
 }
 
 func (ps *ProxyState) setupModules() error {
 	ps.logger.Debug().Msg("Setting up modules")
-	eg, _ := errgroup.WithContext(context.TODO())
-	newModPrograms := avl.NewTree[string, *goja.Program]()
 	for _, route := range ps.rm.GetRoutes() {
-		route := route
-		for _, mod := range route.Modules {
-			mod := mod
-			eg.Go(func() error {
-				var (
-					err        error
-					program    *goja.Program
-					modPayload string = mod.Payload
-				)
-				start := time.Now()
-				if mod.Type == spec.ModuleTypeTypescript {
-					modPayload, err = typescript.Transpile(modPayload)
-					if err != nil {
-						ps.logger.Err(err).Msg("Error transpiling module: " + mod.Name)
-						return err
-					}
-				}
-				if mod.Type == spec.ModuleTypeJavascript || mod.Type == spec.ModuleTypeTypescript {
-					program, err = goja.Compile(mod.Name+".js", modPayload, true)
-					if err != nil {
-						ps.logger.Err(err).Msg("Error compiling module: " + mod.Name)
-						return err
-					}
-				} else {
-					return errors.New("invalid module type: " + mod.Type.String())
-				}
-
-				testRtCtx := NewRuntimeContext(ps, route, mod)
-				defer testRtCtx.Clean()
-				err = extractors.SetupModuleEventLoop(ps.printer, testRtCtx)
-				if err != nil {
-					ps.logger.Err(err).
-						Msgf("Error applying module '%s' changes", mod.Name)
+		if len(route.Modules) > 0 {
+			mod := route.Modules[0]
+			var (
+				err        error
+				program    *goja.Program
+				modPayload string = mod.Payload
+			)
+			start := time.Now()
+			if mod.Type == spec.ModuleTypeTypescript {
+				if modPayload, err = typescript.Transpile(modPayload); err != nil {
+					ps.logger.Err(err).Msg("Error transpiling module: " + mod.Name)
 					return err
 				}
-				newModPrograms.Insert(mod.Name+"/"+mod.Namespace.Name, program)
-				elapsed := time.Since(start)
-				ps.logger.Debug().
-					Msgf("Module '%s/%s' changed applied in %s", mod.Name, mod.Namespace.Name, elapsed)
-				return nil
-			})
-		}
-	}
-	if err := eg.Wait(); err != nil {
-		ps.logger.Err(err).Msg("Error setting up modules")
-		return err
-	} else {
-		ps.modPrograms = newModPrograms
+			}
+			if mod.Type == spec.ModuleTypeJavascript || mod.Type == spec.ModuleTypeTypescript {
+				if program, err = goja.Compile(mod.Name, modPayload, true); err != nil {
+					ps.logger.Err(err).Msg("Error compiling module: " + mod.Name)
+					return err
+				}
+			} else {
+				return errors.New("invalid module type: " + mod.Type.String())
+			}
 
+			testRtCtx := NewRuntimeContext(ps, route, mod)
+			defer testRtCtx.Clean()
+			err = extractors.SetupModuleEventLoop(ps.printer, testRtCtx)
+			if err != nil {
+				ps.logger.Err(err).
+					Msgf("Error applying module '%s' changes", mod.Name)
+				return err
+			}
+			ps.modPrograms.Insert(mod.Name+"/"+mod.Namespace.Name, program)
+			elapsed := time.Since(start)
+			ps.logger.Debug().
+				Msgf("Module '%s/%s' changed applied in %s", mod.Name, mod.Namespace.Name, elapsed)
+		}
 	}
 	return nil
 }
@@ -159,51 +143,53 @@ func (ps *ProxyState) setupRoutes() (err error) {
 }
 
 func (ps *ProxyState) createModuleExtractorFunc(r *spec.DGateRoute) ModuleExtractorFunc {
-	return func(reqCtx *RequestContextProvider) ModuleExtractor {
-		programs := sliceutil.SliceMapper(r.Modules, func(m *spec.DGateModule) *goja.Program {
-			program, ok := ps.modPrograms.Find(m.Name + "/" + r.Namespace.Name)
-			if !ok {
-				ps.logger.Error().Msg("Error getting module program: invalid state")
-				panic("Error getting module program: invalid state")
-			}
-			return program
-		})
-		rtCtx := NewRuntimeContext(ps, r, r.Modules...)
-		if err := extractors.SetupModuleEventLoop(ps.printer, rtCtx, programs...); err != nil {
-			ps.logger.Err(err).Msg("Error creating runtime for route: " + reqCtx.route.Name)
-			return nil
+	return func(reqCtx *RequestContextProvider) (_ ModuleExtractor, err error) {
+		if len(r.Modules) == 0 {
+			return nil, fmt.Errorf("no modules found for route: %s/%s", r.Name, r.Namespace.Name)
+		}
+		// TODO: Perhaps have some entrypoint flag to determine which module to use
+		m := r.Modules[0]
+		if program, ok := ps.modPrograms.Find(m.Name + "/" + r.Namespace.Name); !ok {
+			ps.logger.Error().Msg("Error getting module program: invalid state")
+			return nil, fmt.Errorf("cannot find module program: %s/%s", m.Name, r.Namespace.Name)
 		} else {
-			loop := rtCtx.EventLoop()
-			errorHandler, err := extractors.ExtractErrorHandlerFunction(loop)
-			if err != nil {
-				ps.logger.Err(err).Msg("Error extracting error handler function")
-				return nil
+			rtCtx := NewRuntimeContext(ps, r, r.Modules...)
+			if err := extractors.SetupModuleEventLoop(ps.printer, rtCtx, program); err != nil {
+				ps.logger.Err(err).Msg("Error creating runtime for route: " + reqCtx.route.Name)
+				return nil, err
+			} else {
+				loop := rtCtx.EventLoop()
+				errorHandler, err := extractors.ExtractErrorHandlerFunction(loop)
+				if err != nil {
+					ps.logger.Err(err).Msg("Error extracting error handler function")
+					return nil, err
+				}
+				fetchUpstream, err := extractors.ExtractFetchUpstreamFunction(loop)
+				if err != nil {
+					ps.logger.Err(err).Msg("Error extracting fetch upstream function")
+					return nil, err
+				}
+				reqModifier, err := extractors.ExtractRequestModifierFunction(loop)
+				if err != nil {
+					ps.logger.Err(err).Msg("Error extracting request modifier function")
+					return nil, err
+				}
+				resModifier, err := extractors.ExtractResponseModifierFunction(loop)
+				if err != nil {
+					ps.logger.Err(err).Msg("Error extracting response modifier function")
+					return nil, err
+				}
+				reqHandler, err := extractors.ExtractRequestHandlerFunction(loop)
+				if err != nil {
+					ps.logger.Err(err).Msg("Error extracting request handler function")
+					return nil, err
+				}
+				return NewModuleExtractor(
+					rtCtx, fetchUpstream,
+					reqModifier, resModifier,
+					errorHandler, reqHandler,
+				), nil
 			}
-			fetchUpstream, err := extractors.ExtractFetchUpstreamFunction(loop)
-			if err != nil {
-				ps.logger.Err(err).Msg("Error extracting fetch upstream function")
-				return nil
-			}
-			reqModifier, err := extractors.ExtractRequestModifierFunction(loop)
-			if err != nil {
-				ps.logger.Err(err).Msg("Error extracting request modifier function")
-				return nil
-			}
-			resModifier, err := extractors.ExtractResponseModifierFunction(loop)
-			if err != nil {
-				ps.logger.Err(err).Msg("Error extracting response modifier function")
-				return nil
-			}
-			reqHandler, err := extractors.ExtractRequestHandlerFunction(loop)
-			if err != nil {
-				ps.logger.Err(err).Msg("Error extracting request handler function")
-				return nil
-			}
-			return NewModuleExtractor(
-				rtCtx, fetchUpstream,
-				reqModifier, resModifier,
-				errorHandler, reqHandler,
-			)
 		}
 	}
 }
@@ -219,11 +205,22 @@ func (ps *ProxyState) startChangeLoop() {
 
 	for {
 		log := <-ps.changeChan
-		if log.Cmd == spec.StopCommand {
+		switch log.Cmd {
+		case spec.ShutdownCommand:
 			ps.logger.Warn().
-				Msg("Stop command received, closing change loop")
+				Msg("Shutdown command received, closing change loop")
 			log.PushError(nil)
 			return
+		case spec.RestartCommand:
+			ps.logger.Warn().
+				Msg("Restart command received, not supported")
+			// 	ps.logger.Warn().
+			// 		Msg("Restart command received, restarting state")
+			// 	go ps.RestartState(func(err error) {
+			// 		ps.logger.Err(err).
+			// 			Msg("Error restarting state")
+			// 		os.Exit(1)
+			// 	})
 		}
 
 		func() {
@@ -234,7 +231,13 @@ func (ps *ProxyState) startChangeLoop() {
 			if log.PushError(err); err != nil {
 				ps.logger.Err(err).
 					Msgf("Error reconfiguring state @namespace:%s", log.Namespace)
-				// ps.rollbackChange(log)
+				go ps.RestartState(func(err error) {
+					ps.logger.Err(err).
+						Msg("Error restarting state, exiting")
+					ps.changeChan <- &spec.ChangeLog{
+						Cmd: spec.ShutdownCommand,
+					}
+				})
 			}
 		}()
 	}
@@ -330,7 +333,7 @@ func (ps *ProxyState) Start() (err error) {
 	}
 
 	if !ps.replicationEnabled {
-		if err = ps.restoreFromChangeLogs(); err != nil {
+		if err = ps.restoreFromChangeLogs(false); err != nil {
 			return err
 		}
 	}
@@ -340,7 +343,7 @@ func (ps *ProxyState) Start() (err error) {
 
 func (ps *ProxyState) Stop() {
 	cl := &spec.ChangeLog{
-		Cmd: spec.StopCommand,
+		Cmd: spec.ShutdownCommand,
 	}
 	done := make(chan error, 1)
 	cl.SetErrorChan(done)

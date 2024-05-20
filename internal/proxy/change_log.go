@@ -14,11 +14,11 @@ import (
 )
 
 // processChangeLog - processes a change log and applies the change to the proxy state
-func (ps *ProxyState) processChangeLog(
-	cl *spec.ChangeLog, reload, store bool,
-) (err error) {
+func (ps *ProxyState) processChangeLog(cl *spec.ChangeLog, reload, store bool) (err error) {
 	if cl == nil {
-		cl = &spec.ChangeLog{Cmd: spec.NoopCommand}
+		cl = &spec.ChangeLog{
+			Cmd: spec.NoopCommand,
+		}
 	} else if !cl.Cmd.IsNoop() {
 		switch cl.Cmd.Resource() {
 		case spec.Namespaces:
@@ -81,7 +81,7 @@ func (ps *ProxyState) processChangeLog(
 			err = fmt.Errorf("unknown command: %s", cl.Cmd)
 		}
 		if err != nil {
-			ps.logger.Err(err).Msg("error processing change log")
+			ps.logger.Err(err).Msg("decoding or processing change log")
 			return
 		}
 	}
@@ -273,11 +273,7 @@ func (ps *ProxyState) applyChange(changeLog *spec.ChangeLog) <-chan error {
 	return done
 }
 
-func (ps *ProxyState) rollbackChange(changeLog *spec.ChangeLog) {
-	panic("not implemented")
-}
-
-func (ps *ProxyState) restoreFromChangeLogs() error {
+func (ps *ProxyState) restoreFromChangeLogs(directApply bool) error {
 	// restore state change logs
 	logs, err := ps.store.FetchChangeLogs()
 	if err != nil {
@@ -294,12 +290,23 @@ func (ps *ProxyState) restoreFromChangeLogs() error {
 				Interface("changeLog: "+cl.Name, cl).Msgf("restoring change log index: %d", i)
 			err = ps.processChangeLog(cl, false, false)
 			if err != nil {
+				if ps.config.Debug {
+					ps.logger.Err(err).
+						Str("namespace", cl.Namespace).
+						Msg("error restorng from change logs")
+					continue
+				}
 				return err
 			}
 		}
-
-		if err = ps.processChangeLog(nil, true, false); err != nil {
-			return err
+		if !directApply {
+			if err = ps.processChangeLog(nil, true, false); err != nil {
+				return err
+			}
+		} else {
+			if err = ps.reconfigureState(false, nil); err != nil {
+				return nil
+			}
 		}
 
 		// TODO: optionally compact change logs through a flag in config?
@@ -327,13 +334,11 @@ func (ps *ProxyState) compactChangeLogs(logs []*spec.ChangeLog) (int, error) {
 }
 
 /*
-compactChangeLogsRemoveList - compacts a list of change logs by removing redundant logs
-
-TODO: perhaps add flag for compacting change logs on startup (mark as experimental)
+compactChangeLogsRemoveList - compacts a list of change logs by removing redundant logs.
 
 compaction rules:
-- if an add command is followed by a delete command with matching keys, remove both commands
-- if an add command is followed by another add command with matching keys, remove the first add command
+  - if an add command is followed by a delete command with matching keys, remove both commands
+  - if an add command is followed by another add command with matching keys, remove the first add command
 */
 func compactChangeLogsRemoveList(logger *zerolog.Logger, logs []*spec.ChangeLog) []*spec.ChangeLog {
 	removeList := make([]*spec.ChangeLog, 0)
@@ -350,9 +355,11 @@ START:
 				logs = append(logs[:i-1], logs[i:]...)
 				goto START
 			}
+
 			commonResource := prevLog.Cmd.Resource() == curLog.Cmd.Resource()
 			if prevLog.Cmd.Action() == spec.Add && curLog.Cmd.Action() == spec.Delete && commonResource {
-				// Rule 1: if an add command is followed by a delete command with matching keys, remove both commands
+				// Rule 1: if an add command is followed by a delete
+				//   command with matching keys, remove both commands
 				if prevLog.Name == curLog.Name && prevLog.Namespace == curLog.Namespace {
 					removeList = append(removeList, prevLog, curLog)
 					logs = append(logs[:i-1], logs[i+1:]...)
@@ -362,7 +369,8 @@ START:
 
 			commonAction := prevLog.Cmd.Action() == curLog.Cmd.Action()
 			if prevLog.Cmd.Action() == spec.Add && commonAction && commonResource {
-				// Rule 2: if an add command is followed by another add command with matching keys, remove the first add command
+				// Rule 2: if an add command is followed by another add
+				//   command with matching keys, remove the first add command
 				if prevLog.Name == curLog.Name && prevLog.Namespace == curLog.Namespace {
 					removeList = append(removeList, prevLog)
 					logs = append(logs[:i-1], logs[i:]...)

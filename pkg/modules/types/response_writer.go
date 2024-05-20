@@ -46,7 +46,7 @@ type CookieOptions struct {
 	SameSite string    `json:"sameSite"`
 }
 
-func (g *ResponseWriterWrapper) SetCookie(name string, value string, opts ...*CookieOptions) (*ResponseWriterWrapper, error) {
+func (g *ResponseWriterWrapper) Cookie(name string, value string, opts ...*CookieOptions) (*ResponseWriterWrapper, error) {
 	if len(opts) > 1 {
 		return nil, errors.New("too many auguments")
 	}
@@ -130,11 +130,17 @@ func (g *ResponseWriterWrapper) Location(url string) *ResponseWriterWrapper {
 	return g
 }
 
-func (g *ResponseWriterWrapper) Cookie() []*http.Cookie {
+func (g *ResponseWriterWrapper) GetCookies() []*http.Cookie {
 	return g.req.Cookies()
 }
 
-func (g *ResponseWriterWrapper) Header() http.Header {
-	return g.rw.Header()
+func (g *ResponseWriterWrapper) GetCookie(name string) *http.Cookie {
+	cookies := g.req.Cookies()
+	for _, cookie := range cookies {
+		if cookie.Name == name {
+			return cookie
+		}
+	}
+	return nil
 }
 
