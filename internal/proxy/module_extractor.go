@@ -100,7 +100,7 @@ func (me *moduleExtract) RequestHandlerFunc() (extractors.RequestHandlerFunc, bo
 	return me.requestHandler, me.requestHandler != nil
 }
 
-func NewDefaultModuleExtractor() ModuleExtractor {
+func NewEmptyModuleExtractor() ModuleExtractor {
 	return &moduleExtract{}
 }
 

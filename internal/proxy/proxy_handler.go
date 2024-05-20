@@ -59,7 +59,7 @@ func proxyHandler(ps *ProxyState, reqCtx *RequestContext) {
 			runtimeStart, nil,
 		)
 	} else {
-		modExt = NewDefaultModuleExtractor()
+		modExt = NewEmptyModuleExtractor()
 	}
 
 	if reqCtx.route.Service != nil {

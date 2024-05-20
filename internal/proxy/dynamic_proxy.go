@@ -20,7 +20,7 @@ import (
 	"golang.org/x/net/http2/h2c"
 )
 
-func (state *ProxyState) reconfigureState(init bool, _ *spec.ChangeLog) error {
+func (state *ProxyState) reconfigureState(init bool, log *spec.ChangeLog) error {
 	start := time.Now()
 	if err := state.setupModules(); err != nil {
 		return err
@@ -30,8 +30,8 @@ func (state *ProxyState) reconfigureState(init bool, _ *spec.ChangeLog) error {
 	}
 	if !init {
 		state.logger.Debug().Msgf(
-			"State reloaded in %s",
-			time.Since(start),
+			"State reloaded in %s: %v",
+			time.Since(start), log,
 		)
 	} else {
 		state.logger.Info().Msgf(
