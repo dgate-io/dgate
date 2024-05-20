@@ -43,12 +43,13 @@ type Scheduler interface {
 
 type scheduler struct {
 	opts        Options
+	ctx         context.Context
+	cancel      context.CancelFunc
 	logger      *zerolog.Logger
 	tasks       map[string]*TaskDefinition
 	pendingJobs priorityQueue
 	mutex       *sync.RWMutex
 	running     bool
-	end         chan struct{}
 }
 
 type TaskDefinition struct {
@@ -83,9 +84,9 @@ func New(opts Options) Scheduler {
 	}
 	return &scheduler{
 		opts:        opts,
+		ctx:         context.TODO(),
 		logger:      opts.Logger,
 		mutex:       &sync.RWMutex{},
-		end:         make(chan struct{}, 1),
 		pendingJobs: heap.NewHeap[int64, *TaskDefinition](heap.MinHeapType),
 		tasks:       make(map[string]*TaskDefinition),
 	}
@@ -103,8 +104,7 @@ func (s *scheduler) Start() error {
 
 func (s *scheduler) start() {
 	s.running = true
-	// replace the end channel to allow for multiple starts
-	s.end = make(chan struct{}, 1)
+	s.ctx, s.cancel = context.WithCancel(s.ctx)
 	go func() {
 		ticker := time.NewTicker(s.opts.Interval)
 		defer ticker.Stop()
@@ -119,7 +119,7 @@ func (s *scheduler) start() {
 					return
 				}
 				select {
-				case <-s.end:
+				case <-s.ctx.Done():
 					s.running = false
 					done = true
 					return
@@ -172,7 +172,10 @@ func (s *scheduler) executeTask(tdt time.Time, taskDef *TaskDefinition) {
 func (s *scheduler) Stop() {
 	s.mutex.Lock()
 	defer s.mutex.Unlock()
-	close(s.end)
+	if !s.running {
+		return
+	}
+	s.cancel()
 }
 
 func (s *scheduler) GetTask(taskId string) (TaskDefinition, bool) {

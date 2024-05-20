@@ -8,6 +8,7 @@ import (
 )
 
 // typescript v5.3.3
+//
 //go:embed typescript.min.js
 var tscSource string
 
@@ -15,9 +16,17 @@ func Transpile(src string) (string, error) {
 	// transpiles TS into JS with commonjs module and targets es5
 	return typescript.TranspileString(src,
 		WithCachedTypescriptSource(),
+		typescript.WithPreventCancellation(),
 		typescript.WithCompileOptions(map[string]any{
-			"module": "commonjs",
-			"target": "es5",
+			"module":            "commonjs",
+			"target":            "es5",
+			"inlineSourceMap":   true,
+			"inlineSources":     true,
+			"noLib":             true,
+			"noErrorTruncation": true,
+			"noEmit":            true,
+			"noEmitOnError":     true,
+			"skipLibCheck":      true,
 		}),
 	)
 }

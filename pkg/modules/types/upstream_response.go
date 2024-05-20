@@ -18,6 +18,7 @@ type ResponseWrapper struct {
 	response *http.Response
 	loop     *eventloop.EventLoop
 
+	Headers          http.Header `json:"headers"`
 	StatusCode       int         `json:"statusCode"`
 	StatusText       string      `json:"statusText"`
 	Trailer          http.Header `json:"trailer"`
@@ -34,6 +35,7 @@ func NewResponseWrapper(
 	return &ResponseWrapper{
 		response:         resp,
 		loop:             loop,
+		Headers:          resp.Header,
 		Protocol:         resp.Proto,
 		StatusText:       resp.Status,
 		Trailer:          resp.Trailer,
@@ -44,7 +46,16 @@ func NewResponseWrapper(
 	}
 }
 
-func (rw *ResponseWrapper) GetBody() *goja.Promise {
+func (rw *ResponseWrapper) clearBody() {
+	if rw.response.Body != nil {
+		io.ReadAll(rw.response.Body)
+		rw.response.Body.Close()
+		rw.response.Body = nil
+	}
+	rw.response.ContentLength = 0
+}
+
+func (rw *ResponseWrapper) ReadBody() *goja.Promise {
 	prom, res, rej := rw.loop.Runtime().NewPromise()
 	rw.loop.RunOnLoop(func(r *goja.Runtime) {
 		buf, err := io.ReadAll(rw.response.Body)
@@ -58,7 +69,7 @@ func (rw *ResponseWrapper) GetBody() *goja.Promise {
 	return prom
 }
 
-func (rw *ResponseWrapper) GetJson() *goja.Promise {
+func (rw *ResponseWrapper) ReadJson() *goja.Promise {
 	prom, res, rej := rw.loop.Runtime().NewPromise()
 	rw.loop.RunOnLoop(func(r *goja.Runtime) {
 		var data any
@@ -78,16 +89,17 @@ func (rw *ResponseWrapper) GetJson() *goja.Promise {
 	return prom
 }
 
-func (rw *ResponseWrapper) SetJson(data any) error {
-	rw.Header().Set("Content-Type", "application/json")
+func (rw *ResponseWrapper) WriteJson(data any) error {
+	rw.Headers.Set("Content-Type", "application/json")
 	b, err := json.Marshal(data)
 	if err != nil {
 		return err
 	}
-	return rw.SetBody(b)
+	return rw.WriteBody(b)
 }
 
-func (rw *ResponseWrapper) SetBody(data any) error {
+func (rw *ResponseWrapper) WriteBody(data any) error {
+	rw.clearBody()
 	if rw.StatusCode <= 0 {
 		rw.StatusCode = http.StatusOK
 		rw.response.Status = rw.StatusText
@@ -100,14 +112,13 @@ func (rw *ResponseWrapper) SetBody(data any) error {
 	if err != nil {
 		return err
 	}
-	rw.response.Body.Close()
 	rw.response.ContentLength = int64(len(buf))
 	rw.response.Header.Set("Content-Length", strconv.FormatInt(rw.response.ContentLength, 10))
 	rw.response.Body = io.NopCloser(bytes.NewReader(buf))
 	return nil
 }
 
-func (rw *ResponseWrapper) SetStatus(status int) *ResponseWrapper {
+func (rw *ResponseWrapper) Status(status int) *ResponseWrapper {
 	rw.response.StatusCode = status
 	rw.StatusCode = rw.response.StatusCode
 	rw.response.Status = http.StatusText(status)
@@ -115,17 +126,16 @@ func (rw *ResponseWrapper) SetStatus(status int) *ResponseWrapper {
 	return rw
 }
 
-func (rw *ResponseWrapper) SetRedirect(url string) {
-	rw.response.Body = nil
-	rw.Header().Set("Location", url)
-	rw.SetStatus(http.StatusTemporaryRedirect)
+func (rw *ResponseWrapper) Redirect(url string) {
+	rw.clearBody()
+	rw.Headers.Set("Location", url)
+	rw.Status(http.StatusTemporaryRedirect)
 }
 
-func (rw *ResponseWrapper) SetRedirectPermanent(url string) {
-	rw.response.Body.Close()
-	rw.response.Body = nil
-	rw.Header().Set("Location", url)
-	rw.SetStatus(http.StatusMovedPermanently)
+func (rw *ResponseWrapper) RedirectPermanent(url string) {
+	rw.clearBody()
+	rw.Headers.Set("Location", url)
+	rw.Status(http.StatusMovedPermanently)
 }
 
 func (rw *ResponseWrapper) Query() url.Values {
@@ -134,8 +144,4 @@ func (rw *ResponseWrapper) Query() url.Values {
 
 func (rw *ResponseWrapper) Cookie() []*http.Cookie {
 	return rw.response.Cookies()
-}
-
-func (rw *ResponseWrapper) Header() http.Header {
-	return rw.response.Header
 }

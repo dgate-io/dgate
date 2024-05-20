@@ -77,25 +77,25 @@ func setupRaft(conf *config.DGateConfig, server *chi.Mux, ps *proxy.ProxyState) 
 		panic(fmt.Errorf("invalid scheme: %s", adminConfig.Replication.AdvertScheme))
 	}
 
-	trans := rafthttp.NewHTTPTransport(address,
-		http.DefaultClient, raftHttpLogger,
-		adminConfig.Replication.AdvertScheme+
-			"://(address)/raft",
+	transport := rafthttp.NewHTTPTransport(
+		address, http.DefaultClient, raftHttpLogger,
+		adminConfig.Replication.AdvertScheme+"://(address)/raft",
 	)
-	raftNode, err := raft.NewRaft(raftConfig, newDGateAdminFSM(ps),
-		lstore, sstore, snapstore, trans)
+	raftNode, err := raft.NewRaft(
+		raftConfig, newDGateAdminFSM(ps),
+		lstore, sstore, snapstore, transport,
+	)
 	if err != nil {
 		panic(err)
 	}
 
 	ps.SetupRaft(raftNode, raftConfig)
 	// Setup raft handler
-	server.Handle("/raft/*", trans)
+	server.Handle("/raft/*", transport)
 
 	raftAdminLogger := ps.Logger().With().Str("component", "raftAdmin").Logger()
 	raftAdmin := raftadmin.NewRaftAdminHTTPServer(
-		raftNode, raftAdminLogger,
-		[]raft.ServerAddress{address},
+		raftNode, raftAdminLogger, []raft.ServerAddress{address},
 	)
 
 	// Setup handler raft

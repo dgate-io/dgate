@@ -128,22 +128,29 @@ func NewProxyState(conf *config.DGateConfig) *ProxyState {
 		WithComponentLogger("proxy_store"),
 		WithDefaultLevel(zerolog.InfoLevel),
 	)
+	schedulerLogger := Logger(&logger,
+		WithComponentLogger("scheduler"),
+		WithDefaultLevel(zerolog.InfoLevel),
+	)
 	replicationEnabled := false
 	if conf.AdminConfig != nil && conf.AdminConfig.Replication != nil {
 		replicationEnabled = true
 	}
 	state := &ProxyState{
-		version:            "unknown",
-		startTime:          time.Now(),
-		raftReady:          atomic.Bool{},
-		logger:             logger,
-		debugMode:          conf.Debug,
-		config:             conf,
-		metrics:            NewProxyMetrics(),
-		printer:            printer,
-		routers:            avl.NewTree[string, *router.DynamicRouter](),
-		changeChan:         make(chan *spec.ChangeLog, 1),
-		rm:                 resources.NewManager(opt),
+		version:    "unknown",
+		startTime:  time.Now(),
+		raftReady:  atomic.Bool{},
+		logger:     logger,
+		debugMode:  conf.Debug,
+		config:     conf,
+		metrics:    NewProxyMetrics(),
+		printer:    printer,
+		routers:    avl.NewTree[string, *router.DynamicRouter](),
+		changeChan: make(chan *spec.ChangeLog, 1),
+		rm:         resources.NewManager(opt),
+		skdr: scheduler.New(scheduler.Options{
+			Logger: schedulerLogger,
+		}),
 		providers:          avl.NewTree[string, *RequestContextProvider](),
 		modPrograms:        avl.NewTree[string, *goja.Program](),
 		proxyLock:          new(sync.RWMutex),
@@ -298,6 +305,37 @@ func (ps *ProxyState) SharedCache() cache.TCache {
 	return ps.sharedCache
 }
 
+// RestartState - restart state clears the state and reloads the configuration
+// this is useful for rollbacks when broken changes are made.
+func (ps *ProxyState) RestartState(errFn func(error)) {
+	ps.proxyLock.Lock()
+	defer ps.proxyLock.Unlock()
+
+	ps.rm.Empty()
+	ps.modPrograms.Clear()
+	ps.providers.Clear()
+	ps.routers.Clear()
+	ps.sharedCache.Clear()
+	ps.Scheduler().Stop()
+	if err := ps.initConfigResources(ps.config.ProxyConfig.InitResources); err != nil {
+		errFn(err)
+		return
+	}
+	if ps.replicationEnabled {
+		raft := ps.Raft()
+		err := raft.ReloadConfig(raft.ReloadableConfig())
+		if err != nil {
+			errFn(err)
+			return
+		}
+	}
+	if err := ps.restoreFromChangeLogs(true); err != nil {
+		errFn(err)
+		return
+	}
+	ps.logger.Info().Msg("State successfully restarted")
+}
+
 // ReloadState - reload state checks the change logs to see if a reload is required,
 // specifying check as false skips this step and automatically reloads
 func (ps *ProxyState) ReloadState(check bool, logs ...*spec.ChangeLog) error {
@@ -319,7 +357,7 @@ func (ps *ProxyState) ReloadState(check bool, logs ...*spec.ChangeLog) error {
 func (ps *ProxyState) ProcessChangeLog(log *spec.ChangeLog, reload bool) error {
 	err := ps.processChangeLog(log, reload, !ps.replicationEnabled)
 	if err != nil {
-		ps.logger.Error().Err(err).Msg("error processing change log")
+		ps.logger.Error().Err(err).Msg("processing error")
 	}
 	return err
 }

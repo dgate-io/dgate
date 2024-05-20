@@ -2,7 +2,6 @@ package proxy
 
 import (
 	"context"
-	"errors"
 )
 
 type ModulePool interface {
@@ -18,13 +17,13 @@ type modulePool struct {
 	ctxCancel context.CancelFunc
 	ctx       context.Context
 
-	createModuleExtract func() ModuleExtractor
+	createModuleExtract func() (ModuleExtractor, error)
 }
 
 func NewModulePool(
 	minBuffers, maxBuffers int,
 	reqCtxProvider *RequestContextProvider,
-	createModExts func(*RequestContextProvider) ModuleExtractor,
+	createModExts ModuleExtractorFunc,
 ) (ModulePool, error) {
 	if minBuffers < 1 {
 		panic("module concurrency must be greater than 0")
@@ -33,16 +32,15 @@ func NewModulePool(
 		panic("maxBuffers must be greater than minBuffers")
 	}
 
-	me := createModExts(reqCtxProvider)
-	if me == nil {
-		return nil, errors.New("could not load moduleExtract")
+	if _, err := createModExts(reqCtxProvider); err != nil {
+		return nil, err
 	}
 	mb := &modulePool{
 		min:          minBuffers,
 		max:          maxBuffers,
 		modExtBuffer: make(chan ModuleExtractor, maxBuffers),
 	}
-	mb.createModuleExtract = func() ModuleExtractor {
+	mb.createModuleExtract = func() (ModuleExtractor, error) {
 		return createModExts(reqCtxProvider)
 	}
 	mb.ctx, mb.ctxCancel = context.WithCancel(reqCtxProvider.ctx)
@@ -53,13 +51,19 @@ func (mb *modulePool) Borrow() ModuleExtractor {
 	if mb == nil || mb.ctx == nil || mb.ctx.Err() != nil {
 		return nil
 	}
-	var me ModuleExtractor
+	var (
+		me  ModuleExtractor
+		err error
+	)
 	select {
 	case me = <-mb.modExtBuffer:
 		break
 	// NOTE: important for performance
 	default:
-		me = mb.createModuleExtract()
+		me, err = mb.createModuleExtract()
+		if err != nil {
+			return nil
+		}
 	}
 	return me
 }

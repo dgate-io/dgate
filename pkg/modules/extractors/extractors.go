@@ -3,6 +3,7 @@ package extractors
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"net/url"
@@ -26,6 +27,15 @@ type (
 type Results struct {
 	Result  goja.Value
 	IsError bool
+}
+
+func RunAndWait(
+	rt *goja.Runtime,
+	fn goja.Callable,
+	args ...goja.Value,
+) error {
+	_, err := RunAndWaitForResult(rt, fn, args...)
+	return err
 }
 
 // RunAndWaitForResult can execute a goja function and wait for the result
@@ -59,6 +69,8 @@ func RunAndWaitForResult(
 			return nil, nil
 		}
 		return results, nil
+	} else if err != nil {
+		return nil, err
 	} else {
 		return res, nil
 	}
@@ -88,29 +100,29 @@ func ExtractFetchUpstreamFunction(
 	loop *eventloop.EventLoop,
 ) (fetchUpstream FetchUpstreamUrlFunc, err error) {
 	rt := loop.Runtime()
-	fetchUpstreamRaw := rt.Get("fetchUpstream")
-	if call, ok := goja.AssertFunction(fetchUpstreamRaw); ok {
+	if fn, ok, err := functionExtractor(rt, "fetchUpstream"); ok {
 		fetchUpstream = func(modCtx *types.ModuleContext) (*url.URL, error) {
-			res, err := RunAndWaitForResult(
-				rt, call, rt.ToValue(modCtx),
-			)
-			if err != nil {
+			if res, err := RunAndWaitForResult(
+				rt, fn, rt.ToValue(modCtx),
+			); err != nil {
 				return nil, err
-			}
-			upstreamUrlString := res.String()
-			if goja.IsUndefined(res) || goja.IsNull(res) || upstreamUrlString == "" {
+			} else if nully(res) || res.String() == "" {
 				return nil, errors.New("fetchUpstream returned an invalid URL")
+			} else {
+				upstreamUrlString := res.String()
+				if !strings.Contains(upstreamUrlString, "://") {
+					upstreamUrlString += "http://"
+				}
+				upstreamUrl, err := url.Parse(upstreamUrlString)
+				if err != nil {
+					return nil, err
+				}
+				// perhaps add default scheme if not present
+				return upstreamUrl, err
 			}
-			if !strings.Contains(upstreamUrlString, "://") {
-				upstreamUrlString += "http://"
-			}
-			upstreamUrl, err := url.Parse(upstreamUrlString)
-			if err != nil {
-				return nil, err
-			}
-			// perhaps add default scheme if not present
-			return upstreamUrl, err
 		}
+	} else if err != nil {
+		return nil, err
 	} else {
 		fetchUpstream = DefaultFetchUpstreamFunction()
 	}
@@ -121,13 +133,14 @@ func ExtractRequestModifierFunction(
 	loop *eventloop.EventLoop,
 ) (requestModifier RequestModifierFunc, err error) {
 	rt := loop.Runtime()
-	if call, ok := goja.AssertFunction(rt.Get("requestModifier")); ok {
+	if fn, ok, err := functionExtractor(rt, "requestModifier"); ok {
 		requestModifier = func(modCtx *types.ModuleContext) error {
-			_, err := RunAndWaitForResult(
-				rt, call, rt.ToValue(modCtx),
-			)
-			return err
+			return RunAndWait(rt, fn, rt.ToValue(modCtx))
 		}
+	} else if err != nil {
+		return nil, err
+	} else {
+		return nil, nil
 	}
 	return requestModifier, nil
 }
@@ -136,14 +149,15 @@ func ExtractResponseModifierFunction(
 	loop *eventloop.EventLoop,
 ) (responseModifier ResponseModifierFunc, err error) {
 	rt := loop.Runtime()
-	if call, ok := goja.AssertFunction(rt.Get("responseModifier")); ok {
+	if fn, ok, err := functionExtractor(rt, "responseModifier"); ok {
 		responseModifier = func(modCtx *types.ModuleContext, res *http.Response) error {
 			modCtx = types.ModuleContextWithResponse(modCtx, res)
-			_, err := RunAndWaitForResult(
-				rt, call, rt.ToValue(modCtx),
-			)
-			return err
+			return RunAndWait(rt, fn, rt.ToValue(modCtx))
 		}
+	} else if err != nil {
+		return nil, err
+	} else {
+		return nil, nil
 	}
 	return responseModifier, nil
 }
@@ -173,18 +187,16 @@ func ExtractErrorHandlerFunction(
 	loop *eventloop.EventLoop,
 ) (errorHandler ErrorHandlerFunc, err error) {
 	rt := loop.Runtime()
-	if call, ok := goja.AssertFunction(rt.Get("errorHandler")); ok {
+	if fn, ok, err := functionExtractor(rt, "errorHandler"); ok {
 		errorHandler = func(modCtx *types.ModuleContext, upstreamErr error) error {
-			if modCtx == nil {
-				return upstreamErr
-			}
 			modCtx = types.ModuleContextWithError(modCtx, upstreamErr)
-			_, err := RunAndWaitForResult(
-				rt, call, rt.ToValue(modCtx),
+			return RunAndWait(
+				rt, fn, rt.ToValue(modCtx),
 				rt.ToValue(rt.NewGoError(upstreamErr)),
 			)
-			return err
 		}
+	} else if err != nil {
+		return nil, err
 	} else {
 		errorHandler = DefaultErrorHandlerFunction()
 	}
@@ -195,16 +207,32 @@ func ExtractRequestHandlerFunction(
 	loop *eventloop.EventLoop,
 ) (requestHandler RequestHandlerFunc, err error) {
 	rt := loop.Runtime()
-	if call, ok := goja.AssertFunction(rt.Get("requestHandler")); ok {
+	if fn, ok, err := functionExtractor(rt, "requestHandler"); ok {
 		requestHandler = func(modCtx *types.ModuleContext) error {
-			if modCtx == nil {
-				return errors.New("module context is nil")
-			}
-			_, err := RunAndWaitForResult(
-				rt, call, rt.ToValue(modCtx),
+			return RunAndWait(
+				rt, fn, rt.ToValue(modCtx),
 			)
-			return err
 		}
+	} else if err != nil {
+		return nil, err
+	} else {
+		return nil, err
 	}
 	return requestHandler, nil
+}
+
+func functionExtractor(rt *goja.Runtime, varName string) (goja.Callable, bool, error) {
+	check := fmt.Sprintf(
+		"exports?.%s ?? (typeof %s === 'function' ? %s : void 0)",
+		varName, varName, varName,
+	)
+	if fnRef, err := rt.RunString(check); err != nil {
+		return nil, false, err
+	} else if fn, ok := goja.AssertFunction(fnRef); ok {
+		return fn, true, nil
+	} else if nully(fnRef) {
+		return nil, false, nil
+	} else {
+		return nil, false, errors.New("extractors: invalid function -> " + varName)
+	}
 }

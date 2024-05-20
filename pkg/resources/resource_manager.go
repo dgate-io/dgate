@@ -3,9 +3,9 @@ package resources
 import (
 	"errors"
 	"sort"
-	"sync"
 
 	"github.com/dgate-io/dgate/pkg/spec"
+	"github.com/dgate-io/dgate/pkg/util/keylock"
 	"github.com/dgate-io/dgate/pkg/util/linker"
 	"github.com/dgate-io/dgate/pkg/util/safe"
 	"github.com/dgate-io/dgate/pkg/util/tree/avl"
@@ -22,7 +22,7 @@ type ResourceManager struct {
 	routes      avlTreeLinker[spec.DGateRoute]
 	secrets     avlTreeLinker[spec.DGateSecret]
 	collections avlTreeLinker[spec.DGateCollection]
-	mutex       *sync.RWMutex
+	mutex       *keylock.KeyLock
 }
 
 type Options func(*ResourceManager)
@@ -36,7 +36,7 @@ func NewManager(opts ...Options) *ResourceManager {
 		routes:      avl.NewTree[string, *linker.Link[string, safe.Ref[spec.DGateRoute]]](),
 		collections: avl.NewTree[string, *linker.Link[string, safe.Ref[spec.DGateCollection]]](),
 		secrets:     avl.NewTree[string, *linker.Link[string, safe.Ref[spec.DGateSecret]]](),
-		mutex:       &sync.RWMutex{},
+		mutex:       keylock.NewKeyLock(),
 	}
 	for _, opt := range opts {
 		if opt != nil {
@@ -57,8 +57,7 @@ func WithDefaultNamespace(ns *spec.Namespace) Options {
 */
 
 func (rm *ResourceManager) GetNamespace(namespace string) (*spec.DGateNamespace, bool) {
-	rm.mutex.RLock()
-	defer rm.mutex.RUnlock()
+	defer rm.mutex.RLock(namespace)()
 	return rm.getNamespace(namespace)
 }
 
@@ -74,8 +73,6 @@ func (rm *ResourceManager) NamespaceCountEquals(target int) bool {
 	if target < 0 {
 		panic("target must be greater than or equal to 0")
 	}
-	rm.mutex.RLock()
-	defer rm.mutex.RUnlock()
 	rm.namespaces.Each(func(_ string, lk *linker.Link[string, safe.Ref[spec.DGateNamespace]]) bool {
 		target -= 1
 		return target > 0
@@ -84,8 +81,6 @@ func (rm *ResourceManager) NamespaceCountEquals(target int) bool {
 }
 
 func (rm *ResourceManager) GetFirstNamespace() *spec.DGateNamespace {
-	rm.mutex.RLock()
-	defer rm.mutex.RUnlock()
 	if _, nsLink, ok := rm.namespaces.RootKeyValue(); ok {
 		return nsLink.Item().Read()
 	}
@@ -94,8 +89,7 @@ func (rm *ResourceManager) GetFirstNamespace() *spec.DGateNamespace {
 
 // GetNamespaces returns a list of all namespaces
 func (rm *ResourceManager) GetNamespaces() []*spec.DGateNamespace {
-	rm.mutex.RLock()
-	defer rm.mutex.RUnlock()
+	defer rm.mutex.RLockMain()()
 	var namespaces []*spec.DGateNamespace
 	rm.namespaces.Each(func(_ string, lk *linker.Link[string, safe.Ref[spec.DGateNamespace]]) bool {
 		namespaces = append(namespaces, lk.Item().Read())
@@ -112,8 +106,7 @@ func (rm *ResourceManager) transformNamespace(ns *spec.Namespace) *spec.DGateNam
 }
 
 func (rm *ResourceManager) AddNamespace(ns *spec.Namespace) *spec.DGateNamespace {
-	rm.mutex.Lock()
-	defer rm.mutex.Unlock()
+	defer rm.mutex.Lock(ns.Name)()
 	namespace := rm.transformNamespace(ns)
 	if nsLk, ok := rm.namespaces.Find(ns.Name); ok {
 		nsLk.Item().Replace(namespace)
@@ -130,8 +123,7 @@ func (rm *ResourceManager) AddNamespace(ns *spec.Namespace) *spec.DGateNamespace
 }
 
 func (rm *ResourceManager) RemoveNamespace(namespace string) error {
-	rm.mutex.Lock()
-	defer rm.mutex.Unlock()
+	defer rm.mutex.Lock(namespace)()
 	if nsLk, ok := rm.namespaces.Find(namespace); ok {
 		if nsLk.Len("routes") > 0 {
 			return ErrCannotDeleteNamespace(namespace, "routes still linked")
@@ -159,8 +151,7 @@ func (rm *ResourceManager) RemoveNamespace(namespace string) error {
 
 /* Route functions */
 func (rm *ResourceManager) GetRoute(name, namespace string) (*spec.DGateRoute, bool) {
-	rm.mutex.RLock()
-	defer rm.mutex.RUnlock()
+	defer rm.mutex.RLock(namespace)()
 	return rm.getRoute(name, namespace)
 }
 
@@ -173,8 +164,7 @@ func (rm *ResourceManager) getRoute(name, namespace string) (*spec.DGateRoute, b
 
 // GetRoutes returns a list of all routes
 func (rm *ResourceManager) GetRoutes() []*spec.DGateRoute {
-	rm.mutex.RLock()
-	defer rm.mutex.RUnlock()
+	defer rm.mutex.RLockMain()()
 	var routes []*spec.DGateRoute
 	rm.routes.Each(func(_ string, rtlk *linker.Link[string, safe.Ref[spec.DGateRoute]]) bool {
 		routes = append(routes, rtlk.Item().Read())
@@ -185,8 +175,7 @@ func (rm *ResourceManager) GetRoutes() []*spec.DGateRoute {
 
 // GetRoutesByNamespace returns a list of all routes in a namespace
 func (rm *ResourceManager) GetRoutesByNamespace(namespace string) []*spec.DGateRoute {
-	rm.mutex.RLock()
-	defer rm.mutex.RUnlock()
+	defer rm.mutex.RLock(namespace)()
 	var routes []*spec.DGateRoute
 	if nsLk, ok := rm.namespaces.Find(namespace); ok {
 		nsLk.Each("routes", func(_ string, lk linker.Linker[string]) {
@@ -199,8 +188,7 @@ func (rm *ResourceManager) GetRoutesByNamespace(namespace string) []*spec.DGateR
 
 // GetRouteNamespaceMap returns a map of all routes and their namespaces as the key
 func (rm *ResourceManager) GetRouteNamespaceMap() map[string][]*spec.DGateRoute {
-	rm.mutex.RLock()
-	defer rm.mutex.RUnlock()
+	defer rm.mutex.RLockMain()()
 	routeMap := make(map[string][]*spec.DGateRoute)
 	rm.namespaces.Each(func(ns string, lk *linker.Link[string, safe.Ref[spec.DGateNamespace]]) bool {
 		routes := []*spec.DGateRoute{}
@@ -217,8 +205,7 @@ func (rm *ResourceManager) GetRouteNamespaceMap() map[string][]*spec.DGateRoute 
 }
 
 func (rm *ResourceManager) AddRoute(route *spec.Route) (rt *spec.DGateRoute, err error) {
-	rm.mutex.Lock()
-	defer rm.mutex.Unlock()
+	defer rm.mutex.RLockMain()()
 	if rt, err = rm.transformRoute(route); err != nil {
 		return nil, err
 	} else if nsLk, ok := rm.namespaces.Find(route.NamespaceName); !ok {
@@ -277,8 +264,7 @@ func (rm *ResourceManager) transformRoute(route *spec.Route) (*spec.DGateRoute, 
 
 // RemoveRoute removes a route from the resource manager
 func (rm *ResourceManager) RemoveRoute(name, namespace string) error {
-	rm.mutex.Lock()
-	defer rm.mutex.Unlock()
+	defer rm.mutex.Lock(namespace)()
 	if nsLk, ok := rm.namespaces.Find(namespace); !ok {
 		return ErrNamespaceNotFound(namespace)
 	} else if lk, ok := rm.routes.Find(name + "/" + namespace); ok {
@@ -347,8 +333,7 @@ func (rm *ResourceManager) relinkRoute(
 /* Service functions */
 
 func (rm *ResourceManager) GetService(name, namespace string) (*spec.DGateService, bool) {
-	rm.mutex.RLock()
-	defer rm.mutex.RUnlock()
+	defer rm.mutex.RLock(namespace)()
 	return rm.getService(name, namespace)
 }
 
@@ -361,8 +346,7 @@ func (rm *ResourceManager) getService(name, namespace string) (*spec.DGateServic
 
 // GetServicesByNamespace returns a list of all services in a namespace
 func (rm *ResourceManager) GetServicesByNamespace(namespace string) []*spec.DGateService {
-	rm.mutex.RLock()
-	defer rm.mutex.RUnlock()
+	defer rm.mutex.RLock(namespace)()
 	var services []*spec.DGateService
 	if nsLk, ok := rm.namespaces.Find(namespace); ok {
 		nsLk.Each("services", func(_ string, lk linker.Linker[string]) {
@@ -375,8 +359,7 @@ func (rm *ResourceManager) GetServicesByNamespace(namespace string) []*spec.DGat
 
 // GetServices returns a list of all services
 func (rm *ResourceManager) GetServices() []*spec.DGateService {
-	rm.mutex.RLock()
-	defer rm.mutex.RUnlock()
+	defer rm.mutex.RLockMain()()
 	var services []*spec.DGateService
 	rm.services.Each(func(_ string, lk *linker.Link[string, safe.Ref[spec.DGateService]]) bool {
 		services = append(services, lk.Item().Read())
@@ -386,8 +369,7 @@ func (rm *ResourceManager) GetServices() []*spec.DGateService {
 }
 
 func (rm *ResourceManager) AddService(service *spec.Service) (*spec.DGateService, error) {
-	rm.mutex.Lock()
-	defer rm.mutex.Unlock()
+	defer rm.mutex.Lock(service.NamespaceName)()
 	svc, err := rm.transformService(service)
 	if err != nil {
 		return nil, err
@@ -413,8 +395,7 @@ func (rm *ResourceManager) transformService(service *spec.Service) (*spec.DGateS
 }
 
 func (rm *ResourceManager) RemoveService(name, namespace string) error {
-	rm.mutex.Lock()
-	defer rm.mutex.Unlock()
+	defer rm.mutex.Lock(namespace)()
 	if lk, ok := rm.services.Find(name + "/" + namespace); ok {
 		if nsLk, ok := rm.namespaces.Find(namespace); ok {
 			if rtsLk := lk.Get("routes"); rtsLk != nil {
@@ -437,8 +418,7 @@ func (rm *ResourceManager) RemoveService(name, namespace string) error {
 /* Domain functions */
 
 func (rm *ResourceManager) GetDomain(name, namespace string) (*spec.DGateDomain, bool) {
-	rm.mutex.RLock()
-	defer rm.mutex.RUnlock()
+	defer rm.mutex.RLock(namespace)()
 	return rm.getDomain(name, namespace)
 }
 
@@ -451,8 +431,7 @@ func (rm *ResourceManager) getDomain(name, namespace string) (*spec.DGateDomain,
 
 // GetDomains returns a list of all domains
 func (rm *ResourceManager) GetDomains() []*spec.DGateDomain {
-	rm.mutex.RLock()
-	defer rm.mutex.RUnlock()
+	defer rm.mutex.RLockMain()()
 	var domains []*spec.DGateDomain
 	rm.domains.Each(func(_ string, lk *linker.Link[string, safe.Ref[spec.DGateDomain]]) bool {
 		domains = append(domains, lk.Item().Read())
@@ -465,8 +444,7 @@ func (rm *ResourceManager) DomainCountEquals(target int) bool {
 	if target < 0 {
 		panic("target must be greater than or equal to 0")
 	}
-	rm.mutex.RLock()
-	defer rm.mutex.RUnlock()
+	defer rm.mutex.RLockMain()()
 	rm.domains.Each(func(_ string, lk *linker.Link[string, safe.Ref[spec.DGateDomain]]) bool {
 		target -= 1
 		return target > 0
@@ -476,8 +454,7 @@ func (rm *ResourceManager) DomainCountEquals(target int) bool {
 
 // GetDomainsByPriority returns a list of all domains sorted by priority and name
 func (rm *ResourceManager) GetDomainsByPriority() []*spec.DGateDomain {
-	rm.mutex.RLock()
-	defer rm.mutex.RUnlock()
+	defer rm.mutex.RLockMain()()
 	var domains []*spec.DGateDomain
 	rm.domains.Each(func(_ string, lk *linker.Link[string, safe.Ref[spec.DGateDomain]]) bool {
 		domains = append(domains, lk.Item().Read())
@@ -497,8 +474,7 @@ func (rm *ResourceManager) GetDomainsByPriority() []*spec.DGateDomain {
 
 // GetDomainsByNamespace returns a list of all domains in a namespace
 func (rm *ResourceManager) GetDomainsByNamespace(namespace string) []*spec.DGateDomain {
-	rm.mutex.RLock()
-	defer rm.mutex.RUnlock()
+	defer rm.mutex.RLock(namespace)()
 	var domains []*spec.DGateDomain
 	if nsLk, ok := rm.namespaces.Find(namespace); ok {
 		nsLk.Each("domains", func(_ string, lk linker.Linker[string]) {
@@ -512,8 +488,7 @@ func (rm *ResourceManager) GetDomainsByNamespace(namespace string) []*spec.DGate
 // AddDomain adds a domain to the resource manager
 
 func (rm *ResourceManager) AddDomain(domain *spec.Domain) (*spec.DGateDomain, error) {
-	rm.mutex.Lock()
-	defer rm.mutex.Unlock()
+	defer rm.mutex.Lock(domain.NamespaceName)()
 	dm, err := rm.transformDomain(domain)
 	if err != nil {
 		return nil, err
@@ -546,8 +521,7 @@ func (rm *ResourceManager) transformDomain(domain *spec.Domain) (*spec.DGateDoma
 }
 
 func (rm *ResourceManager) RemoveDomain(name, namespace string) error {
-	rm.mutex.Lock()
-	defer rm.mutex.Unlock()
+	defer rm.mutex.Lock(namespace)()
 	if dmLk, ok := rm.domains.Find(name + "/" + namespace); ok {
 		if nsLk, ok := rm.namespaces.Find(namespace); ok {
 			nsLk.UnlinkOneMany("domains", name)
@@ -567,8 +541,7 @@ func (rm *ResourceManager) RemoveDomain(name, namespace string) error {
 /* Module functions */
 
 func (rm *ResourceManager) GetModule(name, namespace string) (*spec.DGateModule, bool) {
-	rm.mutex.RLock()
-	defer rm.mutex.RUnlock()
+	defer rm.mutex.RLock(namespace)()
 	return rm.getModule(name, namespace)
 }
 
@@ -581,8 +554,7 @@ func (rm *ResourceManager) getModule(name, namespace string) (*spec.DGateModule,
 
 // GetModules returns a list of all modules
 func (rm *ResourceManager) GetModules() []*spec.DGateModule {
-	rm.mutex.RLock()
-	defer rm.mutex.RUnlock()
+	defer rm.mutex.RLockMain()()
 	var modules []*spec.DGateModule
 	rm.modules.Each(func(_ string, lk *linker.Link[string, safe.Ref[spec.DGateModule]]) bool {
 		modules = append(modules, lk.Item().Read())
@@ -593,8 +565,7 @@ func (rm *ResourceManager) GetModules() []*spec.DGateModule {
 
 // GetRouteModules returns a list of all modules in a route
 func (rm *ResourceManager) GetRouteModules(name, namespace string) ([]*spec.DGateModule, bool) {
-	rm.mutex.RLock()
-	defer rm.mutex.RUnlock()
+	defer rm.mutex.RLock(namespace)()
 	route, ok := rm.getRoute(name, namespace)
 	if !ok {
 		return nil, false
@@ -611,8 +582,7 @@ func (rm *ResourceManager) GetRouteModules(name, namespace string) ([]*spec.DGat
 
 // GetModulesByNamespace returns a list of all modules in a namespace
 func (rm *ResourceManager) GetModulesByNamespace(namespace string) []*spec.DGateModule {
-	rm.mutex.RLock()
-	defer rm.mutex.RUnlock()
+	defer rm.mutex.RLock(namespace)()
 	var modules []*spec.DGateModule
 	if nsLk, ok := rm.namespaces.Find(namespace); ok {
 		nsLk.Each("modules", func(_ string, lk linker.Linker[string]) {
@@ -624,8 +594,7 @@ func (rm *ResourceManager) GetModulesByNamespace(namespace string) []*spec.DGate
 }
 
 func (rm *ResourceManager) AddModule(module *spec.Module) (*spec.DGateModule, error) {
-	rm.mutex.Lock()
-	defer rm.mutex.Unlock()
+	defer rm.mutex.Lock(module.NamespaceName)()
 	md, err := rm.transformModule(module)
 	if err != nil {
 		return nil, err
@@ -651,8 +620,7 @@ func (rm *ResourceManager) transformModule(module *spec.Module) (*spec.DGateModu
 }
 
 func (rm *ResourceManager) RemoveModule(name, namespace string) error {
-	rm.mutex.Lock()
-	defer rm.mutex.Unlock()
+	defer rm.mutex.Lock(namespace)()
 	if modLink, ok := rm.modules.Find(name + "/" + namespace); ok {
 		if modLink.Len("routes") > 0 {
 			return ErrCannotDeleteModule(name, "routes still linked")
@@ -675,8 +643,7 @@ func (rm *ResourceManager) RemoveModule(name, namespace string) error {
 /* Collection functions */
 
 func (rm *ResourceManager) GetCollection(name, namespace string) (*spec.DGateCollection, bool) {
-	rm.mutex.RLock()
-	defer rm.mutex.RUnlock()
+	defer rm.mutex.RLock(namespace)()
 	return getCollection(rm, name, namespace)
 }
 
@@ -688,8 +655,7 @@ func getCollection(rm *ResourceManager, name, namespace string) (*spec.DGateColl
 }
 
 func (rm *ResourceManager) GetCollectionsByNamespace(namespace string) []*spec.DGateCollection {
-	rm.mutex.RLock()
-	defer rm.mutex.RUnlock()
+	defer rm.mutex.RLock(namespace)()
 	var collections []*spec.DGateCollection
 	if nsLk, ok := rm.namespaces.Find(namespace); ok {
 		nsLk.Each("collections", func(_ string, lk linker.Linker[string]) {
@@ -702,8 +668,7 @@ func (rm *ResourceManager) GetCollectionsByNamespace(namespace string) []*spec.D
 
 // GetCollections returns a list of all collections
 func (rm *ResourceManager) GetCollections() []*spec.DGateCollection {
-	rm.mutex.RLock()
-	defer rm.mutex.RUnlock()
+	defer rm.mutex.RLockMain()()
 	var collections []*spec.DGateCollection
 	rm.collections.Each(func(_ string, lk *linker.Link[string, safe.Ref[spec.DGateCollection]]) bool {
 		collections = append(collections, lk.Item().Read())
@@ -713,8 +678,7 @@ func (rm *ResourceManager) GetCollections() []*spec.DGateCollection {
 }
 
 func (rm *ResourceManager) AddCollection(collection *spec.Collection) (*spec.DGateCollection, error) {
-	rm.mutex.Lock()
-	defer rm.mutex.Unlock()
+	defer rm.mutex.Lock(collection.NamespaceName)()
 	cl, err := rm.transformCollection(collection)
 	if err != nil {
 		return nil, err
@@ -750,8 +714,7 @@ func (rm *ResourceManager) transformCollection(collection *spec.Collection) (*sp
 }
 
 func (rm *ResourceManager) RemoveCollection(name, namespace string) error {
-	rm.mutex.Lock()
-	defer rm.mutex.Unlock()
+	defer rm.mutex.Lock(namespace)()
 	if colLk, ok := rm.collections.Find(name + "/" + namespace); ok {
 		if nsLk, ok := rm.namespaces.Find(namespace); ok {
 			// unlink namespace to collection
@@ -773,8 +736,7 @@ func (rm *ResourceManager) RemoveCollection(name, namespace string) error {
 /* Secret functions */
 
 func (rm *ResourceManager) GetSecret(name, namespace string) (*spec.DGateSecret, bool) {
-	rm.mutex.RLock()
-	defer rm.mutex.RUnlock()
+	defer rm.mutex.RLock(namespace)()
 	return rm.getSecret(name, namespace)
 }
 
@@ -787,8 +749,7 @@ func (rm *ResourceManager) getSecret(name, namespace string) (*spec.DGateSecret,
 
 // GetSecrets returns a list of all secrets
 func (rm *ResourceManager) GetSecrets() []*spec.DGateSecret {
-	rm.mutex.RLock()
-	defer rm.mutex.RUnlock()
+	defer rm.mutex.RLockMain()()
 	var secrets []*spec.DGateSecret
 	rm.secrets.Each(func(_ string, lk *linker.Link[string, safe.Ref[spec.DGateSecret]]) bool {
 		secrets = append(secrets, lk.Item().Read())
@@ -799,8 +760,7 @@ func (rm *ResourceManager) GetSecrets() []*spec.DGateSecret {
 
 // GetSecretsByNamespace returns a list of all secrets in a namespace
 func (rm *ResourceManager) GetSecretsByNamespace(namespace string) []*spec.DGateSecret {
-	rm.mutex.RLock()
-	defer rm.mutex.RUnlock()
+	defer rm.mutex.RLock(namespace)()
 	var secrets []*spec.DGateSecret
 	if nsLk, ok := rm.namespaces.Find(namespace); ok {
 		nsLk.Each("secrets", func(_ string, lk linker.Linker[string]) {
@@ -812,8 +772,7 @@ func (rm *ResourceManager) GetSecretsByNamespace(namespace string) []*spec.DGate
 }
 
 func (rm *ResourceManager) AddSecret(secret *spec.Secret) (*spec.DGateSecret, error) {
-	rm.mutex.Lock()
-	defer rm.mutex.Unlock()
+	defer rm.mutex.Lock(secret.NamespaceName)()
 	md, err := rm.transformSecret(secret)
 	if err != nil {
 		return nil, err
@@ -839,8 +798,7 @@ func (rm *ResourceManager) transformSecret(secret *spec.Secret) (*spec.DGateSecr
 }
 
 func (rm *ResourceManager) RemoveSecret(name, namespace string) error {
-	rm.mutex.Lock()
-	defer rm.mutex.Unlock()
+	defer rm.mutex.Lock(namespace)()
 	if scrtLink, ok := rm.secrets.Find(name + "/" + namespace); ok {
 		if scrtLink.Len("routes") > 0 {
 			return ErrCannotDeleteSecret(name, "routes still linked")
@@ -860,9 +818,21 @@ func (rm *ResourceManager) RemoveSecret(name, namespace string) error {
 	}
 }
 
+// Clear removes all resources from the resource manager
+func (rm *ResourceManager) Clear() {
+	defer rm.mutex.LockMain()()
+	rm.namespaces.Clear()
+	rm.services.Clear()
+	rm.domains.Clear()
+	rm.modules.Clear()
+	rm.routes.Clear()
+	rm.collections.Clear()
+	rm.secrets.Clear()
+}
+
+// Empty returns true if the resource manager is empty
 func (rm *ResourceManager) Empty() bool {
-	rm.mutex.RLock()
-	defer rm.mutex.RUnlock()
+	defer rm.mutex.RLockMain()()
 	return rm.namespaces.Empty() &&
 		rm.services.Empty() &&
 		rm.domains.Empty() &&

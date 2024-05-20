@@ -2,6 +2,7 @@ package admin
 
 import (
 	"fmt"
+	"io"
 	"log"
 	"net/http"
 	"os"
@@ -89,8 +90,11 @@ func StartAdminAPI(conf *config.DGateConfig, proxyState *proxy.ProxyState) {
 					}
 					respMap["method"] = r.Method
 					respMap["path"] = r.URL.String()
-					respMap["remote_addr"] = r.RemoteAddr
+					if body, err := io.ReadAll(r.Body); err == nil {
+						respMap["body"] = string(body)
+					}
 					respMap["host"] = r.Host
+					respMap["remote_addr"] = r.RemoteAddr
 					respMap["req_headers"] = r.Header
 					if conf.TestServerConfig.EnableEnvVars {
 						respMap["env"] = os.Environ()

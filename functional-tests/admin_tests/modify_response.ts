@@ -4,9 +4,9 @@ export const responseModifier = async (ctx) => {
             const uuidData = await res.json();
             console.log("INFO uuid", JSON.stringify(uuidData));
             const resp = ctx.upstream();
-            const results = await resp.getJson();
+            const results = await resp.readJson();
             results.data.uuid = uuidData.uuid;
-            return resp.setStatus(200).setJson(results);
+            return resp.status(200).writeJson(results);
         });
 };
 

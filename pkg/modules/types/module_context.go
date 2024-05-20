@@ -20,7 +20,7 @@ type ModuleContext struct {
 	loop   *eventloop.EventLoop
 	req    *RequestWrapper
 	rwt    *ResponseWriterWrapper
-	resp   *ResponseWrapper
+	upResp *ResponseWrapper
 	cache  map[string]interface{}
 }
 
@@ -78,7 +78,7 @@ func (modCtx *ModuleContext) Request() *RequestWrapper {
 }
 
 func (modCtx *ModuleContext) Upstream() *ResponseWrapper {
-	return modCtx.resp
+	return modCtx.upResp
 }
 
 func (modCtx *ModuleContext) Response() *ResponseWriterWrapper {
@@ -89,14 +89,15 @@ func ModuleContextWithResponse(
 	modCtx *ModuleContext,
 	resp *http.Response,
 ) *ModuleContext {
-	modCtx.resp = NewResponseWrapper(resp, modCtx.loop)
+	modCtx.upResp = NewResponseWrapper(resp, modCtx.loop)
+	modCtx.rwt = nil
 	return modCtx
 }
 
 func ModuleContextWithError(
 	modCtx *ModuleContext, err error,
 ) *ModuleContext {
-	modCtx.resp = nil
+	modCtx.upResp = nil
 	return modCtx
 }
 
@@ -119,7 +120,7 @@ func GetModuleContextRequest(modCtx *ModuleContext) *RequestWrapper {
 }
 
 func GetModuleContextResponse(modCtx *ModuleContext) *ResponseWrapper {
-	return modCtx.resp
+	return modCtx.upResp
 }
 
 func GetModuleContextResponseWriterTracker(modCtx *ModuleContext) spec.ResponseWriterTracker {

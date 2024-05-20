@@ -120,6 +120,6 @@ func ConfigureModuleAPI(server chi.Router, proxyState *proxy.ProxyState, appConf
 			util.JsonError(w, http.StatusNotFound, "module not found")
 			return
 		}
-		util.JsonResponse(w, http.StatusOK, mod)
+		util.JsonResponse(w, http.StatusOK, spec.TransformDGateModule(mod))
 	})
 }

@@ -100,8 +100,11 @@ func (me *moduleExtract) RequestHandlerFunc() (extractors.RequestHandlerFunc, bo
 	return me.requestHandler, me.requestHandler != nil
 }
 
-func NewEmptyModuleExtractor() ModuleExtractor {
-	return &moduleExtract{}
+func NewDefaultModuleExtractor() ModuleExtractor {
+	return &moduleExtract{
+		fetchUpstreamUrl: extractors.DefaultFetchUpstreamFunction(),
+		errorHandler:     extractors.DefaultErrorHandlerFunction(),
+	}
 }
 
-type ModuleExtractorFunc func(*RequestContextProvider) ModuleExtractor
+type ModuleExtractorFunc func(*RequestContextProvider) (ModuleExtractor, error)

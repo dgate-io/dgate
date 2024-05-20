@@ -59,7 +59,7 @@ func proxyHandler(ps *ProxyState, reqCtx *RequestContext) {
 			runtimeStart, nil,
 		)
 	} else {
-		modExt = NewEmptyModuleExtractor()
+		modExt = NewDefaultModuleExtractor()
 	}
 
 	if reqCtx.route.Service != nil {
@@ -192,7 +192,6 @@ func handleServiceProxy(ps *ProxyState, reqCtx *RequestContext, modExt ModuleExt
 func requestHandlerModule(ps *ProxyState, reqCtx *RequestContext, modExt ModuleExtractor) {
 	var err error
 	if requestModifier, ok := modExt.RequestModifierFunc(); ok {
-		// extract request modifier function from module
 		reqModifierStart := time.Now()
 		err = requestModifier(modExt.ModuleContext())
 		ps.metrics.MeasureModuleDuration(
