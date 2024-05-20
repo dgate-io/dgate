@@ -205,7 +205,7 @@ func (rm *ResourceManager) GetRouteNamespaceMap() map[string][]*spec.DGateRoute 
 }
 
 func (rm *ResourceManager) AddRoute(route *spec.Route) (rt *spec.DGateRoute, err error) {
-	defer rm.mutex.RLockMain()()
+	defer rm.mutex.Lock(route.NamespaceName)()
 	if rt, err = rm.transformRoute(route); err != nil {
 		return nil, err
 	} else if nsLk, ok := rm.namespaces.Find(route.NamespaceName); !ok {
