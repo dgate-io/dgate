@@ -43,13 +43,13 @@ func (store *ProxyStore) FetchChangeLogs() ([]*spec.ChangeLog, error) {
 	if len(clBytes) == 0 {
 		return nil, nil
 	}
-	store.logger.Debug("found %d changelog entries", len(clBytes))
+	store.logger.Debug("found changelog entries", "numBytes", len(clBytes))
 	logs := make([]*spec.ChangeLog, len(clBytes))
 	for i, clKv := range clBytes {
 		var clObj spec.ChangeLog
 		err = json.Unmarshal(clKv.Value, &clObj)
 		if err != nil {
-			store.logger.Debug("failed to unmarshal changelog entry: %s", err.Error())
+			store.logger.Debug("failed to unmarshal changelog entry", "error", err.Error())
 			return nil, errors.New("failed to unmarshal changelog entry: " + err.Error())
 		}
 		logs[i] = &clObj
@@ -63,14 +63,13 @@ func (store *ProxyStore) StoreChangeLog(cl *spec.ChangeLog) error {
 	if err != nil {
 		return err
 	}
-	store.logger.Debug("storing changelog:%s", string(clBytes))
 	retries, delay := 30, time.Microsecond*100
 RETRY:
 	err = store.storage.Set("changelog/"+cl.ID, clBytes)
 	if err != nil {
 		if retries > 0 {
 			store.logger.With("error", err).
-				Error("failed to store changelog, retrying %d more times", retries)
+				Error("failed to store changelog", "retries", retries)
 			time.Sleep(delay)
 			retries--
 			goto RETRY
@@ -143,7 +142,7 @@ func (store *ProxyStore) StoreDocument(doc *spec.Document) error {
 	if err != nil {
 		return err
 	}
-	store.logger.Debug("storing document: %s", string(docBytes))
+	store.logger.Debug("storing document")
 	err = store.storage.Set(createDocumentKey(doc.NamespaceName, doc.CollectionName, doc.ID), docBytes)
 	if err != nil {
 		return err

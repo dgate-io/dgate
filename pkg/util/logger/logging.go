@@ -89,7 +89,7 @@ func (l *SLogHCAdapter) ResetNamed(name string) hclog.Logger {
 }
 
 func (l *SLogHCAdapter) With(args ...any) hclog.Logger {
-	return &SLogHCAdapter{l.ctx, l.logger.With(args), l.level}
+	return &SLogHCAdapter{l.ctx, l.logger.With(), l.level}
 }
 
 func (l *SLogHCAdapter) StandardLogger(opts *hclog.StandardLoggerOptions) *log.Logger {

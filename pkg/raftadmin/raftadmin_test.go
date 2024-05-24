@@ -175,7 +175,7 @@ func TestRaft(t *testing.T) {
 	client := NewHTTPAdminClient(
 		server.Client().Do,
 		"http://(address)/raftadmin",
-		slog.New(nil),
+		slog.Default(),
 	)
 	serverAddr := raft.ServerAddress(server.Listener.Addr().String())
 	leader, err := client.Leader(ctx, serverAddr)
