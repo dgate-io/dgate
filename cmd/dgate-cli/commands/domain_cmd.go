@@ -12,7 +12,7 @@ func DomainCommand(client dgclient.DGateClient) *cli.Command {
 		Aliases:   []string{"dom"},
 		Args:      true,
 		ArgsUsage: "<command> <name>",
-		Usage:     "domain commands",
+		Usage:     "domain <action> <args>",
 		Subcommands: []*cli.Command{
 			{
 				Name:    "create",

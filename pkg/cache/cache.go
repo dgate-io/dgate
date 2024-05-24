@@ -3,12 +3,12 @@ package cache
 import (
 	"context"
 	"errors"
+	"log/slog"
 	"sync"
 	"time"
 
 	"github.com/dgate-io/dgate/pkg/scheduler"
 	"github.com/dgate-io/dgate/pkg/util/heap"
-	"github.com/rs/zerolog"
 )
 
 type TCache interface {
@@ -59,7 +59,7 @@ type cacheEntry struct {
 
 type CacheOptions struct {
 	CheckInterval time.Duration
-	Logger        *zerolog.Logger
+	Logger        *slog.Logger
 }
 
 var (

@@ -3,6 +3,7 @@ package raftadmin
 import (
 	"context"
 	"io"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -11,7 +12,6 @@ import (
 
 	"github.com/dgate-io/dgate/pkg/util/logger"
 	"github.com/hashicorp/raft"
-	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 )
@@ -93,11 +93,11 @@ func (m *MockFSM) Restore(io.ReadCloser) error {
 }
 
 func setupRaftAdmin(t *testing.T) *httptest.Server {
-	lgr := zerolog.New(io.Discard)
+	lgr := slog.New(slog.NewTextHandler(io.Discard, nil))
 
 	raftConfig := raft.DefaultConfig()
 	raftConfig.LocalID = "1"
-	raftConfig.Logger = logger.NewNopHCLogger()
+	raftConfig.Logger = logger.NewSLogHCAdapter(lgr)
 
 	mockFSM := &MockFSM{}
 	mockFSM.On("Apply", mock.Anything).Return(nil)
@@ -175,7 +175,7 @@ func TestRaft(t *testing.T) {
 	client := NewHTTPAdminClient(
 		server.Client().Do,
 		"http://(address)/raftadmin",
-		zerolog.New(nil),
+		slog.New(nil),
 	)
 	serverAddr := raft.ServerAddress(server.Listener.Addr().String())
 	leader, err := client.Leader(ctx, serverAddr)

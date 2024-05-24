@@ -6,14 +6,15 @@ import (
 	"os"
 	"strings"
 
+	"log/slog"
+
 	"github.com/dgraph-io/badger/v4"
 	"github.com/dgraph-io/badger/v4/options"
-	"github.com/rs/zerolog"
 )
 
 type FileStoreConfig struct {
 	Directory string `koanf:"dir"`
-	Logger    zerolog.Logger
+	Logger    *slog.Logger
 }
 
 type FileStore struct {

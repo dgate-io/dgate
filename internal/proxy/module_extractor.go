@@ -57,6 +57,8 @@ func (me *moduleExtract) Start(reqCtx *RequestContext) {
 		reqCtx.rw, reqCtx.req,
 		reqCtx.route, reqCtx.params,
 	)
+	me.runtimeContext.Runtime().
+		ClearInterrupt()
 	me.runtimeContext.loop.Start()
 	me.runtimeContext.reqCtx = reqCtx
 }

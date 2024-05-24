@@ -12,7 +12,7 @@ func CollectionCommand(client dgclient.DGateClient) *cli.Command {
 		Aliases:   []string{"col"},
 		Args:      true,
 		ArgsUsage: "<command> <name>",
-		Usage:     "collection commands",
+		Usage:     "collection <action> <args>",
 		Subcommands: []*cli.Command{
 			{
 				Name:    "create",

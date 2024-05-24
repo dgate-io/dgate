@@ -8,10 +8,11 @@ import (
 	"testing"
 	"time"
 
+	"log/slog"
+
 	"github.com/dgate-io/dgate/pkg/rafthttp"
 	"github.com/dgate-io/dgate/pkg/util/logger"
 	"github.com/hashicorp/raft"
-	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/mock"
 )
 
@@ -43,9 +44,11 @@ func TestExample(t *testing.T) {
 	}
 	log.Printf("Listening on %s", ln.Addr().String())
 	srvAddr := raft.ServerAddress(ln.Addr().String())
+	lgr := slog.New(slog.NewTextHandler(io.Discard, nil))
 	transport := rafthttp.NewHTTPTransport(
-		srvAddr, http.DefaultClient,
-		zerolog.Logger{}, "http://(address)/raft")
+		srvAddr, http.DefaultClient, lgr,
+		"http://(address)/raft",
+	)
 	srv := &http.Server{
 		Handler: transport,
 	}
@@ -53,7 +56,7 @@ func TestExample(t *testing.T) {
 
 	raftConfig := raft.DefaultConfig()
 	raftConfig.LocalID = "1"
-	raftConfig.Logger = logger.NewNopHCLogger()
+	raftConfig.Logger = logger.NewSLogHCAdapter(lgr)
 
 	mockFSM := &MockFSM{}
 	logStore := raft.NewInmemStore()

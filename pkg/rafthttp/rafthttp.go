@@ -5,13 +5,13 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"path"
 	"strings"
 	"time"
 
 	"github.com/hashicorp/raft"
-	"github.com/rs/zerolog"
 )
 
 // Doer provides the Do() method, as found in net/http.Client.
@@ -28,7 +28,7 @@ type Doer interface {
 // application is an HTTP server already and you do not want to use multiple
 // different transports (if not, you can use raft.NetworkTransport).
 type HTTPTransport struct {
-	logger   zerolog.Logger
+	logger   *slog.Logger
 	consumer chan raft.RPC
 	addr     raft.ServerAddress
 	client   Doer
@@ -37,7 +37,7 @@ type HTTPTransport struct {
 
 var _ raft.Transport = (*HTTPTransport)(nil)
 
-func NewHTTPTransport(addr raft.ServerAddress, client Doer, logger zerolog.Logger, urlFmt string) *HTTPTransport {
+func NewHTTPTransport(addr raft.ServerAddress, client Doer, logger *slog.Logger, urlFmt string) *HTTPTransport {
 	if client == nil {
 		client = http.DefaultClient
 	}
@@ -289,7 +289,7 @@ func (t *HTTPTransport) ServeHTTP(res http.ResponseWriter, req *http.Request) {
 	}
 
 	if err := t.handle(res, req, rpc); err != nil {
-		t.logger.Printf("[%s, %s] %v\n", req.RemoteAddr, cmd, err)
+		t.logger.Info("[%s, %s] %v\n", req.RemoteAddr, cmd, err)
 	}
 }
 

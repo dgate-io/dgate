@@ -25,6 +25,10 @@ func TransformDGateRoute(r *DGateRoute) *Route {
 	if r.Namespace == nil {
 		panic("route namespace is nil")
 	}
+	var modules []string
+	if r.Modules != nil && len(r.Modules) > 0 {
+		sliceutil.SliceMapper(r.Modules, func(m *DGateModule) string { return m.Name })
+	}
 	return &Route{
 		Name:          r.Name,
 		Paths:         r.Paths,
@@ -33,7 +37,7 @@ func TransformDGateRoute(r *DGateRoute) *Route {
 		StripPath:     r.StripPath,
 		ServiceName:   svcName,
 		NamespaceName: r.Namespace.Name,
-		Modules:       sliceutil.SliceMapper(r.Modules, func(m *DGateModule) string { return m.Name }),
+		Modules:       modules,
 		Tags:          r.Tags,
 	}
 }
@@ -140,7 +144,7 @@ func TransformDGateCollection(col *DGateCollection) *Collection {
 		Name:          col.Name,
 		NamespaceName: col.Namespace.Name,
 		Schema:        schema,
-		Type:          col.Type,
+		// Type:          col.Type,
 		Visibility:    col.Visibility,
 		Tags:          col.Tags,
 	}
@@ -235,8 +239,7 @@ func TransformModule(ns *DGateNamespace, m *Module) (*DGateModule, error) {
 		Namespace:   ns,
 		Payload:     string(payload),
 		Tags:        m.Tags,
-		Permissions: m.Permissions,
-		Type:        m.Type,
+		Type:        m.Type,	
 	}, nil
 }
 
@@ -329,7 +332,7 @@ func TransformCollection(ns *DGateNamespace, mods []*DGateModule, col *Collectio
 		Namespace:     ns,
 		Schema:        schema,
 		SchemaPayload: string(schemaData),
-		Type:          col.Type,
+		// Type:          col.Type,
 		// Modules:       mods,
 		Visibility: col.Visibility,
 		Tags:       col.Tags,

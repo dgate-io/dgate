@@ -47,7 +47,12 @@ func RunAndWaitForResult(
 ) (res goja.Value, err error) {
 	tracker := newAsyncTracker()
 	rt.SetAsyncContextTracker(tracker)
-	defer rt.SetAsyncContextTracker(nil)
+	defer func() {
+		rt.SetAsyncContextTracker(nil)
+		if err != nil {
+			rt.Interrupt(err.Error())
+		}
+	}()
 
 	if res, err = fn(nil, args...); err != nil {
 		return nil, err

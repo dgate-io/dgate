@@ -3,11 +3,11 @@ package scheduler
 import (
 	"context"
 	"errors"
+	"log/slog"
 	"sync"
 	"time"
 
 	"github.com/dgate-io/dgate/pkg/util/heap"
-	"github.com/rs/zerolog"
 )
 
 type (
@@ -45,7 +45,7 @@ type scheduler struct {
 	opts        Options
 	ctx         context.Context
 	cancel      context.CancelFunc
-	logger      *zerolog.Logger
+	logger      *slog.Logger
 	tasks       map[string]*TaskDefinition
 	pendingJobs priorityQueue
 	mutex       *sync.RWMutex
@@ -74,7 +74,7 @@ var (
 
 type Options struct {
 	Interval time.Duration
-	Logger   *zerolog.Logger
+	Logger   *slog.Logger
 	AutoRun  bool
 }
 
@@ -161,9 +161,7 @@ func (s *scheduler) executeTask(tdt time.Time, taskDef *TaskDefinition) {
 			s.pendingJobs.Push(µs, taskDef)
 		}
 		if r := recover(); r != nil {
-			if s.logger != nil {
-				s.logger.Error().Msgf("panic occurred while executing task %s: %v", taskDef.Name, r)
-			}
+			s.logger.Error("panic occurred while executing task %s: %v", taskDef.Name, r)
 		}
 	}()
 	taskDef.Func(taskDef.ctx)

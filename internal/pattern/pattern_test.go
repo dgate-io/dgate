@@ -20,7 +20,9 @@ func TestCheckDomainMatch(t *testing.T) {
 	patterns := map[string][]int{
 		"example.com":                {0},
 		"example.*":                  {0, 3},
+		"example.**":                 {0, 3},
 		"*.example.net*":             {4, 5},
+		"**.example.net*":            {4, 5},
 		"/.+\\.example\\.(com|net)/": {1, 2, 4, 5},
 		"*":                          {0, 1, 2, 3, 4, 5},
 	}

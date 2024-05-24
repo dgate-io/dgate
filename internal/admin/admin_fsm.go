@@ -3,92 +3,85 @@ package admin
 import (
 	"encoding/json"
 	"io"
+	"log/slog"
 
-	"github.com/dgate-io/dgate/internal/proxy"
+	"github.com/dgate-io/dgate/internal/admin/changestate"
 	"github.com/dgate-io/dgate/pkg/spec"
 	"github.com/hashicorp/raft"
-	"github.com/rs/zerolog"
 )
 
 type dgateAdminFSM struct {
-	ps     *proxy.ProxyState
-	logger zerolog.Logger
+	cs     changestate.ChangeState
+	logger *slog.Logger
 }
 
 var _ raft.BatchingFSM = (*dgateAdminFSM)(nil)
 
-func newDGateAdminFSM(ps *proxy.ProxyState) *dgateAdminFSM {
-	dgateFSMLogger := ps.Logger().With().
-		Str("component", "dgateAdminFSM").
-		Logger()
+func newDGateAdminFSM(cs changestate.ChangeState) *dgateAdminFSM {
+	dgateFSMLogger := cs.Logger().WithGroup("admin-raft-fsm")
 	return &dgateAdminFSM{
-		ps:     ps,
+		cs:     cs,
 		logger: dgateFSMLogger,
 	}
 }
 
 func (fsm *dgateAdminFSM) isReplay(log *raft.Log) bool {
-	return !fsm.ps.Ready() &&
-		log.Index+1 >= fsm.ps.Raft().LastIndex() &&
-		log.Index+1 >= fsm.ps.Raft().AppliedIndex()
+	return !fsm.cs.Ready() &&
+		log.Index+1 >= fsm.cs.Raft().LastIndex() &&
+		log.Index+1 >= fsm.cs.Raft().AppliedIndex()
 }
 
 func (fsm *dgateAdminFSM) checkLast(log *raft.Log) {
-	rft := fsm.ps.Raft()
-	if !fsm.ps.Ready() && fsm.isReplay(log) {
-		fsm.logger.Info().
-			Msgf("FSM is not ready, setting ready @ Index: %d, AIndex: %d, LIndex: %d",
-				log.Index, rft.AppliedIndex(), rft.LastIndex())
+	rft := fsm.cs.Raft()
+	if !fsm.cs.Ready() && fsm.isReplay(log) {
+		fsm.logger.Info("FSM is not ready, setting ready",
+			"Index", log.Index,
+			"AIndex", rft.AppliedIndex(),
+			"LIndex", rft.LastIndex(),
+		)
 		defer func() {
-			if err := fsm.ps.ReloadState(false); err != nil {
-				fsm.logger.Error().Err(err).
-					Msg("Error processing change log in FSM")
+			if err := fsm.cs.ReloadState(false); err != nil {
+				fsm.logger.Error("Error processing change log in FSM",
+					"error", err,
+				)
 			} else {
-				fsm.ps.SetReady()
+				fsm.cs.SetReady()
 			}
 		}()
 	}
 }
 
 func (fsm *dgateAdminFSM) applyLog(log *raft.Log) (*spec.ChangeLog, error) {
-	rft := fsm.ps.Raft()
 	switch log.Type {
 	case raft.LogCommand:
-		fsm.logger.Debug().
-			Msgf("log cmd: %d, %v, %s - applied: %v, latest: %v",
-				log.Index, log.Type, log.Data,
-				rft.AppliedIndex(), rft.LastIndex())
 		var cl spec.ChangeLog
 		if err := json.Unmarshal(log.Data, &cl); err != nil {
-			fsm.logger.Error().Err(err).
-				Msg("Error unmarshalling change log")
+			fsm.logger.Error("Error unmarshalling change log")
 			return nil, err
 		} else if cl.Cmd.IsNoop() {
 			return nil, nil
 		} else if cl.ID == "" {
-			fsm.logger.Error().
-				Msg("Change log ID is empty")
+			fsm.logger.Error("Change log ID is empty")
 			panic("change log ID is empty")
 		}
 		// find a way to apply only if latest index to save time
-		return &cl, fsm.ps.ProcessChangeLog(&cl, false)
+		return &cl, fsm.cs.ProcessChangeLog(&cl, false)
 	case raft.LogNoop:
-		fsm.logger.Debug().Msg("Noop Log - current leader is still leader")
+		fsm.logger.Debug("Noop Log - current leader is still leader")
 	case raft.LogConfiguration:
 		servers := raft.DecodeConfiguration(log.Data).Servers
 		for i, server := range servers {
-			fsm.logger.Debug().
-				Msgf("%d: config update - server: %s", i, server.Address)
+			fsm.logger.Debug("configuration update server",
+				"address", server.Address, "index", i,
+			)
 		}
 	case raft.LogBarrier:
-		err := fsm.ps.WaitForChanges()
+		err := fsm.cs.WaitForChanges()
 		if err != nil {
-			fsm.logger.Err(err).
-				Msg("Error waiting for changes")
+			fsm.logger.Error("Error waiting for changes", "error", err)
 		}
 	default:
-		fsm.ps.Logger().Error().
-			Msg("Unknown log type in FSM Apply")
+		fsm.cs.Logger().Error("Unknown log type in FSM Apply")
 	}
 	return nil, nil
 }
@@ -102,21 +95,24 @@ func (fsm *dgateAdminFSM) Apply(log *raft.Log) any {
 func (fsm *dgateAdminFSM) ApplyBatch(logs []*raft.Log) []any {
 	lastLog := logs[len(logs)-1]
 	if fsm.isReplay(lastLog) {
-		rft := fsm.ps.Raft()
-		fsm.logger.Info().
-			Msgf("applying log batch of %d logs - current:%d applied:%d commit:%d last:%d",
-				len(logs), lastLog.Index, rft.AppliedIndex(), rft.CommitIndex(), rft.LastIndex())
+		rft := fsm.cs.Raft()
+		fsm.logger.Info("applying log batch logs",
+			"size", len(logs),
+			"current", lastLog.Index,
+			"applied", rft.AppliedIndex(),
+			"commit", rft.CommitIndex(),
+			"last", rft.LastIndex(),
+		)
 	}
 	cls := make([]*spec.ChangeLog, 0, len(logs))
 	defer func() {
-		if !fsm.ps.Ready() {
+		if !fsm.cs.Ready() {
 			fsm.checkLast(logs[len(logs)-1])
 			return
 		}
 
-		if err := fsm.ps.ReloadState(true, cls...); err != nil {
-			fsm.logger.Error().Err(err).
-				Msg("Error reloading state @ FSM ApplyBatch")
+		if err := fsm.cs.ReloadState(true, cls...); err != nil {
+			fsm.logger.Error("Error reloading state @ FSM ApplyBatch")
 		}
 	}()
 

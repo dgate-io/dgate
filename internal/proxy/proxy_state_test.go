@@ -373,9 +373,9 @@ func TestProcessChangeLog_Collection(t *testing.T) {
 	c := &spec.Collection{
 		Name:          "test",
 		NamespaceName: "test",
-		Type:          spec.CollectionTypeDocument,
-		Visibility:    spec.CollectionVisibilityPrivate,
-		Tags:          []string{"test"},
+		// Type:          spec.CollectionTypeDocument,
+		Visibility: spec.CollectionVisibilityPrivate,
+		Tags:       []string{"test"},
 	}
 
 	cl := spec.NewChangeLog(c, c.NamespaceName, spec.AddCollectionCommand)
@@ -387,7 +387,7 @@ func TestProcessChangeLog_Collection(t *testing.T) {
 	assert.Equal(t, 1, len(collections), "should have 1 item")
 	assert.Equal(t, c.Name, collections[0].Name, "should have the same name")
 	assert.Equal(t, c.NamespaceName, collections[0].Namespace.Name, "should have the same namespace")
-	assert.Equal(t, c.Type, collections[0].Type, "should have the same type")
+	// assert.Equal(t, c.Type, collections[0].Type, "should have the same type")
 	assert.Equal(t, c.Visibility, collections[0].Visibility, "should have the same visibility")
 	assert.Equal(t, len(c.Tags), len(collections[0].Tags), "should have the same tags")
 
@@ -410,7 +410,7 @@ func TestProcessChangeLog_Document(t *testing.T) {
 	c := &spec.Collection{
 		Name:          "test",
 		NamespaceName: "test",
-		Type:          spec.CollectionTypeDocument,
+		// Type:          spec.CollectionTypeDocument,
 		Visibility:    spec.CollectionVisibilityPrivate,
 		Tags:          []string{"test"},
 	}

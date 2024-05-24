@@ -14,7 +14,8 @@ func PatternMatch(value, pattern string) (bool, error) {
 	if pattern == "" {
 		return false, ErrEmptyPattern
 	}
-	if pattern == "*" || pattern == "**" {
+	pattern = singlefyAsterisks(pattern)
+	if pattern == "*" {
 		return true, nil
 	}
 
@@ -24,7 +25,7 @@ func PatternMatch(value, pattern string) (bool, error) {
 		return strings.Contains(value, pattern[1:len(pattern)-1]), nil
 	} else if asteriskPrefix {
 		return strings.HasSuffix(value, pattern[1:]), nil
-	} else if asteriskSuffix{
+	} else if asteriskSuffix {
 		return strings.HasPrefix(value, pattern[:len(pattern)-1]), nil
 	} else if strings.HasPrefix(pattern, "/") && strings.HasSuffix(pattern, "/") {
 		re := pattern[1 : len(pattern)-1]
@@ -58,4 +59,12 @@ func MatchAllPatterns(value string, patterns []string) (bool, error) {
 		}
 	}
 	return true, nil
+}
+
+func singlefyAsterisks(pattern string) string {
+	if strings.Contains(pattern, "**") {
+		pattern = strings.Replace(pattern, "**", "*", -1)
+		return singlefyAsterisks(pattern)
+	}
+	return pattern
 }

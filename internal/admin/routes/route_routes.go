@@ -7,14 +7,14 @@ import (
 	"time"
 
 	"github.com/dgate-io/chi-router"
+	"github.com/dgate-io/dgate/internal/admin/changestate"
 	"github.com/dgate-io/dgate/internal/config"
-	"github.com/dgate-io/dgate/internal/proxy"
 	"github.com/dgate-io/dgate/pkg/spec"
 	"github.com/dgate-io/dgate/pkg/util"
 )
 
-func ConfigureRouteAPI(server chi.Router, proxyState *proxy.ProxyState, appConfig *config.DGateConfig) {
-	rm := proxyState.ResourceManager()
+func ConfigureRouteAPI(server chi.Router, cs changestate.ChangeState, appConfig *config.DGateConfig) {
+	rm := cs.ResourceManager()
 	server.Put("/route", func(w http.ResponseWriter, r *http.Request) {
 		eb, err := io.ReadAll(r.Body)
 		defer r.Body.Close()
@@ -43,13 +43,13 @@ func ConfigureRouteAPI(server chi.Router, proxyState *proxy.ProxyState, appConfi
 		}
 
 		cl := spec.NewChangeLog(&route, route.NamespaceName, spec.AddRouteCommand)
-		err = proxyState.ApplyChangeLog(cl)
+		err = cs.ApplyChangeLog(cl)
 		if err != nil {
 			util.JsonError(w, http.StatusBadRequest, err.Error())
 			return
 		}
 
-		if repl := proxyState.Raft(); repl != nil {
+		if repl := cs.Raft(); repl != nil {
 			future := repl.Barrier(time.Second * 5)
 			if err := future.Error(); err != nil {
 				util.JsonError(w, http.StatusInternalServerError, err.Error())
@@ -88,7 +88,7 @@ func ConfigureRouteAPI(server chi.Router, proxyState *proxy.ProxyState, appConfi
 		}
 
 		cl := spec.NewChangeLog(&route, route.NamespaceName, spec.DeleteRouteCommand)
-		err = proxyState.ApplyChangeLog(cl)
+		err = cs.ApplyChangeLog(cl)
 		if err != nil {
 			util.JsonError(w, http.StatusBadRequest, err.Error())
 			return

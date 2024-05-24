@@ -3,7 +3,6 @@ package admin
 import (
 	"fmt"
 	"io"
-	"log"
 	"net/http"
 	"os"
 	"strings"
@@ -11,45 +10,43 @@ import (
 
 	"github.com/dgate-io/chi-router"
 	"github.com/dgate-io/chi-router/middleware"
+	"github.com/dgate-io/dgate/internal/admin/changestate"
 	"github.com/dgate-io/dgate/internal/config"
-	"github.com/dgate-io/dgate/internal/proxy"
 	"github.com/dgate-io/dgate/pkg/util"
-	"github.com/rs/zerolog"
+
+	"log/slog"
+
 	"golang.org/x/net/http2"
 	"golang.org/x/net/http2/h2c"
 )
 
-func StartAdminAPI(conf *config.DGateConfig, proxyState *proxy.ProxyState) {
+func StartAdminAPI(conf *config.DGateConfig, cs changestate.ChangeState) {
 	if conf.AdminConfig == nil {
-		proxyState.Logger().Warn().
-			Msg("Admin API is disabled")
+		cs.Logger().Warn("Admin API is disabled")
 		return
 	}
 
 	// Start HTTP Server
 	mux := chi.NewRouter()
-	configureRoutes(mux, proxyState, conf)
+	configureRoutes(mux, cs, conf)
 
 	// Start HTTPS Server
 	go func() {
 		if conf.AdminConfig.TLS != nil {
-			adminHttpsLogger := proxyState.Logger(
-				proxy.WithComponentLogger("admin-https"),
-				proxy.WithDefaultLevel(zerolog.InfoLevel),
-			)
+			adminHttpsLogHandler := cs.Logger().
+				Handler().WithGroup("admin-https")
 			secureHostPort := fmt.Sprintf("%s:%d",
 				conf.AdminConfig.Host, conf.AdminConfig.TLS.Port)
 			secureServer := &http.Server{
 				Addr:     secureHostPort,
 				Handler:  mux,
-				ErrorLog: log.New(adminHttpsLogger, "", 0),
+				ErrorLog: slog.NewLogLogger(adminHttpsLogHandler, slog.LevelInfo),
 			}
-			proxyState.Logger().Info().
-				Msgf("Starting secure admin api on %s", secureHostPort)
-			proxyState.Logger().Debug().
-				Msgf("TLS Cert: %s", conf.AdminConfig.TLS.CertFile)
-			proxyState.Logger().Debug().
-				Msgf("TLS Key: %s", conf.AdminConfig.TLS.KeyFile)
+			cs.Logger().Info("Starting secure admin api on" + secureHostPort)
+			cs.Logger().Debug("TLS Cert",
+				"cert_file", conf.AdminConfig.TLS.CertFile,
+				"key_file", conf.AdminConfig.TLS.KeyFile,
+			)
 			if err := secureServer.ListenAndServeTLS(
 				conf.AdminConfig.TLS.CertFile,
 				conf.AdminConfig.TLS.KeyFile,
@@ -62,8 +59,7 @@ func StartAdminAPI(conf *config.DGateConfig, proxyState *proxy.ProxyState) {
 	// Start Test Server
 	if conf.TestServerConfig != nil {
 		if !conf.Debug {
-			proxyState.Logger().Warn().
-				Msg("Test server is disabled in non-debug mode")
+			cs.Logger().Warn("Test server is disabled in non-debug mode")
 		} else {
 			go func() {
 				testHostPort := fmt.Sprintf("%s:%d",
@@ -106,14 +102,13 @@ func StartAdminAPI(conf *config.DGateConfig, proxyState *proxy.ProxyState) {
 					util.JsonResponse(w, http.StatusOK, respMap)
 				})
 
-				testServerLogger := proxyState.Logger(
-					proxy.WithComponentLogger("test-server-http"),
-					proxy.WithDefaultLevel(zerolog.InfoLevel),
-				)
+				testServerLogger := cs.Logger().
+					WithGroup("test-server")
+
 				testServer := &http.Server{
 					Addr:     testHostPort,
 					Handler:  mux,
-					ErrorLog: log.New(testServerLogger, "", 0),
+					ErrorLog: slog.NewLogLogger(testServerLogger.Handler(), slog.LevelInfo),
 				}
 				if conf.TestServerConfig.EnableHTTP2 {
 					h2Server := &http2.Server{}
@@ -125,8 +120,7 @@ func StartAdminAPI(conf *config.DGateConfig, proxyState *proxy.ProxyState) {
 						testServer.Handler = h2c.NewHandler(mux, h2Server)
 					}
 				}
-				proxyState.Logger().Info().
-					Msgf("Starting test server on %s", testHostPort)
+				cs.Logger().Info("Starting test server on " + testHostPort)
 
 				if err := testServer.ListenAndServe(); err != nil {
 					panic(err)
@@ -135,18 +129,14 @@ func StartAdminAPI(conf *config.DGateConfig, proxyState *proxy.ProxyState) {
 		}
 	}
 	go func() {
-		adminHttpLogger := proxyState.Logger(
-			proxy.WithComponentLogger("admin-http"),
-			proxy.WithDefaultLevel(zerolog.InfoLevel),
-		)
+		adminHttpLogger := cs.Logger().WithGroup("admin-http")
 		hostPort := fmt.Sprintf("%s:%d",
 			conf.AdminConfig.Host, conf.AdminConfig.Port)
-		proxyState.Logger().Info().
-			Msgf("Starting admin api on %s", hostPort)
+		cs.Logger().Info("Starting admin api on " + hostPort)
 		server := &http.Server{
 			Addr:     hostPort,
 			Handler:  mux,
-			ErrorLog: log.New(adminHttpLogger, "", 0),
+			ErrorLog: slog.NewLogLogger(adminHttpLogger.Handler(), slog.LevelInfo),
 		}
 		if err := server.ListenAndServe(); err != nil {
 			panic(err)

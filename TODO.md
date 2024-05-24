@@ -9,8 +9,6 @@
   - other commands (backup, restore, etc.) (low priority)
   - replace k6 with wrk for performance tests
 
-## Replace zerolog with slog
-
 ## Add Module Tests
 
 - Test multiple modules being used at the same time
@@ -113,7 +111,7 @@ time based tags
 - ?*name:data1,data2
   - means that the server must have *one (and only one)* of these tags, for the object to be applied
 
-## Module Permissions
+## Module Permissions (using tags?)
 
 - Allow users to define permissions for modules to access certain dgate resources/apis and/or OS resources.
   - resource:document:read
@@ -146,8 +144,13 @@ dgate-cli ns mk my-ns nmae=my-ns
 Variable 'nmae' is not recognized. Did you mean 'name'?
 ```
 
+## DGate CLI - help command show required variables
+
+When the user runs the help command, the CLI should show the required variables for the command. For example, if the user runs `dgate-cli ns mk --help`, the CLI should show the required variables for the `ns mk` command. `name` is a required variable for the `ns mk` command. Also, the CLI should show non-required variables.
+
 ## Improve Module Debugability
 
 Make it easier to debug modules by adding more logging and error handling. This can be done by adding more logging to the modules and making it easier to see the logs in the Admin Console.
 
 Add stack tracing for typescript modules.
+

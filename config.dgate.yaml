@@ -11,7 +11,7 @@ test_server:
   port: 8888
   host: 0.0.0.0
   global_headers:
-    X-Node-Id: ${HOSTNAME:-N/A}
+    X-Test-Header: ${TEST_HEADER:-test}
 proxy:
   port: ${PORT:-80}
   host: 0.0.0.0
@@ -43,8 +43,6 @@ admin:
   port: 9080
   host: 0.0.0.0
   allow_list:
-    - "127.0.0.1"
     - "127.0.0.1/8"
     - "::1"
-  auth_method: null
 

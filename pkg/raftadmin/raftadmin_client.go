@@ -10,8 +10,9 @@ import (
 	"strings"
 	"time"
 
+	"log/slog"
+
 	"github.com/hashicorp/raft"
-	"github.com/rs/zerolog"
 )
 
 type Doer func(*http.Request) (*http.Response, error)
@@ -19,10 +20,10 @@ type Doer func(*http.Request) (*http.Response, error)
 type HTTPAdminClient struct {
 	do     Doer
 	urlFmt string
-	logger zerolog.Logger
+	logger *slog.Logger
 }
 
-func NewHTTPAdminClient(doer Doer, urlFmt string, logger zerolog.Logger) *HTTPAdminClient {
+func NewHTTPAdminClient(doer Doer, urlFmt string, logger *slog.Logger) *HTTPAdminClient {
 	if doer == nil {
 		doer = http.DefaultClient.Do
 	}

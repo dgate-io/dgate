@@ -12,7 +12,7 @@ func DocumentCommand(client dgclient.DGateClient) *cli.Command {
 		Aliases:   []string{"doc"},
 		Args:      true,
 		ArgsUsage: "<command> <name>",
-		Usage:     "document commands",
+		Usage:     "document <action> <args>",
 		Subcommands: []*cli.Command{
 			{
 				Name:    "create",

@@ -102,14 +102,19 @@ func (rt Resource) String() string {
 }
 
 func (clc Command) String() string {
-	if clc.IsNoop() {
-		return "noop"
-	}
 	return string(clc)
 }
 
 func (clc Command) IsNoop() bool {
 	return string(clc) == "noop"
+}
+
+func (clc Command) IsShutdown() bool {
+	return string(clc) == "shutdown"
+}
+
+func (clc Command) IsRestart() bool {
+	return string(clc) == "restart"
 }
 
 func (resource1 Resource) IsRelatedTo(resource2 Resource) bool {

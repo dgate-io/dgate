@@ -9,8 +9,8 @@ import (
 	"time"
 
 	"github.com/dgate-io/chi-router"
+	"github.com/dgate-io/dgate/internal/admin/changestate"
 	"github.com/dgate-io/dgate/internal/config"
-	"github.com/dgate-io/dgate/internal/proxy"
 	"github.com/dgate-io/dgate/pkg/raftadmin"
 	"github.com/dgate-io/dgate/pkg/rafthttp"
 	"github.com/dgate-io/dgate/pkg/storage"
@@ -19,7 +19,7 @@ import (
 	"github.com/hashicorp/raft"
 )
 
-func setupRaft(conf *config.DGateConfig, server *chi.Mux, ps *proxy.ProxyState) {
+func setupRaft(conf *config.DGateConfig, server *chi.Mux, cs changestate.ChangeState) {
 	adminConfig := conf.AdminConfig
 	var sstore raft.StableStore
 	var lstore raft.LogStore
@@ -59,10 +59,8 @@ func setupRaft(conf *config.DGateConfig, server *chi.Mux, ps *proxy.ProxyState) 
 			// TODO: Support snapshots
 			SnapshotInterval:  time.Hour * 24,
 			SnapshotThreshold: ^uint64(0),
-			Logger: logger.NewZeroHCLogger(
-				ps.Logger().With().
-					Str("component", "raft").
-					Logger(),
+			Logger: logger.NewSLogHCAdapter(
+				cs.Logger().WithGroup("admin-raft"),
 			),
 		},
 	)
@@ -71,8 +69,8 @@ func setupRaft(conf *config.DGateConfig, server *chi.Mux, ps *proxy.ProxyState) 
 		advertAddr = fmt.Sprintf("%s:%d", adminConfig.Host, adminConfig.Port)
 	}
 	address := raft.ServerAddress(advertAddr)
-	raftHttpLogger := ps.Logger().With().Str("component", "raftHttp").Logger()
 
+	raftHttpLogger := cs.Logger().WithGroup("raft-http")
 	if adminConfig.Replication.AdvertScheme != "http" && adminConfig.Replication.AdvertScheme != "https" {
 		panic(fmt.Errorf("invalid scheme: %s", adminConfig.Replication.AdvertScheme))
 	}
@@ -82,18 +80,18 @@ func setupRaft(conf *config.DGateConfig, server *chi.Mux, ps *proxy.ProxyState) 
 		adminConfig.Replication.AdvertScheme+"://(address)/raft",
 	)
 	raftNode, err := raft.NewRaft(
-		raftConfig, newDGateAdminFSM(ps),
+		raftConfig, newDGateAdminFSM(cs),
 		lstore, sstore, snapstore, transport,
 	)
 	if err != nil {
 		panic(err)
 	}
 
-	ps.SetupRaft(raftNode, raftConfig)
+	cs.SetupRaft(raftNode, raftConfig)
 	// Setup raft handler
 	server.Handle("/raft/*", transport)
 
-	raftAdminLogger := ps.Logger().With().Str("component", "raftAdmin").Logger()
+	raftAdminLogger := cs.Logger().WithGroup("raft-admin")
 	raftAdmin := raftadmin.NewRaftAdminHTTPServer(
 		raftNode, raftAdminLogger, []raft.ServerAddress{address},
 	)
@@ -117,9 +115,8 @@ func setupRaft(conf *config.DGateConfig, server *chi.Mux, ps *proxy.ProxyState) 
 	}
 	serverConfig := configFuture.Configuration()
 
-	ps.Logger().Debug().
-		Interface("config", adminConfig).
-		Msg("Replication config")
+	cs.Logger().With("config", adminConfig).
+		Debug("Replication config")
 
 	if adminConfig.Replication.BootstrapCluster {
 		raftNode.BootstrapCluster(raft.Configuration{
@@ -135,9 +132,9 @@ func setupRaft(conf *config.DGateConfig, server *chi.Mux, ps *proxy.ProxyState) 
 		go func() {
 			addresses := make([]string, 0)
 			if adminConfig.Replication.DiscoveryDomain != "" {
-				ps.Logger().Debug().
-					Msgf("no previous configuration found, attempting to discover cluster at %s",
-						adminConfig.Replication.DiscoveryDomain)
+				cs.Logger().Debug("no previous configuration found, attempting to discover cluster",
+					"domain", adminConfig.Replication.DiscoveryDomain,
+				)
 				addrs, err := net.LookupHost(adminConfig.Replication.DiscoveryDomain)
 				if err != nil {
 					panic(err)
@@ -145,8 +142,7 @@ func setupRaft(conf *config.DGateConfig, server *chi.Mux, ps *proxy.ProxyState) 
 				if len(addrs) == 0 {
 					panic(fmt.Errorf("no addrs found for %s", adminConfig.Replication.DiscoveryDomain))
 				}
-				ps.Logger().Info().
-					Msgf("discovered addrs: %v", addrs)
+				cs.Logger().Info("discovered addresses", "addresses", addrs)
 				for _, addr := range addrs {
 					if addr[len(addr)-1] == '.' {
 						addr = addr[:len(addr)-1]
@@ -171,7 +167,7 @@ func setupRaft(conf *config.DGateConfig, server *chi.Mux, ps *proxy.ProxyState) 
 				}
 				adminClient := raftadmin.NewHTTPAdminClient(doer,
 					adminConfig.Replication.AdvertScheme+"://(address)/raftadmin",
-					ps.Logger().With().Str("component", "raftAdminClient").Logger(),
+					cs.Logger().WithGroup("raft-admin-client"),
 				)
 			RETRY:
 				for _, url := range addresses {
@@ -181,20 +177,17 @@ func setupRaft(conf *config.DGateConfig, server *chi.Mux, ps *proxy.ProxyState) 
 							continue
 						}
 						if retries > 15 {
-							ps.Logger().Error().
-								Msgf("Skipping verifying leader at %s: %s", url, err)
+							cs.Logger().Error("Skipping verifying leader at %s: %s", url, err)
 							continue
 						}
 						retries += 1
-						ps.Logger().Debug().
-							Msgf("Retrying verifying leader at %s: %s", url, err)
+						cs.Logger().Debug("Retrying verifying leader at %s: %s", url, err)
 						<-time.After(3 * time.Second)
 						goto RETRY
 					}
 					// If this node is watch only, add it as a non-voter node, otherwise add it as a voter node
 					if adminConfig.WatchOnly {
-						ps.Logger().Info().
-							Msgf("Adding non-voter: %s", url)
+						cs.Logger().Info("Adding non-voter", "url", url)
 						resp, err := adminClient.AddNonvoter(
 							context.Background(), raft.ServerAddress(url),
 							&raftadmin.AddNonvoterRequest{
@@ -209,9 +202,8 @@ func setupRaft(conf *config.DGateConfig, server *chi.Mux, ps *proxy.ProxyState) 
 							panic(resp.Error)
 						}
 					} else {
-						ps.Logger().Info().
-							Msgf("Adding voter: %s - leader: %s",
-								adminConfig.Replication.AdvertAddr, url)
+						cs.Logger().Info("Adding voter: %s - leader: %s",
+							adminConfig.Replication.AdvertAddr, url)
 						resp, err := adminClient.AddVoter(context.Background(), raft.ServerAddress(url), &raftadmin.AddVoterRequest{
 							ID:      raftId,
 							Address: adminConfig.Replication.AdvertAddr,
@@ -229,12 +221,11 @@ func setupRaft(conf *config.DGateConfig, server *chi.Mux, ps *proxy.ProxyState) 
 					panic(err)
 				}
 			} else {
-				ps.Logger().Warn().
-					Msg("no admin urls specified, waiting to be added to cluster")
+				cs.Logger().Warn("no admin urls specified, waiting to be added to cluster")
 			}
 		}()
 	} else {
-		ps.Logger().Debug().
-			Msgf("previous configuration found - %v", serverConfig)
+		cs.Logger().Debug("previous configuration found",
+			"servers", serverConfig.Servers)
 	}
 }

@@ -1,143 +1,135 @@
 package logger
 
 import (
+	"context"
 	"io"
 	"log"
+	"log/slog"
 
 	"github.com/hashicorp/go-hclog"
-	"github.com/rs/zerolog"
 )
 
-type ZeroHCLogger struct {
-	zerolog.Logger
+type SLogHCAdapter struct {
+	ctx    context.Context
+	logger *slog.Logger
+	level  *slog.LevelVar
 }
 
-var _ hclog.Logger = (*ZeroHCLogger)(nil)
-
-func NewZeroHCLogger(logger zerolog.Logger) *ZeroHCLogger {
-	return &ZeroHCLogger{logger}
+func NewSLogHCAdapter(logger *slog.Logger) *SLogHCAdapter {
+	return &SLogHCAdapter{context.Background(), logger, new(slog.LevelVar)}
 }
 
-func NewNopHCLogger() *ZeroHCLogger {
-	return &ZeroHCLogger{zerolog.Nop()}
+func (l *SLogHCAdapter) IsTrace() bool { return false }
+
+func (l *SLogHCAdapter) IsDebug() bool {
+	return l.logger.Handler().Enabled(l.ctx, slog.LevelDebug)
 }
 
-func (l *ZeroHCLogger) IsTrace() bool {
-	return l.Logger.GetLevel() == zerolog.TraceLevel
+func (l *SLogHCAdapter) IsInfo() bool {
+	return l.logger.Handler().Enabled(l.ctx, slog.LevelInfo)
 }
 
-func (l *ZeroHCLogger) IsDebug() bool {
-	return l.Logger.GetLevel() == zerolog.DebugLevel
+func (l *SLogHCAdapter) IsWarn() bool {
+	return l.logger.Handler().Enabled(l.ctx, slog.LevelWarn)
 }
 
-func (l *ZeroHCLogger) IsInfo() bool {
-	return l.Logger.GetLevel() == zerolog.InfoLevel
+func (l *SLogHCAdapter) IsError() bool {
+	return l.logger.Handler().Enabled(l.ctx, slog.LevelError)
 }
 
-func (l *ZeroHCLogger) IsWarn() bool {
-	return l.Logger.GetLevel() == zerolog.WarnLevel
+func (l *SLogHCAdapter) Trace(format string, args ...interface{}) {}
+
+func (l *SLogHCAdapter) Debug(format string, args ...interface{}) {
+	l.logger.Debug(format)
 }
 
-func (l *ZeroHCLogger) IsError() bool {
-	return l.Logger.GetLevel() == zerolog.ErrorLevel
+func (l *SLogHCAdapter) Info(format string, args ...interface{}) {
+	l.logger.Info(format)
 }
 
-func (l *ZeroHCLogger) Trace(format string, args ...interface{}) {
-	l.Logger.Trace().Fields(args).Msg(format)
+func (l *SLogHCAdapter) Warn(format string, args ...interface{}) {
+	l.logger.Warn(format)
 }
 
-func (l *ZeroHCLogger) Debug(format string, args ...interface{}) {
-	l.Logger.Debug().Fields(args).Msg(format)
+func (l *SLogHCAdapter) Error(format string, args ...interface{}) {
+	l.logger.Error(format)
 }
 
-func (l *ZeroHCLogger) Info(format string, args ...interface{}) {
-	l.Logger.Info().Fields(args).Msg(format)
-}
-
-func (l *ZeroHCLogger) Warn(format string, args ...interface{}) {
-	l.Logger.Warn().Fields(args).Msg(format)
-}
-
-func (l *ZeroHCLogger) Error(format string, args ...interface{}) {
-	l.Logger.Error().Fields(args).Msg(format)
-}
-
-func (l *ZeroHCLogger) Log(level hclog.Level, format string, args ...interface{}) {
+func (l *SLogHCAdapter) Log(level hclog.Level, format string, args ...interface{}) {
 	switch level {
-	case hclog.Trace:
-		l.Logger.Trace().Fields(args).Msg(format)
 	case hclog.Debug:
-		l.Logger.Debug().Fields(args).Msg(format)
+		l.Debug(format, args...)
 	case hclog.Info:
-		l.Logger.Info().Fields(args).Msg(format)
+		l.Info(format, args...)
 	case hclog.Warn:
-		l.Logger.Warn().Fields(args).Msg(format)
+		l.Warn(format, args...)
 	case hclog.Error:
-		l.Logger.Error().Fields(args).Msg(format)
-	default:
-		log.Fatalf("unknown level %d", level)
+		l.Error(format, args...)
 	}
 }
 
-func (l *ZeroHCLogger) GetLevel() hclog.Level {
-	switch l.Logger.GetLevel() {
-	case zerolog.TraceLevel:
-		return hclog.Trace
-	case zerolog.DebugLevel:
-		return hclog.Debug
-	case zerolog.InfoLevel:
-		return hclog.Info
-	case zerolog.WarnLevel:
-		return hclog.Warn
-	case zerolog.ErrorLevel:
-		return hclog.Error
-	default:
-		log.Printf("unknown level %d", l.Logger.GetLevel())
-		return hclog.NoLevel
-	}
+func (l *SLogHCAdapter) GetLevel() hclog.Level {
+	return sl2hcLogLevel(l.level.Level())
 }
 
-func (l *ZeroHCLogger) SetLevel(level hclog.Level) {
-	switch level {
-	case hclog.Trace:
-		l.Logger = l.Logger.Level(zerolog.TraceLevel)
-	case hclog.Debug:
-		l.Logger = l.Logger.Level(zerolog.DebugLevel)
-	case hclog.Info:
-		l.Logger = l.Logger.Level(zerolog.InfoLevel)
-	case hclog.Warn:
-		l.Logger = l.Logger.Level(zerolog.WarnLevel)
-	case hclog.Error:
-		l.Logger = l.Logger.Level(zerolog.ErrorLevel)
-	default:
-		log.Fatalf("unknown level %d", level)
-	}
+func (l *SLogHCAdapter) SetLevel(level hclog.Level) {
+	l.level.Set(hc2slLogLevel(level))
 }
 
-func (l *ZeroHCLogger) Name() string {
+func (l *SLogHCAdapter) Name() string {
 	return ""
 }
 
-func (l *ZeroHCLogger) Named(name string) hclog.Logger {
-	return &ZeroHCLogger{l.Logger.With().Str("name", name).Logger()}
+func (l *SLogHCAdapter) Named(name string) hclog.Logger {
+	return &SLogHCAdapter{l.ctx, l.logger.With("name", name), l.level}
 }
 
-func (l *ZeroHCLogger) ResetNamed(name string) hclog.Logger {
-	return &ZeroHCLogger{l.Logger.With().Str("name", name).Logger()}
+func (l *SLogHCAdapter) ResetNamed(name string) hclog.Logger {
+	return &SLogHCAdapter{l.ctx, l.logger.With("name", nil), l.level}
 }
 
-func (l *ZeroHCLogger) With(args ...interface{}) hclog.Logger {
-	return &ZeroHCLogger{l.Logger.With().Fields(args).Logger()}
+func (l *SLogHCAdapter) With(args ...any) hclog.Logger {
+	return &SLogHCAdapter{l.ctx, l.logger.With(args), l.level}
 }
 
-func (l *ZeroHCLogger) StandardLogger(opts *hclog.StandardLoggerOptions) *log.Logger {
-	return log.New(l.Logger, "", 0)
+func (l *SLogHCAdapter) StandardLogger(opts *hclog.StandardLoggerOptions) *log.Logger {
+	return slog.NewLogLogger(l.logger.Handler(), slog.LevelInfo)
 }
 
-func (l *ZeroHCLogger) StandardWriter(opts *hclog.StandardLoggerOptions) io.Writer {
-	return l.Logger
+func (l *SLogHCAdapter) StandardWriter(opts *hclog.StandardLoggerOptions) io.Writer {
+	return slog.NewLogLogger(l.logger.Handler(), slog.LevelInfo).Writer()
 }
 
-func (l *ZeroHCLogger) ImpliedArgs() []interface{} {
+func (l *SLogHCAdapter) ImpliedArgs() []interface{} {
 	return nil
+}
+
+func hc2slLogLevel(lvl hclog.Level) slog.Level {
+	switch lvl {
+	case hclog.Debug, hclog.Trace, hclog.NoLevel:
+		return slog.LevelDebug
+	case hclog.Info, hclog.DefaultLevel:
+		return slog.LevelInfo
+	case hclog.Warn:
+		return slog.LevelWarn
+	case hclog.Error, hclog.Off:
+		return slog.LevelError
+	default:
+		return slog.LevelInfo
+	}
+}
+
+func sl2hcLogLevel(lvl slog.Level) hclog.Level {
+	switch lvl {
+	case slog.LevelDebug:
+		return hclog.Debug
+	case slog.LevelInfo:
+		return hclog.Info
+	case slog.LevelWarn:
+		return hclog.Warn
+	case slog.LevelError:
+		return hclog.Error
+	default:
+		return hclog.NoLevel
+	}
 }

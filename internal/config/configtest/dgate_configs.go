@@ -7,13 +7,13 @@ import (
 
 func NewTestDGateConfig() *config.DGateConfig {
 	return &config.DGateConfig{
-		LogLevel:                "disabled",
+		LogLevel:                config.NewLoggerLevel("info"),
 		DisableDefaultNamespace: true,
 		Debug:                   true,
 		Version:                 "v1",
 		Tags:                    []string{"test"},
 		Storage: config.DGateStorageConfig{
-			StorageType: config.StorageTypeMemory,
+			StorageType: config.StorageTypeDebug,
 		},
 		ProxyConfig: config.DGateProxyConfig{
 			AllowedDomains: []string{"*test.com", "localhost"},
@@ -50,6 +50,7 @@ func NewTestDGateConfig() *config.DGateConfig {
 							Name:          "test",
 							NamespaceName: "test",
 							Payload:       EmptyAsyncModuleFunctionsTS,
+							Type:          spec.ModuleTypeTypescript,
 							Tags:          []string{"test"},
 						},
 					},
@@ -92,6 +93,12 @@ func NewTest2DGateConfig() *config.DGateConfig {
 			},
 		},
 	}
+	return conf
+}
+
+func NewTest3DGateConfig() *config.DGateConfig {
+	conf := NewTestDGateConfig()
+	conf.DisableDefaultNamespace = false
 	return conf
 }
 

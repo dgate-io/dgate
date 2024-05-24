@@ -1,15 +1,17 @@
 package config
 
 import (
+	"log/slog"
 	"time"
 
 	"github.com/dgate-io/dgate/pkg/spec"
 )
 
 type (
+	LoggerLevel string
 	DGateConfig struct {
 		Version          string                 `koanf:"version"`
-		LogLevel         string                 `koanf:"log_level"`
+		LogLevel         *LoggerLevel           `koanf:"log_level"`
 		NodeId           string                 `koanf:"node_id"`
 		Storage          DGateStorageConfig     `koanf:"storage"`
 		ProxyConfig      DGateProxyConfig       `koanf:"proxy"`
@@ -59,7 +61,6 @@ type (
 		XForwardedForDepth int                     `koanf:"x_forwarded_for_depth"`
 		WatchOnly          bool                    `koanf:"watch_only"`
 		Replication        *DGateReplicationConfig `koanf:"replication,omitempty"`
-		Dashboard          *DGateDashboardConfig   `koanf:"dashboard"`
 		TLS                *DGateTLSConfig         `koanf:"tls"`
 		AuthMethod         AuthMethodType          `koanf:"auth_method"`
 		BasicAuth          *DGateBasicAuthConfig   `koanf:"basic_auth"`
@@ -200,3 +201,26 @@ const (
 	AuthMethodKeyAuth   AuthMethodType = "key"
 	AuthMethodJWTAuth   AuthMethodType = "jwt"
 )
+
+func (l *LoggerLevel) String() string {
+	return string(*l)
+}
+func (l *LoggerLevel) Level() slog.Level {
+	switch *l {
+	case "debug", "trace":
+		return slog.LevelDebug
+	case "info":
+		return slog.LevelInfo
+	case "warn":
+		return slog.LevelWarn
+	case "error":
+		return slog.LevelError
+	default:
+		return slog.LevelInfo
+	}
+}
+
+func NewLoggerLevel(level string) *LoggerLevel {
+	l := LoggerLevel(level)
+	return &l
+}

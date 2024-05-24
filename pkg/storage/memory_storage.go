@@ -1,14 +1,12 @@
 package storage
 
-import (
-	"github.com/rs/zerolog"
-)
+import "log/slog"
 
 type MemoryStoreConfig struct {
 	// Path to the directory where the files will be stored.
 	// If the directory does not exist, it will be created.
 	// If the directory exists, it will be used.
-	Logger zerolog.Logger
+	Logger *slog.Logger
 }
 
 type MemoryStore struct {
@@ -20,7 +18,7 @@ var _ Storage = &MemoryStore{}
 func NewMemoryStore(cfg *MemoryStoreConfig) *MemoryStore {
 	return &MemoryStore{
 		FileStore: &FileStore{
-			inMemory:  true,
+			inMemory: true,
 			logger: newBadgerLoggerAdapter(
 				"memstore::badger", cfg.Logger,
 			),
