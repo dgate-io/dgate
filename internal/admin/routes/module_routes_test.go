@@ -16,16 +16,17 @@ import (
 	"github.com/dgate-io/dgate/pkg/spec"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
+	"go.uber.org/zap"
 )
 
 func TestAdminRoutes_Module(t *testing.T) {
 	namespaces := []string{"default", "test"}
 	for _, ns := range namespaces {
 		config := configtest.NewTest3DGateConfig()
-		ps := proxy.NewProxyState(config)
+		ps := proxy.NewProxyState(zap.NewNop(), config)
 		mux := chi.NewMux()
 		mux.Route("/api/v1", func(r chi.Router) {
-			routes.ConfigureModuleAPI(r, ps, config)
+			routes.ConfigureModuleAPI(r, zap.NewNop(), ps, config)
 		})
 		server := httptest.NewServer(mux)
 		defer server.Close()
@@ -40,11 +41,11 @@ func TestAdminRoutes_Module(t *testing.T) {
 		if err := client.CreateModule(&spec.Module{
 			Name:          "test",
 			NamespaceName: ns,
-			Payload:       base64.StdEncoding.EncodeToString(
+			Payload: base64.StdEncoding.EncodeToString(
 				[]byte("\"use test\""),
 			),
-			Type:          spec.ModuleTypeJavascript,
-			Tags:          []string{"test123"},
+			Type: spec.ModuleTypeJavascript,
+			Tags: []string{"test123"},
 		}); err != nil {
 			t.Fatal(err)
 		}
@@ -86,7 +87,7 @@ func TestAdminRoutes_ModuleError(t *testing.T) {
 		cs.On("ResourceManager").Return(rm)
 		mux := chi.NewMux()
 		mux.Route("/api/v1", func(r chi.Router) {
-			routes.ConfigureModuleAPI(r, cs, config)
+			routes.ConfigureModuleAPI(r, zap.NewNop(), cs, config)
 		})
 		server := httptest.NewServer(mux)
 		defer server.Close()

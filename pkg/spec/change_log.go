@@ -41,6 +41,9 @@ func (cl *ChangeLog) SetErrorChan(errChan chan error) {
 }
 
 func (cl *ChangeLog) PushError(err error) {
+	if cl == nil {
+		return
+	}
 	if cl.errChan != nil {
 		cl.errChan <- err
 	}
@@ -84,9 +87,7 @@ var (
 	DeleteSecretCommand     Command = newCommand(Delete, Secrets)
 
 	// internal commands
-	NoopCommand     Command = Command("noop")
-	ShutdownCommand Command = Command("shutdown")
-	RestartCommand  Command = Command("restart")
+	NoopCommand Command = Command("noop")
 )
 
 func newCommand(action Action, resource Resource) Command {

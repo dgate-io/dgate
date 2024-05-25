@@ -1,8 +1,6 @@
 package changestate
 
 import (
-	"log/slog"
-
 	"github.com/dgate-io/dgate/internal/proxy"
 	"github.com/dgate-io/dgate/pkg/resources"
 	"github.com/dgate-io/dgate/pkg/spec"
@@ -15,6 +13,7 @@ type ChangeState interface {
 	ProcessChangeLog(*spec.ChangeLog, bool) error
 	WaitForChanges() error
 	ReloadState(bool, ...*spec.ChangeLog) error
+	ChangeHash() uint32
 
 	// Readiness
 	Ready() bool
@@ -27,11 +26,6 @@ type ChangeState interface {
 	// Resources
 	ResourceManager() *resources.ResourceManager
 	DocumentManager() resources.DocumentManager
-
-	// Misc
-	Logger() *slog.Logger
-	ChangeHash() uint32
-	Version() string
 }
 
 var _ ChangeState = (*proxy.ProxyState)(nil)

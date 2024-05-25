@@ -14,12 +14,19 @@ import (
 	"github.com/dgate-io/dgate/pkg/raftadmin"
 	"github.com/dgate-io/dgate/pkg/rafthttp"
 	"github.com/dgate-io/dgate/pkg/storage"
-	"github.com/dgate-io/dgate/pkg/util/logger"
+	"github.com/dgate-io/dgate/pkg/util/logadapter"
 	raftbadgerdb "github.com/dgate-io/raft-badger"
+	"github.com/dgraph-io/badger/v4"
 	"github.com/hashicorp/raft"
+	"go.uber.org/zap"
 )
 
-func setupRaft(conf *config.DGateConfig, server *chi.Mux, cs changestate.ChangeState) {
+func setupRaft(
+	server *chi.Mux,
+	logger *zap.Logger,
+	conf *config.DGateConfig,
+	cs changestate.ChangeState,
+) {
 	adminConfig := conf.AdminConfig
 	var sstore raft.StableStore
 	var lstore raft.LogStore
@@ -33,8 +40,11 @@ func setupRaft(conf *config.DGateConfig, server *chi.Mux, cs changestate.ChangeS
 		if err != nil {
 			panic(fmt.Errorf("invalid config: %s", err))
 		}
-		badgerStore, err := raftbadgerdb.NewBadgerStore(
-			path.Join(fileConfig.Directory, "raft"),
+		badgerLogger := logadapter.NewZap2BadgerAdapter(logger.Named("badger-file"))
+		raftDir := path.Join(fileConfig.Directory, "raft")
+		badgerStore, err := raftbadgerdb.New(
+			badger.DefaultOptions(raftDir).
+				WithLogger(badgerLogger),
 		)
 		if err != nil {
 			panic(err)
@@ -59,18 +69,17 @@ func setupRaft(conf *config.DGateConfig, server *chi.Mux, cs changestate.ChangeS
 			// TODO: Support snapshots
 			SnapshotInterval:  time.Hour * 24,
 			SnapshotThreshold: ^uint64(0),
-			Logger: logger.NewSLogHCAdapter(
-				cs.Logger().WithGroup("admin-raft"),
-			),
+			Logger:            logadapter.NewZap2HCLogAdapter(logger),
 		},
 	)
+
 	advertAddr := adminConfig.Replication.AdvertAddr
 	if advertAddr == "" {
 		advertAddr = fmt.Sprintf("%s:%d", adminConfig.Host, adminConfig.Port)
 	}
 	address := raft.ServerAddress(advertAddr)
 
-	raftHttpLogger := cs.Logger().WithGroup("raft-http")
+	raftHttpLogger := logger.Named("http")
 	if adminConfig.Replication.AdvertScheme != "http" && adminConfig.Replication.AdvertScheme != "https" {
 		panic(fmt.Errorf("invalid scheme: %s", adminConfig.Replication.AdvertScheme))
 	}
@@ -80,7 +89,7 @@ func setupRaft(conf *config.DGateConfig, server *chi.Mux, cs changestate.ChangeS
 		adminConfig.Replication.AdvertScheme+"://(address)/raft",
 	)
 	raftNode, err := raft.NewRaft(
-		raftConfig, newDGateAdminFSM(cs),
+		raftConfig, newDGateAdminFSM(logger.Named("fsm"), cs),
 		lstore, sstore, snapstore, transport,
 	)
 	if err != nil {
@@ -91,7 +100,7 @@ func setupRaft(conf *config.DGateConfig, server *chi.Mux, cs changestate.ChangeS
 	// Setup raft handler
 	server.Handle("/raft/*", transport)
 
-	raftAdminLogger := cs.Logger().WithGroup("raft-admin")
+	raftAdminLogger := logger.Named("admin")
 	raftAdmin := raftadmin.NewRaftAdminHTTPServer(
 		raftNode, raftAdminLogger, []raft.ServerAddress{address},
 	)
@@ -115,8 +124,8 @@ func setupRaft(conf *config.DGateConfig, server *chi.Mux, cs changestate.ChangeS
 	}
 	serverConfig := configFuture.Configuration()
 
-	cs.Logger().With("config", adminConfig).
-		Debug("Replication config")
+	logger.Debug("Replication config",
+		zap.Any("config", serverConfig))
 
 	if adminConfig.Replication.BootstrapCluster {
 		raftNode.BootstrapCluster(raft.Configuration{
@@ -132,8 +141,8 @@ func setupRaft(conf *config.DGateConfig, server *chi.Mux, cs changestate.ChangeS
 		go func() {
 			addresses := make([]string, 0)
 			if adminConfig.Replication.DiscoveryDomain != "" {
-				cs.Logger().Debug("no previous configuration found, attempting to discover cluster",
-					"domain", adminConfig.Replication.DiscoveryDomain,
+				logger.Debug("no previous configuration found, attempting to discover cluster",
+					zap.String("domain", adminConfig.Replication.DiscoveryDomain),
 				)
 				addrs, err := net.LookupHost(adminConfig.Replication.DiscoveryDomain)
 				if err != nil {
@@ -142,7 +151,8 @@ func setupRaft(conf *config.DGateConfig, server *chi.Mux, cs changestate.ChangeS
 				if len(addrs) == 0 {
 					panic(fmt.Errorf("no addrs found for %s", adminConfig.Replication.DiscoveryDomain))
 				}
-				cs.Logger().Info("discovered addresses", "addresses", addrs)
+				logger.Info("discovered addresses",
+					zap.Strings("addresses", addrs))
 				for _, addr := range addrs {
 					if addr[len(addr)-1] == '.' {
 						addr = addr[:len(addr)-1]
@@ -167,7 +177,7 @@ func setupRaft(conf *config.DGateConfig, server *chi.Mux, cs changestate.ChangeS
 				}
 				adminClient := raftadmin.NewHTTPAdminClient(doer,
 					adminConfig.Replication.AdvertScheme+"://(address)/raftadmin",
-					cs.Logger().WithGroup("raft-admin-client"),
+					logger.Named("raft-admin-client"),
 				)
 			RETRY:
 				for _, url := range addresses {
@@ -177,17 +187,24 @@ func setupRaft(conf *config.DGateConfig, server *chi.Mux, cs changestate.ChangeS
 							continue
 						}
 						if retries > 15 {
-							cs.Logger().Error("Skipping verifying leader at %s: %s", url, err)
+							logger.Error("Skipping verifying leader",
+								zap.String("url", url), zap.Error(err),
+							)
 							continue
 						}
 						retries += 1
-						cs.Logger().Debug("Retrying verifying leader at %s: %s", url, err)
+						logger.Debug("Retrying verifying leader",
+							zap.String("url", url), zap.Error(err))
 						<-time.After(3 * time.Second)
 						goto RETRY
 					}
 					// If this node is watch only, add it as a non-voter node, otherwise add it as a voter node
 					if adminConfig.WatchOnly {
-						cs.Logger().Info("Adding non-voter", "url", url)
+						logger.Info("Adding non-voter",
+							zap.String("id", raftId),
+							zap.String("leader", adminConfig.Replication.AdvertAddr),
+							zap.String("url", url),
+						)
 						resp, err := adminClient.AddNonvoter(
 							context.Background(), raft.ServerAddress(url),
 							&raftadmin.AddNonvoterRequest{
@@ -202,8 +219,11 @@ func setupRaft(conf *config.DGateConfig, server *chi.Mux, cs changestate.ChangeS
 							panic(resp.Error)
 						}
 					} else {
-						cs.Logger().Info("Adding voter: %s - leader: %s",
-							adminConfig.Replication.AdvertAddr, url)
+						logger.Info("Adding voter: %s - leader: %s",
+							zap.String("id", raftId),
+							zap.String("leader", adminConfig.Replication.AdvertAddr),
+							zap.String("url", url),
+						)
 						resp, err := adminClient.AddVoter(context.Background(), raft.ServerAddress(url), &raftadmin.AddVoterRequest{
 							ID:      raftId,
 							Address: adminConfig.Replication.AdvertAddr,
@@ -221,11 +241,12 @@ func setupRaft(conf *config.DGateConfig, server *chi.Mux, cs changestate.ChangeS
 					panic(err)
 				}
 			} else {
-				cs.Logger().Warn("no admin urls specified, waiting to be added to cluster")
+				logger.Warn("no admin urls specified, waiting to be added to cluster")
 			}
 		}()
 	} else {
-		cs.Logger().Debug("previous configuration found",
-			"servers", serverConfig.Servers)
+		logger.Debug("previous configuration found",
+			zap.Any("servers", serverConfig.Servers),
+		)
 	}
 }

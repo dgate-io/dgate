@@ -3,11 +3,16 @@ package configtest
 import (
 	"github.com/dgate-io/dgate/internal/config"
 	"github.com/dgate-io/dgate/pkg/spec"
+	"go.uber.org/zap"
 )
 
 func NewTestDGateConfig() *config.DGateConfig {
 	return &config.DGateConfig{
-		LogLevel:                config.NewLoggerLevel("info"),
+		Logging: &config.LoggingConfig{
+			ZapConfig: &zap.Config{
+				Level: zap.NewAtomicLevelAt(zap.DebugLevel),
+			},
+		},
 		DisableDefaultNamespace: true,
 		Debug:                   true,
 		Version:                 "v1",

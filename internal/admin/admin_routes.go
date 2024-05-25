@@ -20,9 +20,16 @@ import (
 	api "go.opentelemetry.io/otel/metric"
 	"go.opentelemetry.io/otel/metric/noop"
 	"go.opentelemetry.io/otel/sdk/metric"
+	"go.uber.org/zap"
 )
 
-func configureRoutes(server *chi.Mux, cs changestate.ChangeState, conf *config.DGateConfig) {
+func configureRoutes(
+	server *chi.Mux,
+	version string,
+	logger *zap.Logger,
+	cs changestate.ChangeState,
+	conf *config.DGateConfig,
+) {
 	adminConfig := conf.AdminConfig
 	server.Use(func(next http.Handler) http.Handler {
 		ipList := iplist.NewIPList()
@@ -81,8 +88,9 @@ func configureRoutes(server *chi.Mux, cs changestate.ChangeState, conf *config.D
 					for i := 0; i < count; i++ {
 						allowed, err = ipList.Contains(xForwardedForIps[i])
 						if err != nil {
-							cs.Logger().Error("error checking x-forwarded-for ip",
-								"x-forwarded-for_ip", xForwardedForIps[i], "error", err,
+							logger.Error("error checking x-forwarded-for ip",
+								zap.String("x-forwarded-for_ip", xForwardedForIps[i]),
+								zap.Error(err),
 							)
 							if conf.Debug {
 								http.Error(w, "Bad Request: could not parse x-forwarded-for IP address", http.StatusBadRequest)
@@ -169,23 +177,26 @@ func configureRoutes(server *chi.Mux, cs changestate.ChangeState, conf *config.D
 	}))
 
 	if adminConfig.Replication != nil {
-		setupRaft(conf, server, cs)
+		setupRaft(server, logger.Named("raft"), conf, cs)
 	}
 	if adminConfig != nil {
 		server.Route("/api/v1", func(api chi.Router) {
-			routes.ConfigureRouteAPI(api, cs, conf)
-			routes.ConfigureModuleAPI(api, cs, conf)
-			routes.ConfigureServiceAPI(api, cs, conf)
-			routes.ConfigureNamespaceAPI(api, cs, conf)
-			routes.ConfigureDomainAPI(api, cs, conf)
-			routes.ConfigureCollectionAPI(api, cs, conf)
-			routes.ConfigureSecretAPI(api, cs, conf)
+			apiLogger := logger.Named("api")
+			routes.ConfigureRouteAPI(
+				api,
+				apiLogger, cs, conf)
+			routes.ConfigureModuleAPI(api, apiLogger, cs, conf)
+			routes.ConfigureServiceAPI(api, apiLogger, cs, conf)
+			routes.ConfigureNamespaceAPI(api, apiLogger, cs, conf)
+			routes.ConfigureDomainAPI(api, apiLogger, cs, conf)
+			routes.ConfigureCollectionAPI(api, apiLogger, cs, conf)
+			routes.ConfigureSecretAPI(api, apiLogger, cs, conf)
 		})
 	}
 
 	server.Group(func(misc chi.Router) {
 		routes.ConfigureChangeLogAPI(misc, cs, conf)
-		routes.ConfigureHealthAPI(misc, cs, conf)
+		routes.ConfigureHealthAPI(misc, version, cs)
 		if setupMetricProvider(conf) {
 			misc.Handle("/metrics", promhttp.Handler())
 		}

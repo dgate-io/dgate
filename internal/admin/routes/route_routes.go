@@ -11,9 +11,10 @@ import (
 	"github.com/dgate-io/dgate/internal/config"
 	"github.com/dgate-io/dgate/pkg/spec"
 	"github.com/dgate-io/dgate/pkg/util"
+	"go.uber.org/zap"
 )
 
-func ConfigureRouteAPI(server chi.Router, cs changestate.ChangeState, appConfig *config.DGateConfig) {
+func ConfigureRouteAPI(server chi.Router, logger *zap.Logger, cs changestate.ChangeState, appConfig *config.DGateConfig) {
 	rm := cs.ResourceManager()
 	server.Put("/route", func(w http.ResponseWriter, r *http.Request) {
 		eb, err := io.ReadAll(r.Body)

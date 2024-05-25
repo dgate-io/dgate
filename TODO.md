@@ -154,3 +154,7 @@ Make it easier to debug modules by adding more logging and error handling. This 
 
 Add stack tracing for typescript modules.
 
+
+## Decouple Admin API from Raft Implementation
+
+Currently, Raft Implementation is tightly coupled with the Admin API. This makes it difficult to change the Raft Implementation without changing the Admin API. Decouple the Raft Implementation from the Admin API to make it easier to change the Raft Implementation.

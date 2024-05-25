@@ -42,10 +42,9 @@ func ConfigureChangeLogAPI(server chi.Router, cs changestate.ChangeState, appCon
 	})
 }
 
-func ConfigureHealthAPI(server chi.Router, cs changestate.ChangeState, _ *config.DGateConfig) {
+func ConfigureHealthAPI(server chi.Router, version string, cs changestate.ChangeState) {
 	healthlyResp := []byte(
-		`{"status":"ok","version":"` +
-			cs.Version() + `"}`,
+		`{"status":"ok","version":"` + version + `"}`,
 	)
 	server.Get("/healthz", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")

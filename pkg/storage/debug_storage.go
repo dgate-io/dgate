@@ -4,13 +4,12 @@ import (
 	"errors"
 	"strings"
 
-	"log/slog"
-
 	"github.com/dgate-io/dgate/pkg/util/tree/avl"
+	"go.uber.org/zap"
 )
 
 type DebugStoreConfig struct {
-	Logger *slog.Logger
+	Logger *zap.Logger
 }
 
 type DebugStore struct {

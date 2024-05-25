@@ -6,15 +6,14 @@ import (
 	"os"
 	"strings"
 
-	"log/slog"
-
 	"github.com/dgraph-io/badger/v4"
 	"github.com/dgraph-io/badger/v4/options"
+	"go.uber.org/zap"
 )
 
 type FileStoreConfig struct {
 	Directory string `koanf:"dir"`
-	Logger    *slog.Logger
+	Logger    *zap.Logger
 }
 
 type FileStore struct {

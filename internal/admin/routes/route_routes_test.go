@@ -15,16 +15,17 @@ import (
 	"github.com/dgate-io/dgate/pkg/spec"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
+	"go.uber.org/zap"
 )
 
 func TestAdminRoutes_Route(t *testing.T) {
 	namespaces := []string{"default", "test"}
 	for _, ns := range namespaces {
 		config := configtest.NewTest3DGateConfig()
-		ps := proxy.NewProxyState(config)
+		ps := proxy.NewProxyState(zap.NewNop(), config)
 		mux := chi.NewMux()
 		mux.Route("/api/v1", func(r chi.Router) {
-			routes.ConfigureRouteAPI(r, ps, config)
+			routes.ConfigureRouteAPI(r, zap.NewNop(), ps, config)
 		})
 		server := httptest.NewServer(mux)
 		defer server.Close()
@@ -83,7 +84,7 @@ func TestAdminRoutes_RouteError(t *testing.T) {
 		cs.On("ResourceManager").Return(rm)
 		mux := chi.NewMux()
 		mux.Route("/api/v1", func(r chi.Router) {
-			routes.ConfigureRouteAPI(r, cs, config)
+			routes.ConfigureRouteAPI(r, zap.NewNop(), cs, config)
 		})
 		server := httptest.NewServer(mux)
 		defer server.Close()

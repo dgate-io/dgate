@@ -1,10 +1,10 @@
 package proxy
 
-import "log/slog"
+import "go.uber.org/zap"
 
 type (
 	ProxyPrinter struct {
-		logger *slog.Logger
+		logger *zap.Logger
 		// logs   []*printerLog
 	}
 	// printerLog struct {
@@ -14,7 +14,7 @@ type (
 	// }
 )
 
-func NewProxyPrinter(logger *slog.Logger) *ProxyPrinter {
+func NewProxyPrinter(logger *zap.Logger) *ProxyPrinter {
 	return &ProxyPrinter{
 		logger: logger,
 		// logs:   make([]*printerLog, 0),

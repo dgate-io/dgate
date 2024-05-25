@@ -12,9 +12,10 @@ import (
 	"github.com/dgate-io/dgate/internal/config"
 	"github.com/dgate-io/dgate/pkg/spec"
 	"github.com/dgate-io/dgate/pkg/util"
+	"go.uber.org/zap"
 )
 
-func ConfigureServiceAPI(server chi.Router, cs changestate.ChangeState, appConfig *config.DGateConfig) {
+func ConfigureServiceAPI(server chi.Router, logger *zap.Logger, cs changestate.ChangeState, appConfig *config.DGateConfig) {
 	rm := cs.ResourceManager()
 	server.Put("/service", func(w http.ResponseWriter, r *http.Request) {
 		eb, err := io.ReadAll(r.Body)
@@ -65,7 +66,7 @@ func ConfigureServiceAPI(server chi.Router, cs changestate.ChangeState, appConfi
 		}
 
 		if repl := cs.Raft(); repl != nil {
-			cs.Logger().Debug("Waiting for raft barrier")
+			logger.Debug("Waiting for raft barrier")
 			future := repl.Barrier(time.Second * 5)
 			if err := future.Error(); err != nil {
 				util.JsonError(w, http.StatusInternalServerError, err.Error())

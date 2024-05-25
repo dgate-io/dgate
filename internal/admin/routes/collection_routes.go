@@ -12,9 +12,10 @@ import (
 	"github.com/dgate-io/dgate/pkg/spec"
 	"github.com/dgate-io/dgate/pkg/util"
 	"github.com/santhosh-tekuri/jsonschema/v5"
+	"go.uber.org/zap"
 )
 
-func ConfigureCollectionAPI(server chi.Router, cs changestate.ChangeState, appConfig *config.DGateConfig) {
+func ConfigureCollectionAPI(server chi.Router, logger *zap.Logger, cs changestate.ChangeState, appConfig *config.DGateConfig) {
 	rm := cs.ResourceManager()
 	dm := cs.DocumentManager()
 	server.Put("/collection", func(w http.ResponseWriter, r *http.Request) {

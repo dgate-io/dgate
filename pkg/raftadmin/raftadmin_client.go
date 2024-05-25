@@ -10,9 +10,8 @@ import (
 	"strings"
 	"time"
 
-	"log/slog"
-
 	"github.com/hashicorp/raft"
+	"go.uber.org/zap"
 )
 
 type Doer func(*http.Request) (*http.Response, error)
@@ -20,10 +19,10 @@ type Doer func(*http.Request) (*http.Response, error)
 type HTTPAdminClient struct {
 	do     Doer
 	urlFmt string
-	logger *slog.Logger
+	logger *zap.Logger
 }
 
-func NewHTTPAdminClient(doer Doer, urlFmt string, logger *slog.Logger) *HTTPAdminClient {
+func NewHTTPAdminClient(doer Doer, urlFmt string, logger *zap.Logger) *HTTPAdminClient {
 	if doer == nil {
 		doer = http.DefaultClient.Do
 	}

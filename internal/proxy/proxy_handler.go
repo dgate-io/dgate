@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/dgate-io/dgate/pkg/util"
+	"go.uber.org/zap"
 )
 
 type ProxyHandlerFunc func(ps *ProxyState, reqCtx *RequestContext)
@@ -22,13 +23,12 @@ func proxyHandler(ps *ProxyState, reqCtx *RequestContext) {
 
 		event := ps.logger.
 			With(
-				"route", reqCtx.route.Name,
-				"namespace", reqCtx.route.Namespace.Name,
+				zap.String("route", reqCtx.route.Name),
+				zap.String("namespace", reqCtx.route.Namespace.Name),
 			)
 
 		if reqCtx.route.Service != nil {
-			event = event.
-				With("service", reqCtx.route.Service.Name)
+			event = event.With(zap.String("service", reqCtx.route.Service.Name))
 		}
 		event.Debug("Request Log")
 	}()
@@ -81,14 +81,14 @@ func handleServiceProxy(ps *ProxyState, reqCtx *RequestContext, modExt ModuleExt
 			fetchUpstreamStart, err,
 		)
 		if err != nil {
-			ps.logger.With("error", err).Error("Error fetching upstream")
+			ps.logger.Error("Error fetching upstream", zap.Error(err))
 			util.WriteStatusCodeError(reqCtx.rw, http.StatusInternalServerError)
 			return
 		}
 		host = hostUrl.String()
 	} else {
 		if reqCtx.route.Service.URLs == nil || len(reqCtx.route.Service.URLs) == 0 {
-			ps.logger.Error("Error getting service urls")
+			ps.logger.Error("Error getting service urls", zap.Any("service", reqCtx.route.Service))
 			util.WriteStatusCodeError(reqCtx.rw, http.StatusInternalServerError)
 			return
 		}
@@ -108,7 +108,7 @@ func handleServiceProxy(ps *ProxyState, reqCtx *RequestContext, modExt ModuleExt
 	}
 	upstreamUrl, err := url.Parse(host)
 	if err != nil {
-		ps.logger.With("error", err).Error("Error parsing upstream url")
+		ps.logger.Error("Error parsing upstream url", zap.Error(err))
 		util.WriteStatusCodeError(reqCtx.rw, http.StatusBadGateway)
 		return
 	}
@@ -127,7 +127,7 @@ func handleServiceProxy(ps *ProxyState, reqCtx *RequestContext, modExt ModuleExt
 					resModifierStart, err,
 				)
 				if err != nil {
-					ps.logger.With("error", err).Error("Error modifying response")
+					ps.logger.Error("Error modifying response", zap.Error(err))
 					return err
 				}
 			}
@@ -135,8 +135,7 @@ func handleServiceProxy(ps *ProxyState, reqCtx *RequestContext, modExt ModuleExt
 		}).
 		ErrorHandler(func(w http.ResponseWriter, r *http.Request, reqErr error) {
 			upstreamErr = reqErr
-			ps.logger.With("error", reqErr).
-				Debug("Error proxying request")
+			ps.logger.Debug("Error proxying request", zap.Error(err))
 			// TODO: add metric for error
 			if reqCtx.rw.HeadersSent() {
 				return
@@ -149,7 +148,7 @@ func handleServiceProxy(ps *ProxyState, reqCtx *RequestContext, modExt ModuleExt
 					errorHandlerStart, err,
 				)
 				if err != nil {
-					ps.logger.With("error", err).Error("Error handling error")
+					ps.logger.Error("Error handling error", zap.Error(err))
 					util.WriteStatusCodeError(reqCtx.rw, http.StatusInternalServerError)
 					return
 				}
@@ -167,7 +166,7 @@ func handleServiceProxy(ps *ProxyState, reqCtx *RequestContext, modExt ModuleExt
 			reqModifierStart, err,
 		)
 		if err != nil {
-			ps.logger.With("error", err).Error("Error modifying request")
+			ps.logger.Error("Error modifying request", zap.Error(err))
 			util.WriteStatusCodeError(reqCtx.rw, http.StatusInternalServerError)
 			return
 		}
@@ -175,7 +174,7 @@ func handleServiceProxy(ps *ProxyState, reqCtx *RequestContext, modExt ModuleExt
 
 	rp, err := rpb.Build(upstreamUrl, reqCtx.pattern)
 	if err != nil {
-		ps.logger.With("error", err).Error("Error creating reverse proxy")
+		ps.logger.Error("Error creating reverse proxy", zap.Error(err))
 		util.WriteStatusCodeError(reqCtx.rw, http.StatusInternalServerError)
 		return
 	}
@@ -202,7 +201,7 @@ func requestHandlerModule(ps *ProxyState, reqCtx *RequestContext, modExt ModuleE
 			reqModifierStart, err,
 		)
 		if err != nil {
-			ps.logger.With("error", err).Error("Error modifying request")
+			ps.logger.Error("Error modifying request", zap.Error(err))
 			util.WriteStatusCodeError(reqCtx.rw, http.StatusInternalServerError)
 			return
 		}
@@ -215,7 +214,7 @@ func requestHandlerModule(ps *ProxyState, reqCtx *RequestContext, modExt ModuleE
 			requestHandlerStart, err,
 		)
 		if err != nil {
-			ps.logger.With("error", err).Error("Error @ request_handler module")
+			ps.logger.Error("Error @ request_handler module", zap.Error(err))
 			if errorHandler, ok := modExt.ErrorHandlerFunc(); ok {
 				// extract error handler function from module
 				errorHandlerStart := time.Now()
@@ -225,7 +224,7 @@ func requestHandlerModule(ps *ProxyState, reqCtx *RequestContext, modExt ModuleE
 					errorHandlerStart, err,
 				)
 				if err != nil {
-					ps.logger.With("error", err).Error("Error handling error")
+					ps.logger.Error("Error handling error", zap.Error(err))
 					util.WriteStatusCodeError(reqCtx.rw, http.StatusInternalServerError)
 					return
 				}

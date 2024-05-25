@@ -2,7 +2,6 @@ package proxystore
 
 import (
 	"encoding/json"
-	"log/slog"
 	"time"
 
 	"errors"
@@ -10,14 +9,15 @@ import (
 	"github.com/dgate-io/dgate/pkg/spec"
 	"github.com/dgate-io/dgate/pkg/storage"
 	"github.com/dgraph-io/badger/v4"
+	"go.uber.org/zap"
 )
 
 type ProxyStore struct {
 	storage storage.Storage
-	logger  *slog.Logger
+	logger  *zap.Logger
 }
 
-func New(storage storage.Storage, logger *slog.Logger) *ProxyStore {
+func New(storage storage.Storage, logger *zap.Logger) *ProxyStore {
 	return &ProxyStore{
 		storage: storage,
 		logger:  logger,
@@ -43,13 +43,13 @@ func (store *ProxyStore) FetchChangeLogs() ([]*spec.ChangeLog, error) {
 	if len(clBytes) == 0 {
 		return nil, nil
 	}
-	store.logger.Debug("found changelog entries", "numBytes", len(clBytes))
+	store.logger.Debug("found changelog entries", zap.Int("numBytes", len(clBytes)))
 	logs := make([]*spec.ChangeLog, len(clBytes))
 	for i, clKv := range clBytes {
 		var clObj spec.ChangeLog
 		err = json.Unmarshal(clKv.Value, &clObj)
 		if err != nil {
-			store.logger.Debug("failed to unmarshal changelog entry", "error", err.Error())
+			store.logger.Debug("failed to unmarshal changelog entry", zap.Error(err))
 			return nil, errors.New("failed to unmarshal changelog entry: " + err.Error())
 		}
 		logs[i] = &clObj
@@ -68,8 +68,9 @@ RETRY:
 	err = store.storage.Set("changelog/"+cl.ID, clBytes)
 	if err != nil {
 		if retries > 0 {
-			store.logger.With("error", err).
-				Error("failed to store changelog", "retries", retries)
+			store.logger.Error("failed to store changelog",
+				zap.Error(err), zap.Int("retries", retries),
+			)
 			time.Sleep(delay)
 			retries--
 			goto RETRY
@@ -106,7 +107,8 @@ func (store *ProxyStore) FetchDocument(nsName, colName, docId string) (*spec.Doc
 	doc := &spec.Document{}
 	err = json.Unmarshal(docBytes, doc)
 	if err != nil {
-		store.logger.Debug("failed to unmarshal document entry: %s, skipping %s", err.Error(), docId)
+		store.logger.Debug("failed to unmarshal document entry: %s, skipping %s",
+			zap.Error(err), zap.String("document_id", docId))
 		return nil, errors.New("failed to unmarshal document entry" + err.Error())
 	}
 	return doc, nil

@@ -1,12 +1,12 @@
 package storage
 
-import "log/slog"
+import "go.uber.org/zap"
 
 type MemoryStoreConfig struct {
 	// Path to the directory where the files will be stored.
 	// If the directory does not exist, it will be created.
 	// If the directory exists, it will be used.
-	Logger *slog.Logger
+	Logger *zap.Logger
 }
 
 type MemoryStore struct {

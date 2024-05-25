@@ -13,8 +13,6 @@ import (
 	"sync/atomic"
 	"time"
 
-	"log/slog"
-
 	"github.com/dgate-io/dgate/internal/config"
 	"github.com/dgate-io/dgate/internal/pattern"
 	"github.com/dgate-io/dgate/internal/proxy/proxy_transport"
@@ -32,6 +30,7 @@ import (
 	"github.com/dop251/goja"
 	"github.com/dop251/goja_nodejs/console"
 	"github.com/hashicorp/raft"
+	"go.uber.org/zap"
 )
 
 type ProxyState struct {
@@ -39,7 +38,7 @@ type ProxyState struct {
 	debugMode  bool
 	startTime  time.Time
 	config     *config.DGateConfig
-	logger     *slog.Logger
+	logger     *zap.Logger
 	printer    console.Printer
 	store      *proxystore.ProxyStore
 	proxyLock  *sync.RWMutex
@@ -48,9 +47,8 @@ type ProxyState struct {
 	metrics     *ProxyMetrics
 	sharedCache cache.TCache
 
-	changeChan chan *spec.ChangeLog
-	rm         *resources.ResourceManager
-	skdr       scheduler.Scheduler
+	rm   *resources.ResourceManager
+	skdr scheduler.Scheduler
 
 	providers   avl.Tree[string, *RequestContextProvider]
 	modPrograms avl.Tree[string, *goja.Program]
@@ -66,20 +64,7 @@ type ProxyState struct {
 	ProxyHandlerFunc      ProxyHandlerFunc
 }
 
-func NewProxyState(conf *config.DGateConfig) *ProxyState {
-	var logger *slog.Logger
-	logSource := util.EnvVarCheckBool("LOG_SOURCE")
-	if util.EnvVarCheckBool("LOG_JSON") {
-		logger = slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{
-			Level: conf.LogLevel, AddSource: logSource,
-		}))
-	} else {
-		logger = slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{
-			Level: conf.LogLevel, AddSource: logSource,
-		}))
-	}
-	slog.SetDefault(logger)
-
+func NewProxyState(logger *zap.Logger, conf *config.DGateConfig) *ProxyState {
 	var dataStore storage.Storage
 	switch conf.Storage.StorageType {
 	case config.StorageTypeDebug:
@@ -110,26 +95,25 @@ func NewProxyState(conf *config.DGateConfig) *ProxyState {
 	if conf.ProxyConfig.EnableConsoleLogger {
 		printer = NewProxyPrinter(logger)
 	}
-	rpLogger := logger.WithGroup("reverse-proxy")
-	storeLogger := logger.WithGroup("store")
-	schedulerLogger := logger.WithGroup("scheduler")
+	rpLogger := logger.Named("reverse-proxy")
+	storeLogger := logger.Named("store")
+	schedulerLogger := logger.Named("scheduler")
 
 	replicationEnabled := false
 	if conf.AdminConfig != nil && conf.AdminConfig.Replication != nil {
 		replicationEnabled = true
 	}
 	state := &ProxyState{
-		version:    "unknown",
-		startTime:  time.Now(),
-		raftReady:  atomic.Bool{},
-		logger:     logger,
-		debugMode:  conf.Debug,
-		config:     conf,
-		metrics:    NewProxyMetrics(),
-		printer:    printer,
-		routers:    avl.NewTree[string, *router.DynamicRouter](),
-		changeChan: make(chan *spec.ChangeLog, 1),
-		rm:         resources.NewManager(opt),
+		version:   "unknown",
+		startTime: time.Now(),
+		raftReady: atomic.Bool{},
+		logger:    logger,
+		debugMode: conf.Debug,
+		config:    conf,
+		metrics:   NewProxyMetrics(),
+		printer:   printer,
+		routers:   avl.NewTree[string, *router.DynamicRouter](),
+		rm:        resources.NewManager(opt),
 		skdr: scheduler.New(scheduler.Options{
 			Logger: schedulerLogger,
 		}),
@@ -141,7 +125,7 @@ func NewProxyState(conf *config.DGateConfig) *ProxyState {
 		replicationEnabled: replicationEnabled,
 		ReverseProxyBuilder: reverse_proxy.NewBuilder().
 			FlushInterval(-1).
-			ErrorLogger(slog.NewLogLogger(rpLogger.Handler(), slog.LevelInfo)).
+			ErrorLogger(zap.NewStdLog(rpLogger)).
 			CustomRewrite(func(in *http.Request, out *http.Request) {
 				if in.URL.Scheme == "ws" {
 					out.URL.Scheme = "http"
@@ -176,7 +160,7 @@ func (ps *ProxyState) Store() *proxystore.ProxyStore {
 	return ps.store
 }
 
-func (ps *ProxyState) Logger() *slog.Logger {
+func (ps *ProxyState) Logger() *zap.Logger {
 	return ps.logger
 }
 
@@ -215,12 +199,8 @@ func (ps *ProxyState) SetupRaft(r *raft.Raft, rc *raft.Config) {
 
 func (ps *ProxyState) WaitForChanges() error {
 	ps.proxyLock.RLock()
-	if len(ps.changeChan) > 0 {
-		ps.proxyLock.RUnlock()
-		return <-ps.applyChange(nil)
-	}
 	defer ps.proxyLock.RUnlock()
-	return nil
+	return <-ps.applyChange(nil)
 }
 
 func (ps *ProxyState) ApplyChangeLog(log *spec.ChangeLog) error {
@@ -242,7 +222,8 @@ func (ps *ProxyState) ApplyChangeLog(log *spec.ChangeLog) error {
 		future := r.ApplyLog(raftLog, time.Second*15)
 		ps.logger.With().
 			Debug("waiting for reply from raft",
-				"changelog", log, "id", log.ID,
+				zap.String("id", log.ID),
+				zap.Stringer("command", log.Cmd),
 			)
 		return future.Error()
 	} else {
@@ -268,6 +249,8 @@ func (ps *ProxyState) restartState(errFn func(error)) {
 	ps.proxyLock.Lock()
 	defer ps.proxyLock.Unlock()
 
+	ps.logger.Info("Attempting to restart state...")
+
 	ps.rm.Empty()
 	ps.modPrograms.Clear()
 	ps.providers.Clear()
@@ -287,7 +270,7 @@ func (ps *ProxyState) restartState(errFn func(error)) {
 		}
 	}
 	if err := ps.restoreFromChangeLogs(true); err != nil {
-		errFn(err)
+		go errFn(err)
 		return
 	}
 	ps.logger.Info("State successfully restarted")
@@ -314,8 +297,7 @@ func (ps *ProxyState) ReloadState(check bool, logs ...*spec.ChangeLog) error {
 func (ps *ProxyState) ProcessChangeLog(log *spec.ChangeLog, reload bool) error {
 	err := ps.processChangeLog(log, reload, !ps.replicationEnabled)
 	if err != nil {
-		ps.logger.With("error", err).
-			Error("processing error")
+		ps.logger.Error("processing error", zap.Error(err))
 	}
 	return err
 }
@@ -364,8 +346,7 @@ func (ps *ProxyState) getDomainCertificate(domain string) (*tls.Certificate, err
 		_, domainMatch, err := pattern.MatchAnyPattern(domain, allowedDomains)
 		if err != nil {
 			ps.logger.Error("Error checking domain match list",
-				"error",
-				err.Error(),
+				zap.Error(err),
 			)
 			return nil, err
 		}
@@ -376,8 +357,7 @@ func (ps *ProxyState) getDomainCertificate(domain string) (*tls.Certificate, err
 			_, match, err := pattern.MatchAnyPattern(domain, d.Patterns)
 			if err != nil {
 				ps.logger.Error("Error checking domain match list",
-					"error",
-					err.Error(),
+					zap.Error(err),
 				)
 				return nil, err
 			} else if match && d.Cert != "" && d.Key != "" {
@@ -396,9 +376,9 @@ func (ps *ProxyState) getDomainCertificate(domain string) (*tls.Certificate, err
 					[]byte(d.Cert), []byte(d.Key))
 				if err != nil {
 					ps.logger.Error("Error loading cert",
-						"error", err.Error(),
-						"domain_name", d.Name,
-						"namespace", d.Namespace.Name,
+						zap.Error(err),
+						zap.String("domain_name", d.Name),
+						zap.String("namespace", d.Namespace.Name),
 					)
 					return nil, err
 				}
@@ -521,7 +501,7 @@ func (ps *ProxyState) FindNamespaceByRequest(r *http.Request) *spec.DGateNamespa
 			}
 			_, match, err := pattern.MatchAnyPattern(host, d.Patterns)
 			if err != nil {
-				ps.logger.With("error", err).Error("error matching namespace")
+				ps.logger.Error("error matching namespace", zap.Error(err))
 			} else if match {
 				return d.Namespace
 			}
@@ -555,12 +535,12 @@ func (ps *ProxyState) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			_, ok, err = pattern.MatchAnyPattern(host, allowedDomains)
 			if err != nil {
 				ps.logger.Debug("Error checking domain match list",
-					"error", err.Error(),
+					zap.Error(err),
 				)
 				util.WriteStatusCodeError(w, http.StatusInternalServerError)
 				return
 			} else if !ok {
-				ps.logger.Debug("Domain not allowed", "domain", host)
+				ps.logger.Debug("Domain not allowed", zap.String("domain", host))
 				// if debug mode is enabled, return a 403
 				util.WriteStatusCodeError(w, http.StatusForbidden)
 				if ps.debugMode {
@@ -573,7 +553,7 @@ func (ps *ProxyState) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		if r.TLS == nil && len(redirectDomains) > 0 {
 			if _, ok, err = pattern.MatchAnyPattern(host, redirectDomains); err != nil {
 				ps.logger.Error("Error checking domain match list",
-					"error", err.Error(),
+					zap.Error(err),
 				)
 				util.WriteStatusCodeError(w, http.StatusInternalServerError)
 				return
@@ -581,7 +561,7 @@ func (ps *ProxyState) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 				url := *r.URL
 				url.Scheme = "https"
 				ps.logger.Info("Redirecting to https",
-					"", url.String(),
+					zap.Stringer("url", &url),
 				)
 				http.Redirect(w, r, url.String(),
 					// maybe change to http.StatusMovedPermanently
@@ -593,18 +573,17 @@ func (ps *ProxyState) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			router.ServeHTTP(w, r)
 		} else {
 			ps.logger.Debug("No router found for namespace",
-				"namespace", ns.Name,
+				zap.String("namespace", ns.Name),
 			)
 			util.WriteStatusCodeError(w, http.StatusNotFound)
 		}
 	} else {
-		ps.logger.Debug(
-			"No namespace found for request",
-			"protocol", r.Proto,
-			"host", r.Host,
-			"path", r.URL.Path,
-			"secure", r.TLS != nil,
-			"remote_addr", r.RemoteAddr,
+		ps.logger.Debug("No namespace found for request",
+			zap.String("protocol", r.Proto),
+			zap.String("host", r.Host),
+			zap.String("path", r.URL.Path),
+			zap.Bool("secure", r.TLS != nil),
+			zap.String("remote_addr", r.RemoteAddr),
 		)
 		util.WriteStatusCodeError(w, http.StatusNotFound)
 	}

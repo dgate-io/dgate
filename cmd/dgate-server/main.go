@@ -60,8 +60,14 @@ func main() {
 			fmt.Printf("Error loading config: %s\n", err)
 			os.Exit(1)
 		} else {
-			proxyState := proxy.StartProxyGateway(version, dgateConfig)
-			admin.StartAdminAPI(dgateConfig, proxyState)
+			logger, err := dgateConfig.GetLogger()
+			if err != nil {
+				fmt.Printf("Error setting up logger: %s\n", err)
+				os.Exit(1)
+			}
+			defer logger.Sync()
+			proxyState := proxy.NewProxyState(logger.Named("proxy"), dgateConfig)
+			admin.StartAdminAPI(version, dgateConfig, logger.Named("admin"), proxyState)
 			if err := proxyState.Start(); err != nil {
 				fmt.Printf("Error loading config: %s\n", err)
 				os.Exit(1)
@@ -75,7 +81,6 @@ func main() {
 			)
 			<-sigchan
 			proxyState.Stop()
-			os.Exit(1)
 		}
 	}
 }

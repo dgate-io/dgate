@@ -15,6 +15,7 @@ import (
 	"github.com/dgate-io/dgate/internal/proxy/proxytest"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
+	"go.uber.org/zap"
 )
 
 // TODO: clean up the tests - make then simpler, more readable.
@@ -26,7 +27,7 @@ func TestProxyHandler_ReverseProxy(t *testing.T) {
 		// configtest.NewTest2DGateConfig(),
 	}
 	for _, conf := range configs {
-		ps := proxy.NewProxyState(conf)
+		ps := proxy.NewProxyState(zap.NewNop(), conf)
 
 		rt, ok := ps.ResourceManager().GetRoute("test", "test")
 		if !ok {
@@ -87,7 +88,7 @@ func TestProxyHandler_ProxyHandler(t *testing.T) {
 		// configtest.NewTest2DGateConfig(),
 	}
 	for _, conf := range configs {
-		ps := proxy.NewProxyState(conf)
+		ps := proxy.NewProxyState(zap.NewNop(), conf)
 		ptBuilder := proxytest.CreateMockProxyTransportBuilder()
 		ptBuilder.On("Retries", mock.Anything).Return(ptBuilder).Once()
 		ptBuilder.On("Transport", mock.Anything).Return(ptBuilder).Once()
@@ -144,7 +145,7 @@ func TestProxyHandler_ProxyHandlerError(t *testing.T) {
 		// configtest.NewTest2DGateConfig(),
 	}
 	for _, conf := range configs {
-		ps := proxy.NewProxyState(conf)
+		ps := proxy.NewProxyState(zap.NewNop(), conf)
 		ptBuilder := proxytest.CreateMockProxyTransportBuilder()
 		ptBuilder.On("Retries", mock.Anything).Return(ptBuilder).Maybe()
 		ptBuilder.On("Transport", mock.Anything).Return(ptBuilder).Maybe()

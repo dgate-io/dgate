@@ -2,13 +2,13 @@ package storage
 
 import (
 	"fmt"
-	"log/slog"
 
 	"github.com/dgraph-io/badger/v4"
+	"go.uber.org/zap"
 )
 
 type badgerLoggerAdapter struct {
-	logger *slog.Logger
+	logger *zap.Logger
 }
 
 func (b *badgerLoggerAdapter) Errorf(format string, args ...any) {
@@ -27,9 +27,8 @@ func (b *badgerLoggerAdapter) Debugf(format string, args ...any) {
 	b.logger.Debug(fmt.Sprintf(format, args...))
 }
 
-func newBadgerLoggerAdapter(component string, logger *slog.Logger) badger.Logger {
-	logger = logger.WithGroup(component)
+func newBadgerLoggerAdapter(component string, logger *zap.Logger) badger.Logger {
 	return &badgerLoggerAdapter{
-		logger: logger,
+		logger: logger.Named(component),
 	}
 }

@@ -15,16 +15,17 @@ import (
 	"github.com/dgate-io/dgate/pkg/spec"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
+	"go.uber.org/zap"
 )
 
 func TestAdminRoutes_Namespace(t *testing.T) {
 	namespaces := []string{"_test", "default"}
 	for _, ns := range namespaces {
 		config := configtest.NewTest3DGateConfig()
-		ps := proxy.NewProxyState(config)
+		ps := proxy.NewProxyState(zap.NewNop(), config)
 		mux := chi.NewMux()
 		mux.Route("/api/v1", func(r chi.Router) {
-			routes.ConfigureNamespaceAPI(r, ps, config)
+			routes.ConfigureNamespaceAPI(r, zap.NewNop(), ps, config)
 		})
 		server := httptest.NewServer(mux)
 		defer server.Close()
@@ -80,7 +81,7 @@ func TestAdminRoutes_NamespaceError(t *testing.T) {
 		cs.On("ResourceManager").Return(rm)
 		mux := chi.NewMux()
 		mux.Route("/api/v1", func(r chi.Router) {
-			routes.ConfigureNamespaceAPI(r, cs, config)
+			routes.ConfigureNamespaceAPI(r, zap.NewNop(), cs, config)
 		})
 		server := httptest.NewServer(mux)
 		defer server.Close()

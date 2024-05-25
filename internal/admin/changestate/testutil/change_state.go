@@ -9,6 +9,7 @@ import (
 	"github.com/dgate-io/dgate/pkg/spec"
 	"github.com/hashicorp/raft"
 	"github.com/stretchr/testify/mock"
+	"go.uber.org/zap"
 )
 
 type MockChangeState struct {
@@ -36,8 +37,8 @@ func (m *MockChangeState) ResourceManager() *resources.ResourceManager {
 }
 
 // Logger implements changestate.ChangeState.
-func (m *MockChangeState) Logger() *slog.Logger {
-	return m.Called().Get(0).(*slog.Logger)
+func (m *MockChangeState) Logger() *zap.Logger {
+	return m.Called().Get(0).(*zap.Logger)
 }
 
 // ProcessChangeLog implements changestate.ChangeState.

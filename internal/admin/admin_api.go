@@ -13,39 +13,56 @@ import (
 	"github.com/dgate-io/dgate/internal/admin/changestate"
 	"github.com/dgate-io/dgate/internal/config"
 	"github.com/dgate-io/dgate/pkg/util"
-
-	"log/slog"
+	"go.uber.org/zap"
 
 	"golang.org/x/net/http2"
 	"golang.org/x/net/http2/h2c"
 )
 
-func StartAdminAPI(conf *config.DGateConfig, cs changestate.ChangeState) {
+func StartAdminAPI(
+	version string, conf *config.DGateConfig,
+	logger *zap.Logger, cs changestate.ChangeState,
+) {
 	if conf.AdminConfig == nil {
-		cs.Logger().Warn("Admin API is disabled")
+		logger.Warn("Admin API is disabled")
 		return
 	}
 
-	// Start HTTP Server
 	mux := chi.NewRouter()
-	configureRoutes(mux, cs, conf)
+	configureRoutes(mux, version,
+		logger.Named("routes"), cs, conf)
+
+	// Start HTTP Server
+	go func() {
+		adminHttpLogger := logger.Named("http")
+		hostPort := fmt.Sprintf("%s:%d",
+			conf.AdminConfig.Host, conf.AdminConfig.Port)
+		logger.Info("Starting admin api on " + hostPort)
+		server := &http.Server{
+			Addr:     hostPort,
+			Handler:  mux,
+			ErrorLog: zap.NewStdLog(adminHttpLogger),
+		}
+		if err := server.ListenAndServe(); err != nil {
+			panic(err)
+		}
+	}()
 
 	// Start HTTPS Server
 	go func() {
 		if conf.AdminConfig.TLS != nil {
-			adminHttpsLogHandler := cs.Logger().
-				Handler().WithGroup("admin-https")
+			adminHttpsLog := logger.Named("https")
 			secureHostPort := fmt.Sprintf("%s:%d",
 				conf.AdminConfig.Host, conf.AdminConfig.TLS.Port)
 			secureServer := &http.Server{
 				Addr:     secureHostPort,
 				Handler:  mux,
-				ErrorLog: slog.NewLogLogger(adminHttpsLogHandler, slog.LevelInfo),
+				ErrorLog: zap.NewStdLog(adminHttpsLog),
 			}
-			cs.Logger().Info("Starting secure admin api on" + secureHostPort)
-			cs.Logger().Debug("TLS Cert",
-				"cert_file", conf.AdminConfig.TLS.CertFile,
-				"key_file", conf.AdminConfig.TLS.KeyFile,
+			logger.Info("Starting secure admin api on" + secureHostPort)
+			logger.Debug("TLS Cert",
+				zap.String("cert_file", conf.AdminConfig.TLS.CertFile),
+				zap.String("key_file", conf.AdminConfig.TLS.KeyFile),
 			)
 			if err := secureServer.ListenAndServeTLS(
 				conf.AdminConfig.TLS.CertFile,
@@ -59,13 +76,13 @@ func StartAdminAPI(conf *config.DGateConfig, cs changestate.ChangeState) {
 	// Start Test Server
 	if conf.TestServerConfig != nil {
 		if !conf.Debug {
-			cs.Logger().Warn("Test server is disabled in non-debug mode")
+			logger.Warn("Test server is disabled in non-debug mode")
 		} else {
 			go func() {
 				testHostPort := fmt.Sprintf("%s:%d",
 					conf.TestServerConfig.Host, conf.TestServerConfig.Port)
-				mux := chi.NewRouter()
-				mux.HandleFunc("/*", func(w http.ResponseWriter, r *http.Request) {
+				testMux := chi.NewRouter()
+				testMux.HandleFunc("/*", func(w http.ResponseWriter, r *http.Request) {
 					if strings.HasPrefix(r.URL.Path, "/debug") {
 						// strip /debug prefix
 						r.URL.Path = strings.TrimPrefix(r.URL.Path, "/debug")
@@ -102,13 +119,11 @@ func StartAdminAPI(conf *config.DGateConfig, cs changestate.ChangeState) {
 					util.JsonResponse(w, http.StatusOK, respMap)
 				})
 
-				testServerLogger := cs.Logger().
-					WithGroup("test-server")
-
+				testServerLogger := logger.Named("test-server")
 				testServer := &http.Server{
 					Addr:     testHostPort,
-					Handler:  mux,
-					ErrorLog: slog.NewLogLogger(testServerLogger.Handler(), slog.LevelInfo),
+					Handler:  testMux,
+					ErrorLog: zap.NewStdLog(testServerLogger),
 				}
 				if conf.TestServerConfig.EnableHTTP2 {
 					h2Server := &http2.Server{}
@@ -117,10 +132,10 @@ func StartAdminAPI(conf *config.DGateConfig, cs changestate.ChangeState) {
 						panic(err)
 					}
 					if conf.TestServerConfig.EnableH2C {
-						testServer.Handler = h2c.NewHandler(mux, h2Server)
+						testServer.Handler = h2c.NewHandler(testServer.Handler, h2Server)
 					}
 				}
-				cs.Logger().Info("Starting test server on " + testHostPort)
+				logger.Info("Starting test server on " + testHostPort)
 
 				if err := testServer.ListenAndServe(); err != nil {
 					panic(err)
@@ -128,18 +143,4 @@ func StartAdminAPI(conf *config.DGateConfig, cs changestate.ChangeState) {
 			}()
 		}
 	}
-	go func() {
-		adminHttpLogger := cs.Logger().WithGroup("admin-http")
-		hostPort := fmt.Sprintf("%s:%d",
-			conf.AdminConfig.Host, conf.AdminConfig.Port)
-		cs.Logger().Info("Starting admin api on " + hostPort)
-		server := &http.Server{
-			Addr:     hostPort,
-			Handler:  mux,
-			ErrorLog: slog.NewLogLogger(adminHttpLogger.Handler(), slog.LevelInfo),
-		}
-		if err := server.ListenAndServe(); err != nil {
-			panic(err)
-		}
-	}()
 }
