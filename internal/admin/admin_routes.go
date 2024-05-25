@@ -89,7 +89,6 @@ func configureRoutes(
 						allowed, err = ipList.Contains(xForwardedForIps[i])
 						if err != nil {
 							logger.Error("error checking x-forwarded-for ip",
-								zap.String("x-forwarded-for_ip", xForwardedForIps[i]),
 								zap.Error(err),
 							)
 							if conf.Debug {

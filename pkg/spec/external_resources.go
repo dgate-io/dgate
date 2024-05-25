@@ -79,7 +79,7 @@ type Collection struct {
 	NamespaceName string               `json:"namespace" koanf:"namespace"`
 	Schema        any                  `json:"schema" koanf:"schema"`
 	Visibility    CollectionVisibility `json:"visibility" koanf:"visibility"`
-	// Type          CollectionType       `json:"type" koanf:"type"`
+	Type          CollectionType       `json:"type" koanf:"type"`
 	// Modules       []string             `json:"modules,omitempty" koanf:"modules"`
 	Tags []string `json:"tags,omitempty" koanf:"tags"`
 }

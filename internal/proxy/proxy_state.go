@@ -245,7 +245,7 @@ func (ps *ProxyState) SharedCache() cache.TCache {
 
 // restartState - restart state clears the state and reloads the configuration
 // this is useful for rollbacks when broken changes are made.
-func (ps *ProxyState) restartState(errFn func(error)) {
+func (ps *ProxyState) restartState(fn func(error)) {
 	ps.proxyLock.Lock()
 	defer ps.proxyLock.Unlock()
 
@@ -258,22 +258,23 @@ func (ps *ProxyState) restartState(errFn func(error)) {
 	ps.sharedCache.Clear()
 	ps.Scheduler().Stop()
 	if err := ps.initConfigResources(ps.config.ProxyConfig.InitResources); err != nil {
-		errFn(err)
+		fn(err)
 		return
 	}
 	if ps.replicationEnabled {
 		raft := ps.Raft()
 		err := raft.ReloadConfig(raft.ReloadableConfig())
 		if err != nil {
-			errFn(err)
+			fn(err)
 			return
 		}
 	}
 	if err := ps.restoreFromChangeLogs(true); err != nil {
-		go errFn(err)
+		fn(err)
 		return
 	}
 	ps.logger.Info("State successfully restarted")
+	fn(nil)
 }
 
 // ReloadState - reload state checks the change logs to see if a reload is required,

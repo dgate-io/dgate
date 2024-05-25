@@ -22,12 +22,17 @@ func (ps *ProxyState) reconfigureState(init bool, log *spec.ChangeLog) (err erro
 	defer func() {
 		if err != nil {
 			ps.restartState(func(err error) {
-				ps.logger.Error("Error restarting state", zap.Error(err))
-				ps.Stop()
+				if err != nil {
+					ps.logger.Error("Error restarting state", zap.Error(err))
+					go ps.Stop()
+				}
 			})
 		}
 		log.PushError(err)
 	}()
+
+	ps.proxyLock.Lock()
+	defer ps.proxyLock.Unlock()
 
 	start := time.Now()
 	if err = ps.setupModules(); err != nil {
