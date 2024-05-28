@@ -81,14 +81,21 @@ func handleServiceProxy(ps *ProxyState, reqCtx *RequestContext, modExt ModuleExt
 			fetchUpstreamStart, err,
 		)
 		if err != nil {
-			ps.logger.Error("Error fetching upstream", zap.Error(err))
+			ps.logger.Error("Error fetching upstream",
+				zap.String("error", err.Error()),
+				zap.String("route", reqCtx.route.Name),
+				zap.String("namespace", reqCtx.route.Namespace.Name),
+			)
 			util.WriteStatusCodeError(reqCtx.rw, http.StatusInternalServerError)
 			return
 		}
 		host = hostUrl.String()
 	} else {
 		if reqCtx.route.Service.URLs == nil || len(reqCtx.route.Service.URLs) == 0 {
-			ps.logger.Error("Error getting service urls", zap.Any("service", reqCtx.route.Service))
+			ps.logger.Error("Error getting service urls",
+				zap.String("service", reqCtx.route.Service.Name),
+				zap.String("namespace", reqCtx.route.Namespace.Name),
+			)
 			util.WriteStatusCodeError(reqCtx.rw, http.StatusInternalServerError)
 			return
 		}
@@ -96,19 +103,27 @@ func handleServiceProxy(ps *ProxyState, reqCtx *RequestContext, modExt ModuleExt
 	}
 
 	if reqCtx.route.Service.HideDGateHeaders {
-		if ps.debugMode {
-			reqCtx.rw.Header().Set("X-Upstream-URL", host)
-		}
+		// upstream headers
 		reqCtx.req.Header.Set("X-DGate-Service", reqCtx.route.Service.Name)
 		reqCtx.req.Header.Set("X-DGate-Route", reqCtx.route.Name)
 		reqCtx.req.Header.Set("X-DGate-Namespace", reqCtx.route.Namespace.Name)
 		for _, tag := range ps.config.Tags {
 			reqCtx.req.Header.Add("X-DGate-Tags", tag)
 		}
+
+		// downstream headers
+		if ps.debugMode {
+			reqCtx.rw.Header().Set("X-Upstream-URL", host)
+		}
 	}
 	upstreamUrl, err := url.Parse(host)
 	if err != nil {
-		ps.logger.Error("Error parsing upstream url", zap.Error(err))
+		ps.logger.Error("Error parsing upstream url",
+			zap.String("error", err.Error()),
+			zap.String("route", reqCtx.route.Name),
+			zap.String("service", reqCtx.route.Service.Name),
+			zap.String("namespace", reqCtx.route.Namespace.Name),
+		)
 		util.WriteStatusCodeError(reqCtx.rw, http.StatusBadGateway)
 		return
 	}
@@ -127,7 +142,12 @@ func handleServiceProxy(ps *ProxyState, reqCtx *RequestContext, modExt ModuleExt
 					resModifierStart, err,
 				)
 				if err != nil {
-					ps.logger.Error("Error modifying response", zap.Error(err))
+					ps.logger.Error("Error modifying response",
+						zap.String("error", err.Error()),
+						zap.String("route", reqCtx.route.Name),
+						zap.String("service", reqCtx.route.Service.Name),
+						zap.String("namespace", reqCtx.route.Namespace.Name),
+					)
 					return err
 				}
 			}
@@ -135,7 +155,12 @@ func handleServiceProxy(ps *ProxyState, reqCtx *RequestContext, modExt ModuleExt
 		}).
 		ErrorHandler(func(w http.ResponseWriter, r *http.Request, reqErr error) {
 			upstreamErr = reqErr
-			ps.logger.Debug("Error proxying request", zap.Error(err))
+			ps.logger.Debug("Error proxying request",
+				zap.String("error", err.Error()),
+				zap.String("route", reqCtx.route.Name),
+				zap.String("service", reqCtx.route.Service.Name),
+				zap.String("namespace", reqCtx.route.Namespace.Name),
+			)
 			// TODO: add metric for error
 			if reqCtx.rw.HeadersSent() {
 				return
@@ -148,7 +173,12 @@ func handleServiceProxy(ps *ProxyState, reqCtx *RequestContext, modExt ModuleExt
 					errorHandlerStart, err,
 				)
 				if err != nil {
-					ps.logger.Error("Error handling error", zap.Error(err))
+					ps.logger.Error("Error handling error",
+						zap.String("error", err.Error()),
+						zap.String("route", reqCtx.route.Name),
+						zap.String("service", reqCtx.route.Service.Name),
+						zap.String("namespace", reqCtx.route.Namespace.Name),
+					)
 					util.WriteStatusCodeError(reqCtx.rw, http.StatusInternalServerError)
 					return
 				}
@@ -166,7 +196,12 @@ func handleServiceProxy(ps *ProxyState, reqCtx *RequestContext, modExt ModuleExt
 			reqModifierStart, err,
 		)
 		if err != nil {
-			ps.logger.Error("Error modifying request", zap.Error(err))
+			ps.logger.Error("Error modifying request",
+				zap.String("error", err.Error()),
+				zap.String("route", reqCtx.route.Name),
+				zap.String("service", reqCtx.route.Service.Name),
+				zap.String("namespace", reqCtx.route.Namespace.Name),
+			)
 			util.WriteStatusCodeError(reqCtx.rw, http.StatusInternalServerError)
 			return
 		}
@@ -174,7 +209,12 @@ func handleServiceProxy(ps *ProxyState, reqCtx *RequestContext, modExt ModuleExt
 
 	rp, err := rpb.Build(upstreamUrl, reqCtx.pattern)
 	if err != nil {
-		ps.logger.Error("Error creating reverse proxy", zap.Error(err))
+		ps.logger.Error("Error creating reverse proxy",
+			zap.String("error", err.Error()),
+			zap.String("route", reqCtx.route.Name),
+			zap.String("service", reqCtx.route.Service.Name),
+			zap.String("namespace", reqCtx.route.Namespace.Name),
+		)
 		util.WriteStatusCodeError(reqCtx.rw, http.StatusInternalServerError)
 		return
 	}
@@ -201,7 +241,11 @@ func requestHandlerModule(ps *ProxyState, reqCtx *RequestContext, modExt ModuleE
 			reqModifierStart, err,
 		)
 		if err != nil {
-			ps.logger.Error("Error modifying request", zap.Error(err))
+			ps.logger.Error("Error modifying request",
+				zap.String("error", err.Error()),
+				zap.String("route", reqCtx.route.Name),
+				zap.String("namespace", reqCtx.route.Namespace.Name),
+			)
 			util.WriteStatusCodeError(reqCtx.rw, http.StatusInternalServerError)
 			return
 		}
@@ -214,7 +258,11 @@ func requestHandlerModule(ps *ProxyState, reqCtx *RequestContext, modExt ModuleE
 			requestHandlerStart, err,
 		)
 		if err != nil {
-			ps.logger.Error("Error @ request_handler module", zap.Error(err))
+			ps.logger.Error("Error @ request_handler module",
+				zap.String("error", err.Error()),
+				zap.String("route", reqCtx.route.Name),
+				zap.String("namespace", reqCtx.route.Namespace.Name),
+			)
 			if errorHandler, ok := modExt.ErrorHandlerFunc(); ok {
 				// extract error handler function from module
 				errorHandlerStart := time.Now()
@@ -224,7 +272,11 @@ func requestHandlerModule(ps *ProxyState, reqCtx *RequestContext, modExt ModuleE
 					errorHandlerStart, err,
 				)
 				if err != nil {
-					ps.logger.Error("Error handling error", zap.Error(err))
+					ps.logger.Error("Error handling error",
+						zap.String("error", err.Error()),
+						zap.String("route", reqCtx.route.Name),
+						zap.String("namespace", reqCtx.route.Namespace.Name),
+					)
 					util.WriteStatusCodeError(reqCtx.rw, http.StatusInternalServerError)
 					return
 				}

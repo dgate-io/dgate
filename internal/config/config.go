@@ -248,7 +248,6 @@ func (conf *DGateConfig) GetLogger() (*zap.Logger, error) {
 	if logger, err := conf.Logging.ZapConfig.Build(); err != nil {
 		return nil, err
 	} else {
-		logger.Sync()
 		return logger, nil
 	}
 }

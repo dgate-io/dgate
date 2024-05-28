@@ -61,7 +61,7 @@ func TestGenericCommands(t *testing.T) {
 				case "service":
 					os.Args = append(os.Args, "urls=http://localhost.net")
 				case "module":
-					os.Args = append(os.Args, "payload=QUJD")
+					os.Args = append(os.Args, "payload@=testdata/test.ts")
 				case "domain":
 					os.Args = append(os.Args, "patterns=*")
 				case "secret":
@@ -133,7 +133,7 @@ func TestCommands_ClientError(t *testing.T) {
 				case "service":
 					os.Args = append(os.Args, "urls=http://localhost.net")
 				case "module":
-					os.Args = append(os.Args, "payload=QUJD")
+					os.Args = append(os.Args, "payload@=testdata/test.ts")
 				case "domain":
 					os.Args = append(os.Args, "patterns=*")
 				case "secret":

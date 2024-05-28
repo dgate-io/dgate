@@ -61,7 +61,7 @@ type ProxyState struct {
 
 	ReverseProxyBuilder   reverse_proxy.Builder
 	ProxyTransportBuilder proxy_transport.Builder
-	ProxyHandlerFunc      ProxyHandlerFunc
+	ProxyHandler          ProxyHandlerFunc
 }
 
 func NewProxyState(logger *zap.Logger, conf *config.DGateConfig) *ProxyState {
@@ -140,7 +140,7 @@ func NewProxyState(logger *zap.Logger, conf *config.DGateConfig) *ProxyState {
 				}
 			}),
 		ProxyTransportBuilder: proxy_transport.NewBuilder(),
-		ProxyHandlerFunc:      proxyHandler,
+		ProxyHandler:          proxyHandler,
 	}
 
 	if conf.Debug {

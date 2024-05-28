@@ -125,11 +125,12 @@ func ConfigureCollectionAPI(server chi.Router, logger *zap.Logger, cs changestat
 		if collection, ok := rm.GetCollection(collectionName, namespaceName); !ok {
 			util.JsonError(w, http.StatusNotFound, "collection not found")
 			return
-		} else {
-			if collection.Type != spec.CollectionTypeDocument {
-				util.JsonError(w, http.StatusBadRequest, "collection is not a document collection")
-				return
-			}
+		} else if collection.Type != "" && collection.Type != spec.CollectionTypeDocument {
+			util.JsonError(w, http.StatusBadRequest, "collection is not a document collection")
+			return
+		} else if collection.Visibility == spec.CollectionVisibilityPrivate {
+			util.JsonError(w, http.StatusForbidden, "collection is private")
+			return
 		}
 		limit, err := util.ParseInt(r.URL.Query().Get("limit"), 100)
 		if err != nil {
@@ -185,12 +186,14 @@ func ConfigureCollectionAPI(server chi.Router, logger *zap.Logger, cs changestat
 		if collection, ok := rm.GetCollection(collectionName, namespaceName); !ok {
 			util.JsonError(w, http.StatusNotFound, "collection not found")
 			return
-		} else {
-			if collection.Type != spec.CollectionTypeDocument {
-				util.JsonError(w, http.StatusBadRequest, "collection is not a document collection")
-				return
-			}
+		} else if collection.Type != spec.CollectionTypeDocument {
+			util.JsonError(w, http.StatusBadRequest, "collection is not a document collection")
+			return
+		} else if collection.Visibility == spec.CollectionVisibilityPrivate {
+			util.JsonError(w, http.StatusForbidden, "collection is private")
+			return
 		}
+
 		document, err := dm.GetDocumentByID(namespaceName, collectionName, documentId)
 		if err != nil {
 			util.JsonError(w, http.StatusNotFound, err.Error())

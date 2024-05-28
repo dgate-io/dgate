@@ -299,24 +299,26 @@ func (ps *ProxyState) Start() (err error) {
 func (ps *ProxyState) Stop() {
 	go func() {
 		<-time.After(10 * time.Second)
+		defer os.Exit(1)
 		ps.logger.Error("Failed to stop proxy server")
-		os.Exit(1)
 	}()
+
 	ps.logger.Info("Stopping proxy server")
-	defer ps.proxyLock.Unlock()
 	ps.proxyLock.Lock()
-	ps.Logger().Sync()
+	defer ps.proxyLock.Unlock()
+	defer os.Exit(0)
+	defer ps.Logger().Sync()
+
 	if raftNode := ps.Raft(); raftNode != nil {
 		raftNode.Shutdown().Error()
 	}
-	os.Exit(0)
 }
 
 func (ps *ProxyState) HandleRoute(requestCtxProvider *RequestContextProvider, pattern string) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		// ctx, cancel := context.WithCancel(requestCtxPrdovider.ctx)
 		// defer cancel()
-		ps.ProxyHandlerFunc(ps, requestCtxProvider.
+		ps.ProxyHandler(ps, requestCtxProvider.
 			CreateRequestContext(requestCtxProvider.ctx, w, r, pattern))
 	}
 }

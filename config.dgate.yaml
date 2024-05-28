@@ -16,6 +16,8 @@ proxy:
   port: ${PORT:-80}
   host: 0.0.0.0
   enable_console_logger: true
+  transport:
+    dns_prefer_go: true
   init_resources:
     namespaces:
       - name: "admin"

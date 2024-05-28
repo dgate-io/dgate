@@ -23,24 +23,24 @@ dgate-cli collection create \
     type=document \
     namespace=url_shortener-ns
 
-MOD_B64="$(base64 < $DIR/url_shortener.ts)"
-dgate-cli module create \
-    name=printer \
-    payload="$MOD_B64" \
+dgate-cli module create name=url_shortener-mod \
+    payload@=$DIR/url_shortener.ts \
     namespace=url_shortener-ns
 
 dgate-cli route create \
-    name=base_rt \
-    paths:='["/test","/hello"]' \
+    name=base_rt paths:='["/", "/{id}"]' \
+    modules:='["url_shortener-mod"]' \
     methods:='["GET","POST"]' \
-    modules:='["printer"]' \
     stripPath:=true \
     preserveHost:=true \
-    namespace=url_shortener-ns #\ service='base_svc'
+    namespace=url_shortener-ns
 
-JSON_RESP=$(curl -sG -X POST -H Host:url_shortener.com ${PROXY_URL}/test --data-urlencode "url=${PROXY_URL}/hello")
-echo $JSON_RESP
+JSON_RESP=$(curl -sG -X POST \
+    -H Host:url_shortener.com ${PROXY_URL}/ \
+    --data-urlencode 'url=https://dgate.io')
 
 URL_ID=$(echo $JSON_RESP | jq -r '.id')
 
-curl -s --fail-with-body ${PROXY_URL}/test\?id=$URL_ID -H Host:url_shortener.com
+curl -s --fail-with-body \
+    ${PROXY_URL}/$URL_ID \
+    -H Host:url_shortener.com
