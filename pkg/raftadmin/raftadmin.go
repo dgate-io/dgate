@@ -13,7 +13,7 @@ import (
 	"time"
 
 	"github.com/hashicorp/raft"
-	"github.com/rs/zerolog"
+	"go.uber.org/zap"
 )
 
 // RaftAdminHTTPServer provides a HTTP-based transport that can be used to
@@ -21,14 +21,14 @@ import (
 // application is an HTTP server already and you do not want to use multiple
 // different transports (if not, you can use raft.NetworkTransport).
 type RaftAdminHTTPServer struct {
-	logger zerolog.Logger
+	logger *zap.Logger
 	r      *raft.Raft
 	// addrs     map[raft.ServerID]raft.ServerAddress
 	addrs []raft.ServerAddress
 }
 
 // NewRaftAdminHTTPServer creates a new HTTP transport on the given addr.
-func NewRaftAdminHTTPServer(r *raft.Raft, logger zerolog.Logger, addrs []raft.ServerAddress) *RaftAdminHTTPServer {
+func NewRaftAdminHTTPServer(r *raft.Raft, logger *zap.Logger, addrs []raft.ServerAddress) *RaftAdminHTTPServer {
 	return &RaftAdminHTTPServer{
 		logger: logger,
 		r:      r,
@@ -292,9 +292,8 @@ func (t *RaftAdminHTTPServer) ServeHTTP(res http.ResponseWriter, req *http.Reque
 			http.Error(res, err.Error(), http.StatusInternalServerError)
 			return
 		}
-		err = json.NewEncoder(res).Encode(resp)
-		if err != nil {
-			t.logger.Printf("[%s, %s] %v\n", req.RemoteAddr, cmd, err)
+		if err = json.NewEncoder(res).Encode(resp); err != nil {
+			t.logger.Error("error occurred when handling command", zap.String("command", cmd), zap.Error(err))
 		}
 		return
 	case "Barrier":
@@ -314,9 +313,8 @@ func (t *RaftAdminHTTPServer) ServeHTTP(res http.ResponseWriter, req *http.Reque
 		}
 		res.Header().Set("X-Raft-Index", fmt.Sprintf("%d", resp.Index))
 		res.WriteHeader(http.StatusAccepted)
-		err = json.NewEncoder(res).Encode(resp)
-		if err != nil {
-			t.logger.Printf("[%s, %s] %v\n", req.RemoteAddr, cmd, err)
+		if err = json.NewEncoder(res).Encode(resp); err != nil {
+			t.logger.Error("error occurred when handling command", zap.String("command", cmd), zap.Error(err))
 		}
 		return
 	case "DemoteVoter":
@@ -339,9 +337,8 @@ func (t *RaftAdminHTTPServer) ServeHTTP(res http.ResponseWriter, req *http.Reque
 			http.Error(res, err.Error(), http.StatusInternalServerError)
 			return
 		}
-		err = json.NewEncoder(res).Encode(resp)
-		if err != nil {
-			t.logger.Printf("[%s, %s] %v\n", req.RemoteAddr, cmd, err)
+		if err = json.NewEncoder(res).Encode(resp); err != nil {
+			t.logger.Error("error occurred when handling command", zap.String("command", cmd), zap.Error(err))
 		}
 		return
 	case "LastContact":
@@ -350,9 +347,8 @@ func (t *RaftAdminHTTPServer) ServeHTTP(res http.ResponseWriter, req *http.Reque
 			http.Error(res, err.Error(), http.StatusInternalServerError)
 			return
 		}
-		err = json.NewEncoder(res).Encode(resp)
-		if err != nil {
-			t.logger.Printf("[%s, %s] %v\n", req.RemoteAddr, cmd, err)
+		if err = json.NewEncoder(res).Encode(resp); err != nil {
+			t.logger.Error("error occurred when handling command", zap.String("command", cmd), zap.Error(err))
 		}
 		return
 	case "LastIndex":
@@ -361,9 +357,8 @@ func (t *RaftAdminHTTPServer) ServeHTTP(res http.ResponseWriter, req *http.Reque
 			http.Error(res, err.Error(), http.StatusInternalServerError)
 			return
 		}
-		err = json.NewEncoder(res).Encode(resp)
-		if err != nil {
-			t.logger.Printf("[%s, %s] %v\n", req.RemoteAddr, cmd, err)
+		if err = json.NewEncoder(res).Encode(resp); err != nil {
+			t.logger.Error("error occurred when handling command", zap.String("command", cmd), zap.Error(err))
 		}
 		return
 	case "Leader":
@@ -372,9 +367,8 @@ func (t *RaftAdminHTTPServer) ServeHTTP(res http.ResponseWriter, req *http.Reque
 			http.Error(res, err.Error(), http.StatusInternalServerError)
 			return
 		}
-		err = json.NewEncoder(res).Encode(resp)
-		if err != nil {
-			t.logger.Printf("[%s, %s] %v\n", req.RemoteAddr, cmd, err)
+		if err = json.NewEncoder(res).Encode(resp); err != nil {
+			t.logger.Error("error occurred when handling command", zap.String("command", cmd), zap.Error(err))
 		}
 		return
 	case "LeadershipTransfer":
@@ -435,9 +429,8 @@ func (t *RaftAdminHTTPServer) ServeHTTP(res http.ResponseWriter, req *http.Reque
 			http.Error(res, err.Error(), http.StatusInternalServerError)
 			return
 		}
-		err = json.NewEncoder(res).Encode(resp)
-		if err != nil {
-			t.logger.Printf("[%s, %s] %v\n", req.RemoteAddr, cmd, err)
+		if err = json.NewEncoder(res).Encode(resp); err != nil {
+			t.logger.Error("error occurred when handling command", zap.String("command", cmd), zap.Error(err))
 		}
 		return
 	case "Stats":
@@ -446,9 +439,8 @@ func (t *RaftAdminHTTPServer) ServeHTTP(res http.ResponseWriter, req *http.Reque
 			http.Error(res, err.Error(), http.StatusInternalServerError)
 			return
 		}
-		err = json.NewEncoder(res).Encode(resp)
-		if err != nil {
-			t.logger.Printf("[%s, %s] %v\n", req.RemoteAddr, cmd, err)
+		if err = json.NewEncoder(res).Encode(resp); err != nil {
+			t.logger.Error("error occurred when handling command", zap.String("command", cmd), zap.Error(err))
 		}
 		return
 	case "VerifyLeader":
@@ -460,7 +452,8 @@ func (t *RaftAdminHTTPServer) ServeHTTP(res http.ResponseWriter, req *http.Reque
 		t.genericResponse(req, res, f, cmd)
 		return
 	default:
-		http.Error(res, fmt.Sprintf("unknown command %q", cmd), http.StatusBadRequest)
+		err := fmt.Errorf("unknown command %q", cmd)
+		http.Error(res, err.Error(), http.StatusBadRequest)
 		return
 	}
 }
@@ -488,6 +481,6 @@ func (t *RaftAdminHTTPServer) genericResponse(req *http.Request, res http.Respon
 	res.WriteHeader(http.StatusAccepted)
 	err = json.NewEncoder(res).Encode(resp)
 	if err != nil {
-		t.logger.Printf("[%s, %s] %v\n", req.RemoteAddr, cmd, err)
+		t.logger.Error("error occurred when handling command", zap.String("command", cmd), zap.Error(err))
 	}
 }

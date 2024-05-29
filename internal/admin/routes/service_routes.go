@@ -8,14 +8,15 @@ import (
 	"time"
 
 	"github.com/dgate-io/chi-router"
+	"github.com/dgate-io/dgate/internal/admin/changestate"
 	"github.com/dgate-io/dgate/internal/config"
-	"github.com/dgate-io/dgate/internal/proxy"
 	"github.com/dgate-io/dgate/pkg/spec"
 	"github.com/dgate-io/dgate/pkg/util"
+	"go.uber.org/zap"
 )
 
-func ConfigureServiceAPI(server chi.Router, proxyState *proxy.ProxyState, appConfig *config.DGateConfig) {
-	rm := proxyState.ResourceManager()
+func ConfigureServiceAPI(server chi.Router, logger *zap.Logger, cs changestate.ChangeState, appConfig *config.DGateConfig) {
+	rm := cs.ResourceManager()
 	server.Put("/service", func(w http.ResponseWriter, r *http.Request) {
 		eb, err := io.ReadAll(r.Body)
 		defer r.Body.Close()
@@ -58,15 +59,14 @@ func ConfigureServiceAPI(server chi.Router, proxyState *proxy.ProxyState, appCon
 			svc.NamespaceName = spec.DefaultNamespace.Name
 		}
 		cl := spec.NewChangeLog(&svc, svc.NamespaceName, spec.AddServiceCommand)
-		err = proxyState.ApplyChangeLog(cl)
+		err = cs.ApplyChangeLog(cl)
 		if err != nil {
 			util.JsonError(w, http.StatusBadRequest, err.Error())
 			return
 		}
 
-		if repl := proxyState.Raft(); repl != nil {
-			proxyState.Logger().Debug().
-				Msg("Waiting for raft barrier")
+		if repl := cs.Raft(); repl != nil {
+			logger.Debug("Waiting for raft barrier")
 			future := repl.Barrier(time.Second * 5)
 			if err := future.Error(); err != nil {
 				util.JsonError(w, http.StatusInternalServerError, err.Error())
@@ -99,7 +99,7 @@ func ConfigureServiceAPI(server chi.Router, proxyState *proxy.ProxyState, appCon
 			svc.NamespaceName = spec.DefaultNamespace.Name
 		}
 		cl := spec.NewChangeLog(&svc, svc.NamespaceName, spec.DeleteServiceCommand)
-		err = proxyState.ApplyChangeLog(cl)
+		err = cs.ApplyChangeLog(cl)
 		if err != nil {
 			util.JsonError(w, http.StatusBadRequest, err.Error())
 			return
@@ -117,7 +117,6 @@ func ConfigureServiceAPI(server chi.Router, proxyState *proxy.ProxyState, appCon
 			nsName = spec.DefaultNamespace.Name
 		} else {
 			if _, ok := rm.GetNamespace(nsName); !ok {
-				util.JsonError(w, http.StatusBadRequest, "namespace not found: "+nsName)
 				util.JsonError(w, http.StatusBadRequest, "namespace not found: "+nsName)
 				return
 			}
@@ -140,6 +139,6 @@ func ConfigureServiceAPI(server chi.Router, proxyState *proxy.ProxyState, appCon
 			util.JsonError(w, http.StatusNotFound, "service not found")
 			return
 		}
-		util.JsonResponse(w, http.StatusOK, svc)
+		util.JsonResponse(w, http.StatusOK, spec.TransformDGateService(svc))
 	})
 }

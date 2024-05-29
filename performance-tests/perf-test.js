@@ -17,7 +17,7 @@ export let options = {
     svctest: {
       executor: 'constant-vus',
       vus: n,
-      duration: '20s',
+      duration: '2m',
       exec: 'dgatePath', // same function as the scenario above, but with different env vars
       env: { DGATE_PATH: "/svctest" },
       // startTime: '25s',

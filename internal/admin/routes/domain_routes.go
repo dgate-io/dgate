@@ -7,14 +7,15 @@ import (
 	"time"
 
 	"github.com/dgate-io/chi-router"
+	"github.com/dgate-io/dgate/internal/admin/changestate"
 	"github.com/dgate-io/dgate/internal/config"
-	"github.com/dgate-io/dgate/internal/proxy"
 	"github.com/dgate-io/dgate/pkg/spec"
 	"github.com/dgate-io/dgate/pkg/util"
+	"go.uber.org/zap"
 )
 
-func ConfigureDomainAPI(server chi.Router, proxyState *proxy.ProxyState, appConfig *config.DGateConfig) {
-	rm := proxyState.ResourceManager()
+func ConfigureDomainAPI(server chi.Router, logger *zap.Logger, cs changestate.ChangeState, appConfig *config.DGateConfig) {
+	rm := cs.ResourceManager()
 	server.Put("/domain", func(w http.ResponseWriter, r *http.Request) {
 		eb, err := io.ReadAll(r.Body)
 		defer r.Body.Close()
@@ -41,13 +42,13 @@ func ConfigureDomainAPI(server chi.Router, proxyState *proxy.ProxyState, appConf
 			domain.NamespaceName = spec.DefaultNamespace.Name
 		}
 		cl := spec.NewChangeLog(&domain, domain.NamespaceName, spec.AddDomainCommand)
-		err = proxyState.ApplyChangeLog(cl)
+		err = cs.ApplyChangeLog(cl)
 		if err != nil {
 			util.JsonError(w, http.StatusBadRequest, err.Error())
 			return
 		}
 
-		if repl := proxyState.Raft(); repl != nil {
+		if repl := cs.Raft(); repl != nil {
 			future := repl.Barrier(time.Second * 5)
 			if err := future.Error(); err != nil {
 				util.JsonError(w, http.StatusInternalServerError, err.Error())
@@ -92,7 +93,7 @@ func ConfigureDomainAPI(server chi.Router, proxyState *proxy.ProxyState, appConf
 		}
 
 		cl := spec.NewChangeLog(&domain, domain.NamespaceName, spec.DeleteDomainCommand)
-		if err = proxyState.ApplyChangeLog(cl); err != nil {
+		if err = cs.ApplyChangeLog(cl); err != nil {
 			util.JsonError(w, http.StatusBadRequest, err.Error())
 			return
 		}

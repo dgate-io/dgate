@@ -8,7 +8,7 @@ import (
 
 	"github.com/dgate-io/dgate/pkg/scheduler"
 	"github.com/dgate-io/dgate/pkg/util/heap"
-	"github.com/rs/zerolog"
+	"go.uber.org/zap"
 )
 
 type TCache interface {
@@ -59,7 +59,7 @@ type cacheEntry struct {
 
 type CacheOptions struct {
 	CheckInterval time.Duration
-	Logger        *zerolog.Logger
+	Logger        *zap.Logger
 }
 
 var (

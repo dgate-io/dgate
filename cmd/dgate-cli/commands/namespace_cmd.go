@@ -8,9 +8,11 @@ import (
 
 func NamespaceCommand(client dgclient.DGateClient) *cli.Command {
 	return &cli.Command{
-		Name:    "namespace",
-		Aliases: []string{"ns"},
-		Args:    true,
+		Name:      "namespace",
+		Args:      true,
+		Aliases:   []string{"ns"},
+		ArgsUsage: "<command> <name>",
+		Usage:     "namespace <action> <args>",
 		Subcommands: []*cli.Command{
 			{
 				Name:    "create",

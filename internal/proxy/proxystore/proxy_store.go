@@ -1,4 +1,4 @@
-package proxy_store
+package proxystore
 
 import (
 	"encoding/json"
@@ -9,15 +9,15 @@ import (
 	"github.com/dgate-io/dgate/pkg/spec"
 	"github.com/dgate-io/dgate/pkg/storage"
 	"github.com/dgraph-io/badger/v4"
-	"github.com/rs/zerolog"
+	"go.uber.org/zap"
 )
 
 type ProxyStore struct {
 	storage storage.Storage
-	logger  *zerolog.Logger
+	logger  *zap.Logger
 }
 
-func New(storage storage.Storage, logger *zerolog.Logger) *ProxyStore {
+func New(storage storage.Storage, logger *zap.Logger) *ProxyStore {
 	return &ProxyStore{
 		storage: storage,
 		logger:  logger,
@@ -43,13 +43,13 @@ func (store *ProxyStore) FetchChangeLogs() ([]*spec.ChangeLog, error) {
 	if len(clBytes) == 0 {
 		return nil, nil
 	}
-	store.logger.Debug().Msgf("found %d changelog entries", len(clBytes))
+	store.logger.Debug("found changelog entries", zap.Int("numBytes", len(clBytes)))
 	logs := make([]*spec.ChangeLog, len(clBytes))
 	for i, clKv := range clBytes {
 		var clObj spec.ChangeLog
 		err = json.Unmarshal(clKv.Value, &clObj)
 		if err != nil {
-			store.logger.Debug().Msgf("failed to unmarshal changelog entry: %s", err.Error())
+			store.logger.Debug("failed to unmarshal changelog entry", zap.Error(err))
 			return nil, errors.New("failed to unmarshal changelog entry: " + err.Error())
 		}
 		logs[i] = &clObj
@@ -63,14 +63,14 @@ func (store *ProxyStore) StoreChangeLog(cl *spec.ChangeLog) error {
 	if err != nil {
 		return err
 	}
-	store.logger.Trace().Msgf("storing changelog:%s", string(clBytes))
 	retries, delay := 30, time.Microsecond*100
 RETRY:
 	err = store.storage.Set("changelog/"+cl.ID, clBytes)
 	if err != nil {
 		if retries > 0 {
-			store.logger.Err(err).
-				Msgf("failed to store changelog, retrying %d more times", retries)
+			store.logger.Error("failed to store changelog",
+				zap.Error(err), zap.Int("retries", retries),
+			)
 			time.Sleep(delay)
 			retries--
 			goto RETRY
@@ -107,8 +107,8 @@ func (store *ProxyStore) FetchDocument(nsName, colName, docId string) (*spec.Doc
 	doc := &spec.Document{}
 	err = json.Unmarshal(docBytes, doc)
 	if err != nil {
-		store.logger.Debug().
-			Msgf("failed to unmarshal document entry: %s, skipping %s", err.Error(), docId)
+		store.logger.Debug("failed to unmarshal document entry: %s, skipping %s",
+			zap.Error(err), zap.String("document_id", docId))
 		return nil, errors.New("failed to unmarshal document entry" + err.Error())
 	}
 	return doc, nil
@@ -144,7 +144,7 @@ func (store *ProxyStore) StoreDocument(doc *spec.Document) error {
 	if err != nil {
 		return err
 	}
-	store.logger.Trace().Msgf("storing document: %s", string(docBytes))
+	store.logger.Debug("storing document")
 	err = store.storage.Set(createDocumentKey(doc.NamespaceName, doc.CollectionName, doc.ID), docBytes)
 	if err != nil {
 		return err

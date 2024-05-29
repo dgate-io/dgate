@@ -12,7 +12,7 @@ func ServiceCommand(client dgclient.DGateClient) *cli.Command {
 		Aliases:   []string{"svc"},
 		Args:      true,
 		ArgsUsage: "<command> <name>",
-		Usage:     "service commands",
+		Usage:     "service <action> <args>",
 		Subcommands: []*cli.Command{
 			{
 				Name:    "create",

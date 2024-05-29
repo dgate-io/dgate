@@ -8,9 +8,9 @@ import (
 	"strings"
 
 	"github.com/dgate-io/chi-router"
+	"github.com/dgate-io/dgate/internal/admin/changestate"
 	"github.com/dgate-io/dgate/internal/admin/routes"
 	"github.com/dgate-io/dgate/internal/config"
-	"github.com/dgate-io/dgate/internal/proxy"
 	"github.com/dgate-io/dgate/pkg/util"
 	"github.com/dgate-io/dgate/pkg/util/iplist"
 	"github.com/hashicorp/raft"
@@ -20,9 +20,16 @@ import (
 	api "go.opentelemetry.io/otel/metric"
 	"go.opentelemetry.io/otel/metric/noop"
 	"go.opentelemetry.io/otel/sdk/metric"
+	"go.uber.org/zap"
 )
 
-func configureRoutes(server *chi.Mux, proxyState *proxy.ProxyState, conf *config.DGateConfig) {
+func configureRoutes(
+	server *chi.Mux,
+	version string,
+	logger *zap.Logger,
+	cs changestate.ChangeState,
+	conf *config.DGateConfig,
+) {
 	adminConfig := conf.AdminConfig
 	server.Use(func(next http.Handler) http.Handler {
 		ipList := iplist.NewIPList()
@@ -81,7 +88,9 @@ func configureRoutes(server *chi.Mux, proxyState *proxy.ProxyState, conf *config
 					for i := 0; i < count; i++ {
 						allowed, err = ipList.Contains(xForwardedForIps[i])
 						if err != nil {
-							proxyState.Logger().Error().Err(err).Msgf("error checking x-forwarded-for ip: %s", xForwardedForIps[i])
+							logger.Error("error checking x-forwarded-for ip",
+								zap.Error(err),
+							)
 							if conf.Debug {
 								http.Error(w, "Bad Request: could not parse x-forwarded-for IP address", http.StatusBadRequest)
 							}
@@ -138,7 +147,7 @@ func configureRoutes(server *chi.Mux, proxyState *proxy.ProxyState, conf *config
 					return
 				}
 			}
-			raftInstance := proxyState.Raft()
+			raftInstance := cs.Raft()
 			if r.Method == http.MethodPut && raftInstance != nil {
 				leader := raftInstance.Leader()
 				if leader == "" {
@@ -158,41 +167,44 @@ func configureRoutes(server *chi.Mux, proxyState *proxy.ProxyState, conf *config
 
 	server.Get("/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/plain")
-		w.Header().Set("X-DGate-Raft", fmt.Sprintf("%t", proxyState.Raft() != nil))
+		w.Header().Set("X-DGate-Raft", fmt.Sprintf("%t", cs.Raft() != nil))
 		w.Header().Set("X-DGate-WatchOnly", fmt.Sprintf("%t", adminConfig.WatchOnly))
-		w.Header().Set("X-DGate-ChangeHash", fmt.Sprintf("%d", proxyState.ChangeHash()))
+		w.Header().Set("X-DGate-ChangeHash", fmt.Sprintf("%d", cs.ChangeHash()))
 		w.Header().Set("X-DGate-AdminAPI", "true")
 		w.WriteHeader(http.StatusOK)
 		w.Write([]byte("DGate Admin API"))
 	}))
 
 	if adminConfig.Replication != nil {
-		setupRaft(conf, server, proxyState)
+		setupRaft(server, logger.Named("raft"), conf, cs)
 	}
 	if adminConfig != nil {
 		server.Route("/api/v1", func(api chi.Router) {
-			routes.ConfigureRouteAPI(api, proxyState, conf)
-			routes.ConfigureModuleAPI(api, proxyState, conf)
-			routes.ConfigureServiceAPI(api, proxyState, conf)
-			routes.ConfigureNamespaceAPI(api, proxyState, conf)
-			routes.ConfigureDomainAPI(api, proxyState, conf)
-			routes.ConfigureCollectionAPI(api, proxyState, conf)
-			routes.ConfigureSecretAPI(api, proxyState, conf)
+			apiLogger := logger.Named("api")
+			routes.ConfigureRouteAPI(
+				api,
+				apiLogger, cs, conf)
+			routes.ConfigureModuleAPI(api, apiLogger, cs, conf)
+			routes.ConfigureServiceAPI(api, apiLogger, cs, conf)
+			routes.ConfigureNamespaceAPI(api, apiLogger, cs, conf)
+			routes.ConfigureDomainAPI(api, apiLogger, cs, conf)
+			routes.ConfigureCollectionAPI(api, apiLogger, cs, conf)
+			routes.ConfigureSecretAPI(api, apiLogger, cs, conf)
 		})
 	}
 
 	server.Group(func(misc chi.Router) {
-		routes.ConfigureChangeLogAPI(misc, proxyState, conf)
-		routes.ConfigureHealthAPI(misc, proxyState, conf)
-		setupMetricProvider(conf)
-		misc.Handle("/metrics", promhttp.Handler())
-
+		routes.ConfigureChangeLogAPI(misc, cs, conf)
+		routes.ConfigureHealthAPI(misc, version, cs)
+		if setupMetricProvider(conf) {
+			misc.Handle("/metrics", promhttp.Handler())
+		}
 	})
 }
 
 func setupMetricProvider(
 	config *config.DGateConfig,
-) {
+) bool {
 	var provider api.MeterProvider
 	if !config.DisableMetrics {
 		exporter, err := prometheus.New()
@@ -204,4 +216,5 @@ func setupMetricProvider(
 		provider = noop.NewMeterProvider()
 	}
 	otel.SetMeterProvider(provider)
+	return !config.DisableMetrics
 }

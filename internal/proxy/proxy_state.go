@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"log"
 	"net"
 	"net/http"
 	"os"
@@ -16,8 +15,8 @@ import (
 
 	"github.com/dgate-io/dgate/internal/config"
 	"github.com/dgate-io/dgate/internal/pattern"
-	"github.com/dgate-io/dgate/internal/proxy/proxy_store"
 	"github.com/dgate-io/dgate/internal/proxy/proxy_transport"
+	"github.com/dgate-io/dgate/internal/proxy/proxystore"
 	"github.com/dgate-io/dgate/internal/proxy/reverse_proxy"
 	"github.com/dgate-io/dgate/internal/router"
 	"github.com/dgate-io/dgate/pkg/cache"
@@ -31,7 +30,7 @@ import (
 	"github.com/dop251/goja"
 	"github.com/dop251/goja_nodejs/console"
 	"github.com/hashicorp/raft"
-	"github.com/rs/zerolog"
+	"go.uber.org/zap"
 )
 
 type ProxyState struct {
@@ -39,18 +38,17 @@ type ProxyState struct {
 	debugMode  bool
 	startTime  time.Time
 	config     *config.DGateConfig
-	logger     zerolog.Logger
+	logger     *zap.Logger
 	printer    console.Printer
-	store      *proxy_store.ProxyStore
+	store      *proxystore.ProxyStore
 	proxyLock  *sync.RWMutex
 	changeHash uint32
 
 	metrics     *ProxyMetrics
 	sharedCache cache.TCache
 
-	changeChan chan *spec.ChangeLog
-	rm         *resources.ResourceManager
-	skdr       scheduler.Scheduler
+	rm   *resources.ResourceManager
+	skdr scheduler.Scheduler
 
 	providers   avl.Tree[string, *RequestContextProvider]
 	modPrograms avl.Tree[string, *goja.Program]
@@ -63,33 +61,10 @@ type ProxyState struct {
 
 	ReverseProxyBuilder   reverse_proxy.Builder
 	ProxyTransportBuilder proxy_transport.Builder
-	ProxyHandlerFunc      ProxyHandlerFunc
+	ProxyHandler          ProxyHandlerFunc
 }
 
-func NewProxyState(conf *config.DGateConfig) *ProxyState {
-	var logger zerolog.Logger
-	level, err := zerolog.ParseLevel(conf.LogLevel)
-	if err != nil {
-		panic(fmt.Errorf("invalid log level: %s", err))
-	}
-	if level == zerolog.NoLevel {
-		level = zerolog.InfoLevel
-	}
-
-	if util.EnvVarCheckBool("LOG_JSON") {
-		logger = zerolog.New(os.Stdout).
-			Level(level).With().
-			Timestamp().Logger()
-	} else {
-		cw := zerolog.NewConsoleWriter()
-		cw.TimeFormat = "2006/01/02T03:04:05PM"
-		cw.NoColor = util.EnvVarCheckBool("LOG_NO_COLOR")
-		logger = zerolog.New(cw).
-			Level(level).With().
-			Timestamp().Logger()
-	}
-	logger = logger.Level(level)
-
+func NewProxyState(logger *zap.Logger, conf *config.DGateConfig) *ProxyState {
 	var dataStore storage.Storage
 	switch conf.Storage.StorageType {
 	case config.StorageTypeDebug:
@@ -112,7 +87,7 @@ func NewProxyState(conf *config.DGateConfig) *ProxyState {
 	}
 	var opt resources.Options
 	if conf.DisableDefaultNamespace {
-		logger.Debug().Msg("default namespace disabled")
+		logger.Debug("default namespace disabled")
 	} else {
 		opt = resources.WithDefaultNamespace(spec.DefaultNamespace)
 	}
@@ -120,34 +95,25 @@ func NewProxyState(conf *config.DGateConfig) *ProxyState {
 	if conf.ProxyConfig.EnableConsoleLogger {
 		printer = NewProxyPrinter(logger)
 	}
-	rpLogger := Logger(&logger,
-		WithComponentLogger("reverse-proxy"),
-		WithDefaultLevel(zerolog.InfoLevel),
-	)
-	storeLogger := Logger(&logger,
-		WithComponentLogger("proxy_store"),
-		WithDefaultLevel(zerolog.InfoLevel),
-	)
-	schedulerLogger := Logger(&logger,
-		WithComponentLogger("scheduler"),
-		WithDefaultLevel(zerolog.InfoLevel),
-	)
+	rpLogger := logger.Named("reverse-proxy")
+	storeLogger := logger.Named("store")
+	schedulerLogger := logger.Named("scheduler")
+
 	replicationEnabled := false
 	if conf.AdminConfig != nil && conf.AdminConfig.Replication != nil {
 		replicationEnabled = true
 	}
 	state := &ProxyState{
-		version:    "unknown",
-		startTime:  time.Now(),
-		raftReady:  atomic.Bool{},
-		logger:     logger,
-		debugMode:  conf.Debug,
-		config:     conf,
-		metrics:    NewProxyMetrics(),
-		printer:    printer,
-		routers:    avl.NewTree[string, *router.DynamicRouter](),
-		changeChan: make(chan *spec.ChangeLog, 1),
-		rm:         resources.NewManager(opt),
+		version:   "unknown",
+		startTime: time.Now(),
+		raftReady: atomic.Bool{},
+		logger:    logger,
+		debugMode: conf.Debug,
+		config:    conf,
+		metrics:   NewProxyMetrics(),
+		printer:   printer,
+		routers:   avl.NewTree[string, *router.DynamicRouter](),
+		rm:        resources.NewManager(opt),
 		skdr: scheduler.New(scheduler.Options{
 			Logger: schedulerLogger,
 		}),
@@ -155,11 +121,11 @@ func NewProxyState(conf *config.DGateConfig) *ProxyState {
 		modPrograms:        avl.NewTree[string, *goja.Program](),
 		proxyLock:          new(sync.RWMutex),
 		sharedCache:        cache.New(),
-		store:              proxy_store.New(dataStore, storeLogger),
+		store:              proxystore.New(dataStore, storeLogger),
 		replicationEnabled: replicationEnabled,
 		ReverseProxyBuilder: reverse_proxy.NewBuilder().
 			FlushInterval(-1).
-			ErrorLogger(log.New(rpLogger, "", 0)).
+			ErrorLogger(zap.NewStdLog(rpLogger)).
 			CustomRewrite(func(in *http.Request, out *http.Request) {
 				if in.URL.Scheme == "ws" {
 					out.URL.Scheme = "http"
@@ -174,11 +140,11 @@ func NewProxyState(conf *config.DGateConfig) *ProxyState {
 				}
 			}),
 		ProxyTransportBuilder: proxy_transport.NewBuilder(),
-		ProxyHandlerFunc:      proxyHandler,
+		ProxyHandler:          proxyHandler,
 	}
 
 	if conf.Debug {
-		if err = state.initConfigResources(conf.ProxyConfig.InitResources); err != nil {
+		if err := state.initConfigResources(conf.ProxyConfig.InitResources); err != nil {
 			panic("error initializing resources: " + err.Error())
 		}
 	}
@@ -190,36 +156,12 @@ func (ps *ProxyState) Version() string {
 	return ps.version
 }
 
-func (ps *ProxyState) Store() *proxy_store.ProxyStore {
+func (ps *ProxyState) Store() *proxystore.ProxyStore {
 	return ps.store
 }
 
-func (ps *ProxyState) Logger(opts ...LoggerOptions) *zerolog.Logger {
-	return Logger(&ps.logger, opts...)
-}
-
-type LoggerOptions func(zerolog.Context) zerolog.Context
-
-func Logger(logger *zerolog.Logger, opts ...LoggerOptions) *zerolog.Logger {
-	logCtx := logger.With()
-
-	for _, opt := range opts {
-		logCtx = opt(logCtx)
-	}
-	lgr := logCtx.Logger()
-	return &lgr
-}
-
-func WithComponentLogger(component string) LoggerOptions {
-	return func(ctx zerolog.Context) zerolog.Context {
-		return ctx.Str("component", component)
-	}
-}
-
-func WithDefaultLevel(level zerolog.Level) LoggerOptions {
-	return func(ctx zerolog.Context) zerolog.Context {
-		return ctx.Str(zerolog.LevelFieldName, zerolog.LevelFieldMarshalFunc(level))
-	}
+func (ps *ProxyState) Logger() *zap.Logger {
+	return ps.logger
 }
 
 func (ps *ProxyState) ChangeHash() uint32 {
@@ -228,8 +170,8 @@ func (ps *ProxyState) ChangeHash() uint32 {
 
 func (ps *ProxyState) SetReady() {
 	if ps.replicationEnabled && !ps.raftReady.Load() {
-		ps.logger.Info().
-			Msgf("Replication status is now ready after %s", time.Since(ps.startTime))
+		ps.logger.Info("Replication status is now ready after " +
+			time.Since(ps.startTime).String())
 		ps.raftReady.Store(true)
 		return
 	}
@@ -257,20 +199,14 @@ func (ps *ProxyState) SetupRaft(r *raft.Raft, rc *raft.Config) {
 
 func (ps *ProxyState) WaitForChanges() error {
 	ps.proxyLock.RLock()
-	if len(ps.changeChan) > 0 {
-		ps.proxyLock.RUnlock()
-		return <-ps.applyChange(nil)
-	}
 	defer ps.proxyLock.RUnlock()
-	return nil
+	return <-ps.applyChange(nil)
 }
 
 func (ps *ProxyState) ApplyChangeLog(log *spec.ChangeLog) error {
 	if ps.replicationEnabled {
 		if log.Cmd.IsNoop() {
-			ps.processChangeLog(
-				log, true, false,
-			)
+			return ps.processChangeLog(log, true, false)
 		}
 		r := ps.replicationSettings.raft
 		if r.State() != raft.Leader {
@@ -284,9 +220,11 @@ func (ps *ProxyState) ApplyChangeLog(log *spec.ChangeLog) error {
 			Data: encodedCL,
 		}
 		future := r.ApplyLog(raftLog, time.Second*15)
-		ps.logger.Trace().
-			Interface("changelog", log).
-			Msgf("waiting for reply: %s", log.ID)
+		ps.logger.With().
+			Debug("waiting for reply from raft",
+				zap.String("id", log.ID),
+				zap.Stringer("command", log.Cmd),
+			)
 		return future.Error()
 	} else {
 		return ps.processChangeLog(log, true, true)
@@ -305,11 +243,13 @@ func (ps *ProxyState) SharedCache() cache.TCache {
 	return ps.sharedCache
 }
 
-// RestartState - restart state clears the state and reloads the configuration
+// restartState - restart state clears the state and reloads the configuration
 // this is useful for rollbacks when broken changes are made.
-func (ps *ProxyState) RestartState(errFn func(error)) {
+func (ps *ProxyState) restartState(fn func(error)) {
 	ps.proxyLock.Lock()
 	defer ps.proxyLock.Unlock()
+
+	ps.logger.Info("Attempting to restart state...")
 
 	ps.rm.Empty()
 	ps.modPrograms.Clear()
@@ -318,22 +258,23 @@ func (ps *ProxyState) RestartState(errFn func(error)) {
 	ps.sharedCache.Clear()
 	ps.Scheduler().Stop()
 	if err := ps.initConfigResources(ps.config.ProxyConfig.InitResources); err != nil {
-		errFn(err)
+		fn(err)
 		return
 	}
 	if ps.replicationEnabled {
 		raft := ps.Raft()
 		err := raft.ReloadConfig(raft.ReloadableConfig())
 		if err != nil {
-			errFn(err)
+			fn(err)
 			return
 		}
 	}
 	if err := ps.restoreFromChangeLogs(true); err != nil {
-		errFn(err)
+		fn(err)
 		return
 	}
-	ps.logger.Info().Msg("State successfully restarted")
+	ps.logger.Info("State successfully restarted")
+	fn(nil)
 }
 
 // ReloadState - reload state checks the change logs to see if a reload is required,
@@ -357,7 +298,7 @@ func (ps *ProxyState) ReloadState(check bool, logs ...*spec.ChangeLog) error {
 func (ps *ProxyState) ProcessChangeLog(log *spec.ChangeLog, reload bool) error {
 	err := ps.processChangeLog(log, reload, !ps.replicationEnabled)
 	if err != nil {
-		ps.logger.Error().Err(err).Msg("processing error")
+		ps.logger.Error("processing error", zap.Error(err))
 	}
 	return err
 }
@@ -380,7 +321,7 @@ func (ps *ProxyState) DynamicTLSConfig(certFile, keyFile string) *tls.Config {
 				if fallbackCert != nil {
 					return fallbackCert, nil
 				} else {
-					ps.logger.Error().Msg("no cert found matching: " + info.ServerName)
+					ps.logger.Error("no cert found matching: " + info.ServerName)
 					return nil, errors.New("no cert found")
 				}
 			} else {
@@ -405,7 +346,9 @@ func (ps *ProxyState) getDomainCertificate(domain string) (*tls.Certificate, err
 	if !domainAllowed {
 		_, domainMatch, err := pattern.MatchAnyPattern(domain, allowedDomains)
 		if err != nil {
-			ps.logger.Error().Msgf("Error checking domain match list: %s", err.Error())
+			ps.logger.Error("Error checking domain match list",
+				zap.Error(err),
+			)
 			return nil, err
 		}
 		domainAllowed = domainMatch
@@ -414,7 +357,9 @@ func (ps *ProxyState) getDomainCertificate(domain string) (*tls.Certificate, err
 		for _, d := range ps.rm.GetDomainsByPriority() {
 			_, match, err := pattern.MatchAnyPattern(domain, d.Patterns)
 			if err != nil {
-				ps.logger.Error().Msgf("Error checking domain match list: %s", err.Error())
+				ps.logger.Error("Error checking domain match list",
+					zap.Error(err),
+				)
 				return nil, err
 			} else if match && d.Cert != "" && d.Key != "" {
 				var err error
@@ -431,8 +376,11 @@ func (ps *ProxyState) getDomainCertificate(domain string) (*tls.Certificate, err
 				serverCert, err = tls.X509KeyPair(
 					[]byte(d.Cert), []byte(d.Key))
 				if err != nil {
-					ps.logger.Error().Msgf("Error loading cert: %s on domain %s/%s",
-						err.Error(), d.Namespace.Name, d.Name)
+					ps.logger.Error("Error loading cert",
+						zap.Error(err),
+						zap.String("domain_name", d.Name),
+						zap.String("namespace", d.Namespace.Name),
+					)
 					return nil, err
 				}
 				certBucket.Set(key, &serverCert)
@@ -452,7 +400,7 @@ func (ps *ProxyState) initConfigResources(resources *config.DGateResources) erro
 		if numChanges > 0 {
 			defer ps.processChangeLog(nil, false, false)
 		}
-		ps.logger.Info().Msg("Initializing resources")
+		ps.logger.Info("Initializing resources")
 		for _, ns := range resources.Namespaces {
 			cl := spec.NewChangeLog(&ns, ns.Name, spec.AddNamespaceCommand)
 			err := ps.processChangeLog(cl, false, false)
@@ -554,8 +502,7 @@ func (ps *ProxyState) FindNamespaceByRequest(r *http.Request) *spec.DGateNamespa
 			}
 			_, match, err := pattern.MatchAnyPattern(host, d.Patterns)
 			if err != nil {
-				ps.logger.Error().Err(err).
-					Msg("error matching namespace")
+				ps.logger.Error("error matching namespace", zap.Error(err))
 			} else if match {
 				return d.Namespace
 			}
@@ -588,11 +535,13 @@ func (ps *ProxyState) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		if len(allowedDomains) > 0 {
 			_, ok, err = pattern.MatchAnyPattern(host, allowedDomains)
 			if err != nil {
-				ps.logger.Trace().Msgf("Error checking domain match list: %s", err.Error())
+				ps.logger.Debug("Error checking domain match list",
+					zap.Error(err),
+				)
 				util.WriteStatusCodeError(w, http.StatusInternalServerError)
 				return
 			} else if !ok {
-				ps.logger.Trace().Msgf("Domain %s not allowed", host)
+				ps.logger.Debug("Domain not allowed", zap.String("domain", host))
 				// if debug mode is enabled, return a 403
 				util.WriteStatusCodeError(w, http.StatusForbidden)
 				if ps.debugMode {
@@ -604,13 +553,17 @@ func (ps *ProxyState) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		redirectDomains := ps.config.ProxyConfig.RedirectHttpsDomains
 		if r.TLS == nil && len(redirectDomains) > 0 {
 			if _, ok, err = pattern.MatchAnyPattern(host, redirectDomains); err != nil {
-				ps.logger.Error().Msgf("Error checking domain match list: %s", err.Error())
+				ps.logger.Error("Error checking domain match list",
+					zap.Error(err),
+				)
 				util.WriteStatusCodeError(w, http.StatusInternalServerError)
 				return
 			} else if ok {
 				url := *r.URL
 				url.Scheme = "https"
-				ps.logger.Info().Msgf("Redirecting to https: %s", url.String())
+				ps.logger.Info("Redirecting to https",
+					zap.Stringer("url", &url),
+				)
 				http.Redirect(w, r, url.String(),
 					// maybe change to http.StatusMovedPermanently
 					http.StatusTemporaryRedirect)
@@ -620,13 +573,18 @@ func (ps *ProxyState) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		if router, ok := ps.routers.Find(ns.Name); ok {
 			router.ServeHTTP(w, r)
 		} else {
-			ps.logger.Debug().Msgf("No router found for namespace: %s", ns.Name)
+			ps.logger.Debug("No router found for namespace",
+				zap.String("namespace", ns.Name),
+			)
 			util.WriteStatusCodeError(w, http.StatusNotFound)
 		}
 	} else {
-		ps.logger.Debug().Msgf(
-			"No namespace found for request - %s %s %s secure:%t from %s",
-			r.Proto, r.Host, r.URL.String(), r.TLS != nil, r.RemoteAddr,
+		ps.logger.Debug("No namespace found for request",
+			zap.String("protocol", r.Proto),
+			zap.String("host", r.Host),
+			zap.String("path", r.URL.Path),
+			zap.Bool("secure", r.TLS != nil),
+			zap.String("remote_addr", r.RemoteAddr),
 		)
 		util.WriteStatusCodeError(w, http.StatusNotFound)
 	}

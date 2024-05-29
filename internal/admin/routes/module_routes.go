@@ -7,14 +7,15 @@ import (
 	"time"
 
 	"github.com/dgate-io/chi-router"
+	"github.com/dgate-io/dgate/internal/admin/changestate"
 	"github.com/dgate-io/dgate/internal/config"
-	"github.com/dgate-io/dgate/internal/proxy"
 	"github.com/dgate-io/dgate/pkg/spec"
 	"github.com/dgate-io/dgate/pkg/util"
+	"go.uber.org/zap"
 )
 
-func ConfigureModuleAPI(server chi.Router, proxyState *proxy.ProxyState, appConfig *config.DGateConfig) {
-	rm := proxyState.ResourceManager()
+func ConfigureModuleAPI(server chi.Router, logger *zap.Logger, cs changestate.ChangeState, appConfig *config.DGateConfig) {
+	rm := cs.ResourceManager()
 	server.Put("/module", func(w http.ResponseWriter, r *http.Request) {
 		eb, err := io.ReadAll(r.Body)
 		defer r.Body.Close()
@@ -43,11 +44,11 @@ func ConfigureModuleAPI(server chi.Router, proxyState *proxy.ProxyState, appConf
 			mod.Type = spec.ModuleTypeTypescript
 		}
 		cl := spec.NewChangeLog(&mod, mod.NamespaceName, spec.AddModuleCommand)
-		if err = proxyState.ApplyChangeLog(cl); err != nil {
+		if err = cs.ApplyChangeLog(cl); err != nil {
 			util.JsonError(w, http.StatusBadRequest, err.Error())
 			return
 		}
-		if repl := proxyState.Raft(); repl != nil {
+		if repl := cs.Raft(); repl != nil {
 			future := repl.Barrier(time.Second * 5)
 			if err := future.Error(); err != nil {
 				util.JsonError(w, http.StatusInternalServerError, err.Error())
@@ -79,7 +80,7 @@ func ConfigureModuleAPI(server chi.Router, proxyState *proxy.ProxyState, appConf
 			mod.NamespaceName = spec.DefaultNamespace.Name
 		}
 		cl := spec.NewChangeLog(&mod, mod.NamespaceName, spec.DeleteModuleCommand)
-		err = proxyState.ApplyChangeLog(cl)
+		err = cs.ApplyChangeLog(cl)
 		if err != nil {
 			util.JsonError(w, http.StatusBadRequest, err.Error())
 			return

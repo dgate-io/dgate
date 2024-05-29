@@ -7,15 +7,17 @@ import (
 	"time"
 
 	"github.com/dgate-io/chi-router"
+	"github.com/dgate-io/dgate/internal/admin/changestate"
 	"github.com/dgate-io/dgate/internal/config"
-	"github.com/dgate-io/dgate/internal/proxy"
 	"github.com/dgate-io/dgate/pkg/spec"
 	"github.com/dgate-io/dgate/pkg/util"
 	"github.com/santhosh-tekuri/jsonschema/v5"
+	"go.uber.org/zap"
 )
 
-func ConfigureCollectionAPI(server chi.Router, proxyState *proxy.ProxyState, appConfig *config.DGateConfig) {
-	rm := proxyState.ResourceManager()
+func ConfigureCollectionAPI(server chi.Router, logger *zap.Logger, cs changestate.ChangeState, appConfig *config.DGateConfig) {
+	rm := cs.ResourceManager()
+	dm := cs.DocumentManager()
 	server.Put("/collection", func(w http.ResponseWriter, r *http.Request) {
 		eb, err := io.ReadAll(r.Body)
 		defer r.Body.Close()
@@ -44,9 +46,8 @@ func ConfigureCollectionAPI(server chi.Router, proxyState *proxy.ProxyState, app
 		}
 
 		if oldCollection, ok := rm.GetCollection(collection.Name, collection.NamespaceName); ok {
-			if oldCollection.Type == spec.CollectionTypeDocument &&
-				collection.Type == spec.CollectionTypeFetcher {
-				docs, err := proxyState.GetDocuments(
+			if oldCollection.Type == spec.CollectionTypeDocument {
+				docs, err := dm.GetDocuments(
 					collection.NamespaceName, collection.Name, 0, 0)
 				if err != nil {
 					util.JsonError(w, http.StatusInternalServerError, err.Error())
@@ -60,13 +61,13 @@ func ConfigureCollectionAPI(server chi.Router, proxyState *proxy.ProxyState, app
 		}
 
 		cl := spec.NewChangeLog(&collection, collection.NamespaceName, spec.AddCollectionCommand)
-		err = proxyState.ApplyChangeLog(cl)
+		err = cs.ApplyChangeLog(cl)
 		if err != nil {
 			util.JsonError(w, http.StatusInternalServerError, err.Error())
 			return
 		}
 
-		if repl := proxyState.Raft(); repl != nil {
+		if repl := cs.Raft(); repl != nil {
 			future := repl.Barrier(time.Second * 5)
 			if err := future.Error(); err != nil {
 				util.JsonError(w, http.StatusInternalServerError, err.Error())
@@ -124,11 +125,12 @@ func ConfigureCollectionAPI(server chi.Router, proxyState *proxy.ProxyState, app
 		if collection, ok := rm.GetCollection(collectionName, namespaceName); !ok {
 			util.JsonError(w, http.StatusNotFound, "collection not found")
 			return
-		} else {
-			if collection.Type != spec.CollectionTypeDocument {
-				util.JsonError(w, http.StatusBadRequest, "collection is not a document collection")
-				return
-			}
+		} else if collection.Type != "" && collection.Type != spec.CollectionTypeDocument {
+			util.JsonError(w, http.StatusBadRequest, "collection is not a document collection")
+			return
+		} else if collection.Visibility == spec.CollectionVisibilityPrivate {
+			util.JsonError(w, http.StatusForbidden, "collection is private")
+			return
 		}
 		limit, err := util.ParseInt(r.URL.Query().Get("limit"), 100)
 		if err != nil {
@@ -140,7 +142,7 @@ func ConfigureCollectionAPI(server chi.Router, proxyState *proxy.ProxyState, app
 			util.JsonError(w, http.StatusBadRequest, "offset must be an integer")
 			return
 		}
-		docs, err := proxyState.GetDocuments(namespaceName, collectionName, offset, limit)
+		docs, err := dm.GetDocuments(namespaceName, collectionName, offset, limit)
 		if err != nil {
 			util.JsonError(w, http.StatusInternalServerError, err.Error())
 			return
@@ -184,13 +186,15 @@ func ConfigureCollectionAPI(server chi.Router, proxyState *proxy.ProxyState, app
 		if collection, ok := rm.GetCollection(collectionName, namespaceName); !ok {
 			util.JsonError(w, http.StatusNotFound, "collection not found")
 			return
-		} else {
-			if collection.Type != spec.CollectionTypeDocument {
-				util.JsonError(w, http.StatusBadRequest, "collection is not a document collection")
-				return
-			}
+		} else if collection.Type != spec.CollectionTypeDocument {
+			util.JsonError(w, http.StatusBadRequest, "collection is not a document collection")
+			return
+		} else if collection.Visibility == spec.CollectionVisibilityPrivate {
+			util.JsonError(w, http.StatusForbidden, "collection is private")
+			return
 		}
-		document, err := proxyState.GetDocumentByID(namespaceName, collectionName, documentId)
+
+		document, err := dm.GetDocumentByID(namespaceName, collectionName, documentId)
 		if err != nil {
 			util.JsonError(w, http.StatusNotFound, err.Error())
 			return
@@ -265,13 +269,13 @@ func ConfigureCollectionAPI(server chi.Router, proxyState *proxy.ProxyState, app
 		}
 
 		cl := spec.NewChangeLog(&doc, doc.NamespaceName, spec.AddDocumentCommand)
-		err = proxyState.ApplyChangeLog(cl)
+		err = cs.ApplyChangeLog(cl)
 		if err != nil {
 			util.JsonError(w, http.StatusInternalServerError, err.Error())
 			return
 		}
 
-		if repl := proxyState.Raft(); repl != nil {
+		if repl := cs.Raft(); repl != nil {
 			future := repl.Barrier(time.Second * 5)
 			if err := future.Error(); err != nil {
 				util.JsonError(w, http.StatusInternalServerError, err.Error())
@@ -313,7 +317,7 @@ func ConfigureCollectionAPI(server chi.Router, proxyState *proxy.ProxyState, app
 		document.CollectionName = collectionName
 
 		cl := spec.NewChangeLog(&document, document.NamespaceName, spec.DeleteDocumentCommand)
-		err := proxyState.ApplyChangeLog(cl)
+		err := cs.ApplyChangeLog(cl)
 		if err != nil {
 			util.JsonError(w, http.StatusInternalServerError, err.Error())
 			return
@@ -344,13 +348,13 @@ func ConfigureCollectionAPI(server chi.Router, proxyState *proxy.ProxyState, app
 			util.JsonError(w, http.StatusBadRequest, "document_id is required")
 			return
 		}
-		document, err := proxyState.GetDocumentByID(namespaceName, collectionName, documentId)
+		document, err := dm.GetDocumentByID(namespaceName, collectionName, documentId)
 		if err != nil {
 			util.JsonError(w, http.StatusNotFound, err.Error())
 			return
 		}
 		cl := spec.NewChangeLog(document, namespaceName, spec.DeleteDocumentCommand)
-		err = proxyState.ApplyChangeLog(cl)
+		err = cs.ApplyChangeLog(cl)
 		if err != nil {
 			util.JsonError(w, http.StatusInternalServerError, err.Error())
 			return
@@ -381,7 +385,7 @@ func ConfigureCollectionAPI(server chi.Router, proxyState *proxy.ProxyState, app
 			return
 		}
 		if collection.Type == spec.CollectionTypeDocument {
-			docs, err := proxyState.GetDocuments(
+			docs, err := dm.GetDocuments(
 				namespaceName, collectionName, 0, 1)
 			if err != nil {
 				util.JsonError(w, http.StatusInternalServerError, err.Error())
@@ -393,7 +397,7 @@ func ConfigureCollectionAPI(server chi.Router, proxyState *proxy.ProxyState, app
 			}
 		}
 		cl := spec.NewChangeLog(collection, namespaceName, spec.DeleteCollectionCommand)
-		err := proxyState.ApplyChangeLog(cl)
+		err := cs.ApplyChangeLog(cl)
 		if err != nil {
 			util.JsonError(w, http.StatusInternalServerError, err.Error())
 			return

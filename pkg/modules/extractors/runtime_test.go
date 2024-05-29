@@ -11,6 +11,7 @@ import (
 	"github.com/dgate-io/dgate/pkg/typescript"
 	"github.com/dop251/goja"
 	"github.com/dop251/goja_nodejs/console"
+	"go.uber.org/zap"
 )
 
 const TS_PAYLOAD_CUSTOMFUNC = `
@@ -103,7 +104,7 @@ func TestPrinter(t *testing.T) {
 	cp := &consolePrinter{make(map[string]int)}
 	rt := &spec.DGateRoute{Namespace: &spec.DGateNamespace{}}
 	conf := configtest.NewTestDGateConfig()
-	ps := proxy.NewProxyState(conf)
+	ps := proxy.NewProxyState(zap.NewNop(), conf)
 	rtCtx := proxy.NewRuntimeContext(ps, rt)
 	if err := extractors.SetupModuleEventLoop(
 		cp, rtCtx, program,
@@ -126,7 +127,7 @@ func TestPrinter(t *testing.T) {
 func BenchmarkNewModuleRuntime(b *testing.B) {
 	program := testutil.CreateTSProgram(b, TS_PAYLOAD_CUSTOMFUNC)
 	conf := configtest.NewTestDGateConfig()
-	ps := proxy.NewProxyState(conf)
+	ps := proxy.NewProxyState(zap.NewNop(), conf)
 
 	b.ResetTimer()
 	b.Run("CreateModuleRuntime", func(b *testing.B) {

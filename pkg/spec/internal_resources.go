@@ -81,7 +81,6 @@ type ModuleType string
 const (
 	ModuleTypeJavascript ModuleType = "javascript"
 	ModuleTypeTypescript ModuleType = "typescript"
-	// ModuleTypeWasm       ModuleType = "wasm"
 )
 
 func (m ModuleType) Valid() bool {
@@ -102,7 +101,6 @@ type DGateModule struct {
 	Namespace   *DGateNamespace `json:"namespace"`
 	Payload     string          `json:"payload"`
 	Type        ModuleType      `json:"module_type"`
-	Permissions []string        `json:"permissions,omitempty"`
 	Tags        []string        `json:"tags,omitempty"`
 }
 

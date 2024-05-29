@@ -7,14 +7,15 @@ import (
 	"time"
 
 	"github.com/dgate-io/chi-router"
+	"github.com/dgate-io/dgate/internal/admin/changestate"
 	"github.com/dgate-io/dgate/internal/config"
-	"github.com/dgate-io/dgate/internal/proxy"
 	"github.com/dgate-io/dgate/pkg/spec"
 	"github.com/dgate-io/dgate/pkg/util"
+	"go.uber.org/zap"
 )
 
-func ConfigureNamespaceAPI(server chi.Router, proxyState *proxy.ProxyState, _ *config.DGateConfig) {
-	rm := proxyState.ResourceManager()
+func ConfigureNamespaceAPI(server chi.Router, logger *zap.Logger, cs changestate.ChangeState, _ *config.DGateConfig) {
+	rm := cs.ResourceManager()
 	server.Put("/namespace", func(w http.ResponseWriter, r *http.Request) {
 		eb, err := io.ReadAll(r.Body)
 		defer r.Body.Close()
@@ -35,13 +36,13 @@ func ConfigureNamespaceAPI(server chi.Router, proxyState *proxy.ProxyState, _ *c
 		}
 
 		cl := spec.NewChangeLog(&namespace, namespace.Name, spec.AddNamespaceCommand)
-		err = proxyState.ApplyChangeLog(cl)
+		err = cs.ApplyChangeLog(cl)
 		if err != nil {
 			util.JsonError(w, http.StatusBadRequest, err.Error())
 			return
 		}
 
-		if repl := proxyState.Raft(); repl != nil {
+		if repl := cs.Raft(); repl != nil {
 			future := repl.Barrier(time.Second * 5)
 			if err := future.Error(); err != nil {
 				util.JsonError(w, http.StatusInternalServerError, err.Error())
@@ -72,7 +73,7 @@ func ConfigureNamespaceAPI(server chi.Router, proxyState *proxy.ProxyState, _ *c
 		}
 
 		cl := spec.NewChangeLog(&namespace, namespace.Name, spec.DeleteNamespaceCommand)
-		err = proxyState.ApplyChangeLog(cl)
+		err = cs.ApplyChangeLog(cl)
 		if err != nil {
 			util.JsonError(w, http.StatusBadRequest, err.Error())
 			return

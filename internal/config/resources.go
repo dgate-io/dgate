@@ -150,11 +150,11 @@ func (resources *DGateResources) Validate() (int, error) {
 		if col.Schema == nil {
 			return 0, errors.New("collection (" + col.Name + ") must specify schema")
 		}
-		if col.Type != spec.CollectionTypeDocument && col.Type != spec.CollectionTypeFetcher {
-			return 0, errors.New("collection (" + col.Name + ") must specify type")
-		}
 		if col.Visibility != spec.CollectionVisibilityPublic && col.Visibility != spec.CollectionVisibilityPrivate {
 			return 0, errors.New("collection (" + col.Name + ") must specify visibility")
+		}
+		if col.Type != spec.CollectionTypeDocument && col.Type != spec.CollectionTypeFetcher {
+			return 0, errors.New("collection (" + col.Name + ") must specify type")
 		}
 		// TODO: Uncomment when modules are supported for collections
 		// for _, modName := range col.Modules {

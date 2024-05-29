@@ -9,10 +9,10 @@ import (
 	"time"
 
 	"github.com/dgate-io/dgate/pkg/rafthttp"
-	"github.com/dgate-io/dgate/pkg/util/logger"
+	"github.com/dgate-io/dgate/pkg/util/logadapter"
 	"github.com/hashicorp/raft"
-	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/mock"
+	"go.uber.org/zap"
 )
 
 type MockFSM struct {
@@ -44,8 +44,9 @@ func TestExample(t *testing.T) {
 	log.Printf("Listening on %s", ln.Addr().String())
 	srvAddr := raft.ServerAddress(ln.Addr().String())
 	transport := rafthttp.NewHTTPTransport(
-		srvAddr, http.DefaultClient,
-		zerolog.Logger{}, "http://(address)/raft")
+		srvAddr, http.DefaultClient, zap.NewNop(),
+		"http://(address)/raft",
+	)
 	srv := &http.Server{
 		Handler: transport,
 	}
@@ -53,7 +54,8 @@ func TestExample(t *testing.T) {
 
 	raftConfig := raft.DefaultConfig()
 	raftConfig.LocalID = "1"
-	raftConfig.Logger = logger.NewNopHCLogger()
+	raftConfig.Logger = logadapter.
+		NewZap2HCLogAdapter(zap.NewNop())
 
 	mockFSM := &MockFSM{}
 	logStore := raft.NewInmemStore()

@@ -5,11 +5,11 @@ import (
 	"strings"
 
 	"github.com/dgate-io/dgate/pkg/util/tree/avl"
-	"github.com/rs/zerolog"
+	"go.uber.org/zap"
 )
 
 type DebugStoreConfig struct {
-	Logger zerolog.Logger
+	Logger *zap.Logger
 }
 
 type DebugStore struct {
@@ -60,16 +60,19 @@ func (m *DebugStore) IterateTxnPrefix(prefix string, fn func(StorageTxn, string)
 }
 
 func (m *DebugStore) GetPrefix(prefix string, offset, limit int) ([]*KeyValue, error) {
+	if limit <= 0 {
+		limit = 0
+	}
 	kvs := make([]*KeyValue, 0, limit)
 	m.IterateValuesPrefix(prefix, func(key string, value []byte) error {
 		if offset <= 0 {
+			if len(kvs) >= limit {
+				return errors.New("limit reached")
+			}
 			kvs = append(kvs, &KeyValue{
 				Key:   key,
 				Value: value,
 			})
-			if len(kvs) >= limit {
-				return errors.New("limit reached")
-			}
 		} else {
 			offset--
 		}

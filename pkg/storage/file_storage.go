@@ -8,12 +8,12 @@ import (
 
 	"github.com/dgraph-io/badger/v4"
 	"github.com/dgraph-io/badger/v4/options"
-	"github.com/rs/zerolog"
+	"go.uber.org/zap"
 )
 
 type FileStoreConfig struct {
 	Directory string `koanf:"dir"`
-	Logger    zerolog.Logger
+	Logger    *zap.Logger
 }
 
 type FileStore struct {

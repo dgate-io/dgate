@@ -41,6 +41,9 @@ func (cl *ChangeLog) SetErrorChan(errChan chan error) {
 }
 
 func (cl *ChangeLog) PushError(err error) {
+	if cl == nil {
+		return
+	}
 	if cl.errChan != nil {
 		cl.errChan <- err
 	}
@@ -84,9 +87,7 @@ var (
 	DeleteSecretCommand     Command = newCommand(Delete, Secrets)
 
 	// internal commands
-	NoopCommand     Command = Command("noop")
-	ShutdownCommand Command = Command("shutdown")
-	RestartCommand  Command = Command("restart")
+	NoopCommand Command = Command("noop")
 )
 
 func newCommand(action Action, resource Resource) Command {
@@ -102,14 +103,19 @@ func (rt Resource) String() string {
 }
 
 func (clc Command) String() string {
-	if clc.IsNoop() {
-		return "noop"
-	}
 	return string(clc)
 }
 
 func (clc Command) IsNoop() bool {
 	return string(clc) == "noop"
+}
+
+func (clc Command) IsShutdown() bool {
+	return string(clc) == "shutdown"
+}
+
+func (clc Command) IsRestart() bool {
+	return string(clc) == "restart"
 }
 
 func (resource1 Resource) IsRelatedTo(resource2 Resource) bool {

@@ -2,7 +2,7 @@ import http from "k6/http";
 import { check, sleep } from 'k6';
 
 const n = 20;
-const inc = 0.5;
+const inc = 5;
 let curWait = -inc;
 export let options = {
   scenarios: {

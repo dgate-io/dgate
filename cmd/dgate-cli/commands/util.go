@@ -1,9 +1,11 @@
 package commands
 
 import (
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"os"
 	"strings"
 
 	"github.com/dgate-io/dgate/internal/config"
@@ -16,6 +18,30 @@ func createMapFromArgs[N any](
 	required ...string,
 ) (*N, error) {
 	m := make(map[string]any)
+
+	// parse file string
+	for i, arg := range args {
+		if !strings.Contains(arg, "@=") {
+			continue
+		}
+		pair := strings.SplitN(arg, "@=", 2)
+		if len(pair) != 2 || pair[0] == "" {
+			return nil, fmt.Errorf("invalid key-value pair: %s", arg)
+		}
+		var v any
+		if pair[1] != "" {
+			file, err := os.ReadFile(pair[1])
+			if err != nil {
+				return nil, fmt.Errorf("error reading file: %s", err.Error())
+			}
+			v = base64.StdEncoding.EncodeToString(file)
+		} else {
+			v = ""
+		}
+		m[pair[0]] = v
+		args[i] = ""
+	}
+
 	// parse json strings
 	for i, arg := range args {
 		if !strings.Contains(arg, ":=") {

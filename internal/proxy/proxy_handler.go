@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/dgate-io/dgate/pkg/util"
+	"go.uber.org/zap"
 )
 
 type ProxyHandlerFunc func(ps *ProxyState, reqCtx *RequestContext)
@@ -20,15 +21,16 @@ func proxyHandler(ps *ProxyState, reqCtx *RequestContext) {
 			reqCtx.req.Body.Close()
 		}
 
-		event := ps.logger.Debug().
-			Str("route", reqCtx.route.Name).
-			Str("namespace", reqCtx.route.Namespace.Name)
+		event := ps.logger.
+			With(
+				zap.String("route", reqCtx.route.Name),
+				zap.String("namespace", reqCtx.route.Namespace.Name),
+			)
 
 		if reqCtx.route.Service != nil {
-			event = event.
-				Str("service", reqCtx.route.Service.Name)
+			event = event.With(zap.String("service", reqCtx.route.Service.Name))
 		}
-		event.Msg("Request Log")
+		event.Debug("Request Log")
 	}()
 
 	defer ps.metrics.MeasureProxyRequest(reqCtx, time.Now())
@@ -37,7 +39,7 @@ func proxyHandler(ps *ProxyState, reqCtx *RequestContext) {
 	if len(reqCtx.route.Modules) != 0 {
 		runtimeStart := time.Now()
 		if reqCtx.provider.modPool == nil {
-			ps.logger.Error().Msg("Error getting module buffer: invalid state")
+			ps.logger.Error("Error getting module buffer: invalid state")
 			util.WriteStatusCodeError(reqCtx.rw, http.StatusInternalServerError)
 			return
 		}
@@ -46,7 +48,7 @@ func proxyHandler(ps *ProxyState, reqCtx *RequestContext) {
 				reqCtx, "module_extract",
 				runtimeStart, errors.New("error borrowing module"),
 			)
-			ps.logger.Error().Msg("Error borrowing module")
+			ps.logger.Error("Error borrowing module")
 			util.WriteStatusCodeError(reqCtx.rw, http.StatusInternalServerError)
 			return
 		}
@@ -79,14 +81,21 @@ func handleServiceProxy(ps *ProxyState, reqCtx *RequestContext, modExt ModuleExt
 			fetchUpstreamStart, err,
 		)
 		if err != nil {
-			ps.logger.Err(err).Msg("Error fetching upstream")
+			ps.logger.Error("Error fetching upstream",
+				zap.String("error", err.Error()),
+				zap.String("route", reqCtx.route.Name),
+				zap.String("namespace", reqCtx.route.Namespace.Name),
+			)
 			util.WriteStatusCodeError(reqCtx.rw, http.StatusInternalServerError)
 			return
 		}
 		host = hostUrl.String()
 	} else {
 		if reqCtx.route.Service.URLs == nil || len(reqCtx.route.Service.URLs) == 0 {
-			ps.logger.Error().Msg("Error getting service urls")
+			ps.logger.Error("Error getting service urls",
+				zap.String("service", reqCtx.route.Service.Name),
+				zap.String("namespace", reqCtx.route.Namespace.Name),
+			)
 			util.WriteStatusCodeError(reqCtx.rw, http.StatusInternalServerError)
 			return
 		}
@@ -94,19 +103,27 @@ func handleServiceProxy(ps *ProxyState, reqCtx *RequestContext, modExt ModuleExt
 	}
 
 	if reqCtx.route.Service.HideDGateHeaders {
-		if ps.debugMode {
-			reqCtx.rw.Header().Set("X-Upstream-URL", host)
-		}
+		// upstream headers
 		reqCtx.req.Header.Set("X-DGate-Service", reqCtx.route.Service.Name)
 		reqCtx.req.Header.Set("X-DGate-Route", reqCtx.route.Name)
 		reqCtx.req.Header.Set("X-DGate-Namespace", reqCtx.route.Namespace.Name)
 		for _, tag := range ps.config.Tags {
 			reqCtx.req.Header.Add("X-DGate-Tags", tag)
 		}
+
+		// downstream headers
+		if ps.debugMode {
+			reqCtx.rw.Header().Set("X-Upstream-URL", host)
+		}
 	}
 	upstreamUrl, err := url.Parse(host)
 	if err != nil {
-		ps.logger.Err(err).Msg("Error parsing upstream url")
+		ps.logger.Error("Error parsing upstream url",
+			zap.String("error", err.Error()),
+			zap.String("route", reqCtx.route.Name),
+			zap.String("service", reqCtx.route.Service.Name),
+			zap.String("namespace", reqCtx.route.Namespace.Name),
+		)
 		util.WriteStatusCodeError(reqCtx.rw, http.StatusBadGateway)
 		return
 	}
@@ -125,7 +142,12 @@ func handleServiceProxy(ps *ProxyState, reqCtx *RequestContext, modExt ModuleExt
 					resModifierStart, err,
 				)
 				if err != nil {
-					ps.logger.Err(err).Msg("Error modifying response")
+					ps.logger.Error("Error modifying response",
+						zap.String("error", err.Error()),
+						zap.String("route", reqCtx.route.Name),
+						zap.String("service", reqCtx.route.Service.Name),
+						zap.String("namespace", reqCtx.route.Namespace.Name),
+					)
 					return err
 				}
 			}
@@ -133,7 +155,12 @@ func handleServiceProxy(ps *ProxyState, reqCtx *RequestContext, modExt ModuleExt
 		}).
 		ErrorHandler(func(w http.ResponseWriter, r *http.Request, reqErr error) {
 			upstreamErr = reqErr
-			ps.logger.Debug().Err(reqErr).Msg("Error proxying request")
+			ps.logger.Debug("Error proxying request",
+				zap.String("error", reqErr.Error()),
+				zap.String("route", reqCtx.route.Name),
+				zap.String("service", reqCtx.route.Service.Name),
+				zap.String("namespace", reqCtx.route.Namespace.Name),
+			)
 			// TODO: add metric for error
 			if reqCtx.rw.HeadersSent() {
 				return
@@ -146,13 +173,18 @@ func handleServiceProxy(ps *ProxyState, reqCtx *RequestContext, modExt ModuleExt
 					errorHandlerStart, err,
 				)
 				if err != nil {
-					ps.logger.Err(err).Msg("Error handling error")
+					ps.logger.Error("Error handling error",
+						zap.String("error", err.Error()),
+						zap.String("route", reqCtx.route.Name),
+						zap.String("service", reqCtx.route.Service.Name),
+						zap.String("namespace", reqCtx.route.Namespace.Name),
+					)
 					util.WriteStatusCodeError(reqCtx.rw, http.StatusInternalServerError)
 					return
 				}
-			} else {
+			}
+			if !reqCtx.rw.HeadersSent() && reqCtx.rw.BytesWritten() == 0 {
 				util.WriteStatusCodeError(reqCtx.rw, http.StatusInternalServerError)
-				return
 			}
 		})
 
@@ -164,7 +196,12 @@ func handleServiceProxy(ps *ProxyState, reqCtx *RequestContext, modExt ModuleExt
 			reqModifierStart, err,
 		)
 		if err != nil {
-			ps.logger.Err(err).Msg("Error modifying request")
+			ps.logger.Error("Error modifying request",
+				zap.String("error", err.Error()),
+				zap.String("route", reqCtx.route.Name),
+				zap.String("service", reqCtx.route.Service.Name),
+				zap.String("namespace", reqCtx.route.Namespace.Name),
+			)
 			util.WriteStatusCodeError(reqCtx.rw, http.StatusInternalServerError)
 			return
 		}
@@ -172,7 +209,12 @@ func handleServiceProxy(ps *ProxyState, reqCtx *RequestContext, modExt ModuleExt
 
 	rp, err := rpb.Build(upstreamUrl, reqCtx.pattern)
 	if err != nil {
-		ps.logger.Err(err).Msg("Error creating reverse proxy")
+		ps.logger.Error("Error creating reverse proxy",
+			zap.String("error", err.Error()),
+			zap.String("route", reqCtx.route.Name),
+			zap.String("service", reqCtx.route.Service.Name),
+			zap.String("namespace", reqCtx.route.Namespace.Name),
+		)
 		util.WriteStatusCodeError(reqCtx.rw, http.StatusInternalServerError)
 		return
 	}
@@ -199,7 +241,11 @@ func requestHandlerModule(ps *ProxyState, reqCtx *RequestContext, modExt ModuleE
 			reqModifierStart, err,
 		)
 		if err != nil {
-			ps.logger.Err(err).Msg("Error modifying request")
+			ps.logger.Error("Error modifying request",
+				zap.String("error", err.Error()),
+				zap.String("route", reqCtx.route.Name),
+				zap.String("namespace", reqCtx.route.Namespace.Name),
+			)
 			util.WriteStatusCodeError(reqCtx.rw, http.StatusInternalServerError)
 			return
 		}
@@ -212,8 +258,11 @@ func requestHandlerModule(ps *ProxyState, reqCtx *RequestContext, modExt ModuleE
 			requestHandlerStart, err,
 		)
 		if err != nil {
-			ps.logger.Error().Err(err).
-				Msg("Error @ request_handler module")
+			ps.logger.Error("Error @ request_handler module",
+				zap.String("error", err.Error()),
+				zap.String("route", reqCtx.route.Name),
+				zap.String("namespace", reqCtx.route.Namespace.Name),
+			)
 			if errorHandler, ok := modExt.ErrorHandlerFunc(); ok {
 				// extract error handler function from module
 				errorHandlerStart := time.Now()
@@ -223,7 +272,11 @@ func requestHandlerModule(ps *ProxyState, reqCtx *RequestContext, modExt ModuleE
 					errorHandlerStart, err,
 				)
 				if err != nil {
-					ps.logger.Err(err).Msg("Error handling error")
+					ps.logger.Error("Error handling error",
+						zap.String("error", err.Error()),
+						zap.String("route", reqCtx.route.Name),
+						zap.String("namespace", reqCtx.route.Namespace.Name),
+					)
 					util.WriteStatusCodeError(reqCtx.rw, http.StatusInternalServerError)
 					return
 				}

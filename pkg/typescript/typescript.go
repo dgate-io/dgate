@@ -18,15 +18,9 @@ func Transpile(src string) (string, error) {
 		WithCachedTypescriptSource(),
 		typescript.WithPreventCancellation(),
 		typescript.WithCompileOptions(map[string]any{
-			"module":            "commonjs",
-			"target":            "es5",
-			"inlineSourceMap":   true,
-			"inlineSources":     true,
-			"noLib":             true,
-			"noErrorTruncation": true,
-			"noEmit":            true,
-			"noEmitOnError":     true,
-			"skipLibCheck":      true,
+			"module":          "commonjs",
+			"target":          "es5",
+			"inlineSourceMap": true,
 		}),
 	)
 }

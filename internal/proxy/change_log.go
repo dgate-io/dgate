@@ -10,7 +10,7 @@ import (
 	"github.com/dgate-io/dgate/pkg/util/sliceutil"
 	"github.com/dgraph-io/badger/v4"
 	"github.com/mitchellh/mapstructure"
-	"github.com/rs/zerolog"
+	"go.uber.org/zap"
 )
 
 // processChangeLog - processes a change log and applies the change to the proxy state
@@ -25,77 +25,72 @@ func (ps *ProxyState) processChangeLog(cl *spec.ChangeLog, reload, store bool) (
 			var item spec.Namespace
 			item, err = decode[spec.Namespace](cl.Item)
 			if err == nil {
-				ps.logger.Trace().Msgf("Processing namespace: %s", item.Name)
+				ps.logger.Debug("Processing namespace", zap.String("name", item.Name))
 				err = ps.processNamespace(&item, cl)
 			}
 		case spec.Services:
 			var item spec.Service
 			item, err = decode[spec.Service](cl.Item)
 			if err == nil {
-				ps.logger.Trace().Msgf("Processing service: %s", item.Name)
+				ps.logger.Debug("Processing service", zap.String("name", item.Name))
 				err = ps.processService(&item, cl)
 			}
 		case spec.Routes:
 			var item spec.Route
 			item, err = decode[spec.Route](cl.Item)
 			if err == nil {
-				ps.logger.Trace().Msgf("Processing route: %s", item.Name)
+				ps.logger.Debug("Processing route", zap.String("name", item.Name))
 				err = ps.processRoute(&item, cl)
 			}
 		case spec.Modules:
 			var item spec.Module
 			item, err = decode[spec.Module](cl.Item)
 			if err == nil {
-				ps.logger.Trace().Msgf("Processing module: %s", item.Name)
+				ps.logger.Debug("Processing module", zap.String("name", item.Name))
 				err = ps.processModule(&item, cl)
 			}
 		case spec.Domains:
 			var item spec.Domain
 			item, err = decode[spec.Domain](cl.Item)
 			if err == nil {
-				ps.logger.Trace().Msgf("Processing domain: %s", item.Name)
+				ps.logger.Debug("Processing domain", zap.String("name", item.Name))
 				err = ps.processDomain(&item, cl)
 			}
 		case spec.Collections:
 			var item spec.Collection
 			item, err = decode[spec.Collection](cl.Item)
 			if err == nil {
-				ps.logger.Trace().Msgf("Processing domain: %s", item.Name)
+				ps.logger.Debug("Processing collection", zap.String("name", item.Name))
 				err = ps.processCollection(&item, cl)
 			}
 		case spec.Documents:
 			var item spec.Document
 			item, err = decode[spec.Document](cl.Item)
 			if err == nil {
-				ps.logger.Trace().Msgf("Processing domain: %s", item.ID)
+				ps.logger.Debug("Processing document", zap.String("id", item.ID))
 				err = ps.processDocument(&item, cl)
 			}
 		case spec.Secrets:
 			var item spec.Secret
 			item, err = decode[spec.Secret](cl.Item)
 			if err == nil {
-				ps.logger.Trace().Msgf("Processing domain: %s", item.Name)
+				ps.logger.Debug("Processing secret", zap.String("name", item.Name))
 				err = ps.processSecret(&item, cl)
 			}
 		default:
 			err = fmt.Errorf("unknown command: %s", cl.Cmd)
 		}
 		if err != nil {
-			ps.logger.Err(err).Msg("decoding or processing change log")
+			ps.logger.Error("decoding or processing change log", zap.Error(err))
 			return
 		}
 	}
 	if reload {
 		if cl.Cmd.Resource().IsRelatedTo(spec.Routes) || cl.Cmd.IsNoop() {
-			ps.logger.Trace().Msgf("Registering change log: %s", cl.Cmd)
-			select {
-			case err = <-ps.applyChange(cl):
-				break
-			case <-time.After(time.Second * 15):
-				err = errors.New("timeout applying change log")
-			}
+			ps.logger.Debug("Registering change log", zap.Stringer("cmd", cl.Cmd))
+			err = ps.reconfigureState(false, cl)
 			if err != nil {
-				ps.logger.Err(err).Msg("Error registering change log")
+				ps.logger.Error("Error registering change log", zap.Error(err))
 				return
 			}
 			// update change log hash only when the change is successfully applied
@@ -105,8 +100,7 @@ func (ps *ProxyState) processChangeLog(cl *spec.ChangeLog, reload, store bool) (
 				if !ps.config.Debug {
 					return err
 				}
-				ps.logger.Error().Err(err).
-					Msg("error updating change log hash")
+				ps.logger.Error("error updating change log hash", zap.Error(err))
 			} else {
 				ps.changeHash = changeHash
 			}
@@ -116,7 +110,7 @@ func (ps *ProxyState) processChangeLog(cl *spec.ChangeLog, reload, store bool) (
 		if err = ps.store.StoreChangeLog(cl); err != nil {
 			// TODO: find a way to revert the change and reload the state
 			// TODO: OR add flag in config to ignore storage errors
-			ps.logger.Err(err).Msg("Error storing change log")
+			ps.logger.Error("Error storing change log", zap.Error(err))
 			return
 		}
 	}
@@ -269,7 +263,9 @@ func (ps *ProxyState) applyChange(changeLog *spec.ChangeLog) <-chan error {
 		}
 	}
 	changeLog.SetErrorChan(done)
-	ps.changeChan <- changeLog
+	if err := ps.processChangeLog(changeLog, true, true); err != nil {
+		done <- err
+	}
 	return done
 }
 
@@ -278,22 +274,22 @@ func (ps *ProxyState) restoreFromChangeLogs(directApply bool) error {
 	logs, err := ps.store.FetchChangeLogs()
 	if err != nil {
 		if err == badger.ErrKeyNotFound {
-			ps.logger.Debug().Msg("no state change logs found in storage")
+			ps.logger.Debug("no state change logs found in storage")
 		} else {
 			return errors.New("failed to get state change logs from storage: " + err.Error())
 		}
 	} else {
-		ps.logger.Info().Msg(fmt.Sprintf("restoring %d state change logs from storage", len(logs)))
+		ps.logger.Info("restoring state change logs from storage", zap.Int("count", len(logs)))
 		// we might need to sort the change logs by timestamp
 		for i, cl := range logs {
-			ps.logger.Trace().
-				Interface("changeLog: "+cl.Name, cl).Msgf("restoring change log index: %d", i)
+			ps.logger.Debug("restoring change log",
+				zap.Int("index", i),
+				zap.Stringer("changeLog", cl.Cmd),
+			)
 			err = ps.processChangeLog(cl, false, false)
 			if err != nil {
 				if ps.config.Debug {
-					ps.logger.Err(err).
-						Str("namespace", cl.Namespace).
-						Msg("error restorng from change logs")
+					ps.logger.Error("error restorng from change logs", zap.Error(err))
 					continue
 				}
 				return err
@@ -313,11 +309,14 @@ func (ps *ProxyState) restoreFromChangeLogs(directApply bool) error {
 		if len(logs) > 1 {
 			removed, err := ps.compactChangeLogs(logs)
 			if err != nil {
-				ps.logger.Error().Err(err).Msg("failed to compact state change logs")
+				ps.logger.Error("failed to compact state change logs", zap.Error(err))
 				return err
 			}
 			if removed > 0 {
-				ps.logger.Info().Msgf("compacted change logs by removing %d out of %d logs", removed, len(logs))
+				ps.logger.Info("compacted change logs",
+					zap.Int("removed", removed),
+					zap.Int("total", len(logs)),
+				)
 			}
 		}
 	}
@@ -325,7 +324,7 @@ func (ps *ProxyState) restoreFromChangeLogs(directApply bool) error {
 }
 
 func (ps *ProxyState) compactChangeLogs(logs []*spec.ChangeLog) (int, error) {
-	removeList := compactChangeLogsRemoveList(&ps.logger, sliceutil.SliceCopy(logs))
+	removeList := compactChangeLogsRemoveList(ps.logger, sliceutil.SliceCopy(logs))
 	removed, err := ps.store.DeleteChangeLogs(removeList)
 	if err != nil {
 		return removed, err
@@ -340,7 +339,7 @@ compaction rules:
   - if an add command is followed by a delete command with matching keys, remove both commands
   - if an add command is followed by another add command with matching keys, remove the first add command
 */
-func compactChangeLogsRemoveList(logger *zerolog.Logger, logs []*spec.ChangeLog) []*spec.ChangeLog {
+func compactChangeLogsRemoveList(logger *zap.Logger, logs []*spec.ChangeLog) []*spec.ChangeLog {
 	removeList := make([]*spec.ChangeLog, 0)
 	iterations := 0
 START:
@@ -380,9 +379,8 @@ START:
 		}
 		prevLog = curLog
 	}
-	if logger != nil {
-		logger.Debug().Msgf("compacted change logs in %d iterations", iterations)
-	}
+	logger.Debug("compacted change logs", zap.Int("iterations", iterations))
+
 	// remove duplicates from list
 	removeList = sliceutil.SliceUnique(removeList, func(cl *spec.ChangeLog) string { return cl.ID })
 	return removeList

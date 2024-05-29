@@ -12,7 +12,7 @@ func SecretCommand(client dgclient.DGateClient) *cli.Command {
 		Aliases:   []string{"sec"},
 		Args:      true,
 		ArgsUsage: "<command> <name>",
-		Usage:     "secret commands",
+		Usage:     "secret <action> <args>",
 		Subcommands: []*cli.Command{
 			{
 				Name:    "create",

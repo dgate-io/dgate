@@ -11,7 +11,7 @@ import (
 	"time"
 
 	"github.com/hashicorp/raft"
-	"github.com/rs/zerolog"
+	"go.uber.org/zap"
 )
 
 // Doer provides the Do() method, as found in net/http.Client.
@@ -28,7 +28,7 @@ type Doer interface {
 // application is an HTTP server already and you do not want to use multiple
 // different transports (if not, you can use raft.NetworkTransport).
 type HTTPTransport struct {
-	logger   zerolog.Logger
+	logger   *zap.Logger
 	consumer chan raft.RPC
 	addr     raft.ServerAddress
 	client   Doer
@@ -37,7 +37,7 @@ type HTTPTransport struct {
 
 var _ raft.Transport = (*HTTPTransport)(nil)
 
-func NewHTTPTransport(addr raft.ServerAddress, client Doer, logger zerolog.Logger, urlFmt string) *HTTPTransport {
+func NewHTTPTransport(addr raft.ServerAddress, client Doer, logger *zap.Logger, urlFmt string) *HTTPTransport {
 	if client == nil {
 		client = http.DefaultClient
 	}
@@ -265,6 +265,7 @@ func (t *HTTPTransport) ServeHTTP(res http.ResponseWriter, req *http.Request) {
 
 		if resp.Error != nil {
 			err := fmt.Errorf("could not run RPC: %v", resp.Error)
+			t.logger.Error("error running RPC", zap.Error(err))
 			http.Error(res, err.Error(), http.StatusBadRequest)
 			return
 		}
@@ -289,7 +290,7 @@ func (t *HTTPTransport) ServeHTTP(res http.ResponseWriter, req *http.Request) {
 	}
 
 	if err := t.handle(res, req, rpc); err != nil {
-		t.logger.Printf("[%s, %s] %v\n", req.RemoteAddr, cmd, err)
+		t.logger.Info("Handling command", zap.String("command", cmd), zap.Error(err))
 	}
 }
 

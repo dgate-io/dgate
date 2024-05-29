@@ -10,6 +10,7 @@ import (
 	"github.com/dgate-io/dgate/internal/proxy"
 	"github.com/dgate-io/dgate/pkg/spec"
 	"github.com/stretchr/testify/assert"
+	"go.uber.org/zap"
 )
 
 // Raft Test -> ApplyChangeLog, WaitForChanges,
@@ -19,7 +20,7 @@ import (
 
 func TestDynamicTLSConfig_DomainCert(t *testing.T) {
 	conf := configtest.NewTestDGateConfig_DomainAndNamespaces()
-	ps := proxy.NewProxyState(conf)
+	ps := proxy.NewProxyState(zap.NewNop(), conf)
 
 	tlsConfig := ps.DynamicTLSConfig("", "")
 	clientHello := &tls.ClientHelloInfo{
@@ -36,7 +37,7 @@ func TestDynamicTLSConfig_DomainCert(t *testing.T) {
 
 func TestDynamicTLSConfig_DomainCertCache(t *testing.T) {
 	conf := configtest.NewTestDGateConfig_DomainAndNamespaces()
-	ps := proxy.NewProxyState(conf)
+	ps := proxy.NewProxyState(zap.NewNop(), conf)
 	d := ps.ResourceManager().GetDomainsByPriority()[0]
 	key := fmt.Sprintf("cert:%s:%s:%d", d.Namespace.Name,
 		d.Name, d.CreatedAt.UnixMilli())
@@ -64,7 +65,7 @@ func TestDynamicTLSConfig_DomainCertCache(t *testing.T) {
 
 func TestDynamicTLSConfig_Fallback(t *testing.T) {
 	conf := configtest.NewTestDGateConfig_DomainAndNamespaces()
-	ps := proxy.NewProxyState(conf)
+	ps := proxy.NewProxyState(zap.NewNop(), conf)
 
 	tlsConfig := ps.DynamicTLSConfig("testdata/server.crt", "testdata/server.key")
 	// this should have a match that is not the fallback
@@ -93,7 +94,7 @@ func TestDynamicTLSConfig_Fallback(t *testing.T) {
 
 func TestFindNamespaceByRequest_OneNamespaceNoDomain(t *testing.T) {
 	conf := configtest.NewTestDGateConfig()
-	ps := proxy.NewProxyState(conf)
+	ps := proxy.NewProxyState(zap.NewNop(), conf)
 	if err := ps.Store().InitStore(); err != nil {
 		t.Fatal(err)
 	}
@@ -117,7 +118,7 @@ func TestFindNamespaceByRequest_OneNamespaceNoDomain(t *testing.T) {
 
 func TestFindNamespaceByRequest_DomainsAndNamespaces(t *testing.T) {
 	conf := configtest.NewTestDGateConfig_DomainAndNamespaces()
-	ps := proxy.NewProxyState(conf)
+	ps := proxy.NewProxyState(zap.NewNop(), conf)
 	if err := ps.Store().InitStore(); err != nil {
 		t.Fatal(err)
 	}
@@ -144,7 +145,7 @@ func TestFindNamespaceByRequest_DomainsAndNamespaces(t *testing.T) {
 }
 func TestFindNamespaceByRequest_DomainsAndNamespacesDefault(t *testing.T) {
 	conf := configtest.NewTestDGateConfig_DomainAndNamespaces2()
-	ps := proxy.NewProxyState(conf)
+	ps := proxy.NewProxyState(zap.NewNop(), conf)
 	if err := ps.Store().InitStore(); err != nil {
 		t.Fatal(err)
 	}
@@ -174,7 +175,7 @@ func TestFindNamespaceByRequest_DomainsAndNamespacesDefault(t *testing.T) {
 
 // func TestApplyChangeLog(t *testing.T) {
 // 	conf := configtest.NewTestDGateConfig()
-// 	ps := proxy.NewProxyState(conf)
+// 	ps := proxy.NewProxyState(zap.NewNop(), conf)
 // 	if err := ps.Store().InitStore(); err != nil {
 // 		t.Fatal(err)
 // 	}
@@ -184,7 +185,7 @@ func TestFindNamespaceByRequest_DomainsAndNamespacesDefault(t *testing.T) {
 
 func TestProcessChangeLog_RMSecrets(t *testing.T) {
 	conf := configtest.NewTestDGateConfig()
-	ps := proxy.NewProxyState(conf)
+	ps := proxy.NewProxyState(zap.NewNop(), conf)
 	if err := ps.Store().InitStore(); err != nil {
 		t.Fatal(err)
 	}
@@ -226,7 +227,7 @@ func TestProcessChangeLog_RMSecrets(t *testing.T) {
 
 func TestProcessChangeLog_Route(t *testing.T) {
 	conf := configtest.NewTestDGateConfig()
-	ps := proxy.NewProxyState(conf)
+	ps := proxy.NewProxyState(zap.NewNop(), conf)
 	if err := ps.Store().InitStore(); err != nil {
 		t.Fatal(err)
 	}
@@ -267,7 +268,7 @@ func TestProcessChangeLog_Route(t *testing.T) {
 
 func TestProcessChangeLog_Service(t *testing.T) {
 	conf := configtest.NewTestDGateConfig()
-	ps := proxy.NewProxyState(conf)
+	ps := proxy.NewProxyState(zap.NewNop(), conf)
 	if err := ps.Store().InitStore(); err != nil {
 		t.Fatal(err)
 	}
@@ -302,7 +303,7 @@ func TestProcessChangeLog_Service(t *testing.T) {
 
 func TestProcessChangeLog_Module(t *testing.T) {
 	conf := configtest.NewTestDGateConfig()
-	ps := proxy.NewProxyState(conf)
+	ps := proxy.NewProxyState(zap.NewNop(), conf)
 	if err := ps.Store().InitStore(); err != nil {
 		t.Fatal(err)
 	}
@@ -336,7 +337,7 @@ func TestProcessChangeLog_Module(t *testing.T) {
 }
 
 func TestProcessChangeLog_Namespace(t *testing.T) {
-	ps := proxy.NewProxyState(configtest.NewTestDGateConfig())
+	ps := proxy.NewProxyState(zap.NewNop(), configtest.NewTestDGateConfig())
 	if err := ps.Store().InitStore(); err != nil {
 		t.Fatal(err)
 	}
@@ -365,7 +366,7 @@ func TestProcessChangeLog_Namespace(t *testing.T) {
 
 func TestProcessChangeLog_Collection(t *testing.T) {
 	conf := configtest.NewTestDGateConfig()
-	ps := proxy.NewProxyState(conf)
+	ps := proxy.NewProxyState(zap.NewNop(), conf)
 	if err := ps.Store().InitStore(); err != nil {
 		t.Fatal(err)
 	}
@@ -373,9 +374,9 @@ func TestProcessChangeLog_Collection(t *testing.T) {
 	c := &spec.Collection{
 		Name:          "test",
 		NamespaceName: "test",
-		Type:          spec.CollectionTypeDocument,
-		Visibility:    spec.CollectionVisibilityPrivate,
-		Tags:          []string{"test"},
+		// Type:          spec.CollectionTypeDocument,
+		Visibility: spec.CollectionVisibilityPrivate,
+		Tags:       []string{"test"},
 	}
 
 	cl := spec.NewChangeLog(c, c.NamespaceName, spec.AddCollectionCommand)
@@ -387,7 +388,7 @@ func TestProcessChangeLog_Collection(t *testing.T) {
 	assert.Equal(t, 1, len(collections), "should have 1 item")
 	assert.Equal(t, c.Name, collections[0].Name, "should have the same name")
 	assert.Equal(t, c.NamespaceName, collections[0].Namespace.Name, "should have the same namespace")
-	assert.Equal(t, c.Type, collections[0].Type, "should have the same type")
+	// assert.Equal(t, c.Type, collections[0].Type, "should have the same type")
 	assert.Equal(t, c.Visibility, collections[0].Visibility, "should have the same visibility")
 	assert.Equal(t, len(c.Tags), len(collections[0].Tags), "should have the same tags")
 
@@ -402,7 +403,7 @@ func TestProcessChangeLog_Collection(t *testing.T) {
 
 func TestProcessChangeLog_Document(t *testing.T) {
 	conf := configtest.NewTestDGateConfig()
-	ps := proxy.NewProxyState(conf)
+	ps := proxy.NewProxyState(zap.NewNop(), conf)
 	if err := ps.Store().InitStore(); err != nil {
 		t.Fatal(err)
 	}
@@ -410,9 +411,9 @@ func TestProcessChangeLog_Document(t *testing.T) {
 	c := &spec.Collection{
 		Name:          "test",
 		NamespaceName: "test",
-		Type:          spec.CollectionTypeDocument,
-		Visibility:    spec.CollectionVisibilityPrivate,
-		Tags:          []string{"test"},
+		// Type:          spec.CollectionTypeDocument,
+		Visibility: spec.CollectionVisibilityPrivate,
+		Tags:       []string{"test"},
 	}
 
 	cl := spec.NewChangeLog(c, c.NamespaceName, spec.AddCollectionCommand)

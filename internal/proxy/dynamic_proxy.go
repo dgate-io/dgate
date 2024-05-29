@@ -3,47 +3,59 @@ package proxy
 import (
 	"errors"
 	"fmt"
-	"log"
 	"net/http"
 	"os"
 	"time"
 
-	"github.com/dgate-io/dgate/internal/config"
 	"github.com/dgate-io/dgate/internal/router"
 	"github.com/dgate-io/dgate/pkg/modules/extractors"
 	"github.com/dgate-io/dgate/pkg/spec"
 	"github.com/dgate-io/dgate/pkg/typescript"
 	"github.com/dgate-io/dgate/pkg/util/tree/avl"
 	"github.com/dop251/goja"
-	"github.com/rs/zerolog"
+	"go.uber.org/zap"
 	"golang.org/x/net/http2"
 	"golang.org/x/net/http2/h2c"
 )
 
-func (state *ProxyState) reconfigureState(init bool, log *spec.ChangeLog) error {
+func (ps *ProxyState) reconfigureState(init bool, log *spec.ChangeLog) (err error) {
+	defer func() {
+		if err != nil {
+			ps.restartState(func(err error) {
+				if err != nil {
+					ps.logger.Error("Error restarting state", zap.Error(err))
+					go ps.Stop()
+				}
+			})
+		}
+		log.PushError(err)
+	}()
+
+	ps.proxyLock.Lock()
+	defer ps.proxyLock.Unlock()
+
 	start := time.Now()
-	if err := state.setupModules(); err != nil {
-		return err
+	if err = ps.setupModules(); err != nil {
+		return
 	}
-	if err := state.setupRoutes(); err != nil {
-		return err
+	if err = ps.setupRoutes(); err != nil {
+		return
 	}
+	elapsed := time.Since(start)
 	if !init {
-		state.logger.Debug().Msgf(
-			"State reloaded in %s: %v",
-			time.Since(start), log,
+		ps.logger.Debug("State reloaded",
+			zap.Duration("elapsed", elapsed),
 		)
 	} else {
-		state.logger.Info().Msgf(
-			"State initialized in %s",
-			time.Since(start),
+		ps.logger.Info("State initialized",
+			zap.Duration("elapsed", elapsed),
 		)
 	}
 	return nil
 }
 
 func (ps *ProxyState) setupModules() error {
-	ps.logger.Debug().Msg("Setting up modules")
+	ps.logger.Debug("Setting up modules")
 	for _, route := range ps.rm.GetRoutes() {
 		if len(route.Modules) > 0 {
 			mod := route.Modules[0]
@@ -55,13 +67,13 @@ func (ps *ProxyState) setupModules() error {
 			start := time.Now()
 			if mod.Type == spec.ModuleTypeTypescript {
 				if modPayload, err = typescript.Transpile(modPayload); err != nil {
-					ps.logger.Err(err).Msg("Error transpiling module: " + mod.Name)
+					ps.logger.Error("Error transpiling module: " + mod.Name)
 					return err
 				}
 			}
 			if mod.Type == spec.ModuleTypeJavascript || mod.Type == spec.ModuleTypeTypescript {
 				if program, err = goja.Compile(mod.Name, modPayload, true); err != nil {
-					ps.logger.Err(err).Msg("Error compiling module: " + mod.Name)
+					ps.logger.Error("Error compiling module: " + mod.Name)
 					return err
 				}
 			} else {
@@ -72,21 +84,25 @@ func (ps *ProxyState) setupModules() error {
 			defer testRtCtx.Clean()
 			err = extractors.SetupModuleEventLoop(ps.printer, testRtCtx)
 			if err != nil {
-				ps.logger.Err(err).
-					Msgf("Error applying module '%s' changes", mod.Name)
+				ps.logger.Error("Error applying module changes",
+					zap.Error(err), zap.String("module", mod.Name),
+				)
 				return err
 			}
 			ps.modPrograms.Insert(mod.Name+"/"+mod.Namespace.Name, program)
 			elapsed := time.Since(start)
-			ps.logger.Debug().
-				Msgf("Module '%s/%s' changed applied in %s", mod.Name, mod.Namespace.Name, elapsed)
+			ps.logger.Debug("Module changed applied",
+				zap.Duration("elapsed", elapsed),
+				zap.String("name", mod.Name),
+				zap.String("namespace", mod.Namespace.Name),
+			)
 		}
 	}
 	return nil
 }
 
 func (ps *ProxyState) setupRoutes() (err error) {
-	ps.logger.Debug().Msg("Setting up routes")
+	ps.logger.Debug("Setting up routes")
 	reqCtxProviders := avl.NewTree[string, *RequestContextProvider]()
 	for namespaceName, routes := range ps.rm.GetRouteNamespaceMap() {
 		mux := router.NewMux()
@@ -99,7 +115,7 @@ func (ps *ProxyState) setupRoutes() (err error) {
 					ps.createModuleExtractorFunc(r),
 				)
 				if err != nil {
-					ps.logger.Err(err).Msg("Error creating module buffer")
+					ps.logger.Error("Error creating module buffer", zap.Error(err))
 					return err
 				}
 				reqCtxProvider.SetModulePool(modPool)
@@ -131,7 +147,7 @@ func (ps *ProxyState) setupRoutes() (err error) {
 			}()
 		}
 
-		ps.logger.Trace().Msg("Routes have changed, reloading")
+		ps.logger.Debug("Routes have changed, reloading")
 		if dr, ok := ps.routers.Find(namespaceName); ok {
 			dr.ReplaceMux(mux)
 		} else {
@@ -150,38 +166,41 @@ func (ps *ProxyState) createModuleExtractorFunc(r *spec.DGateRoute) ModuleExtrac
 		// TODO: Perhaps have some entrypoint flag to determine which module to use
 		m := r.Modules[0]
 		if program, ok := ps.modPrograms.Find(m.Name + "/" + r.Namespace.Name); !ok {
-			ps.logger.Error().Msg("Error getting module program: invalid state")
+			ps.logger.Error("Error getting module program: invalid state", zap.Error(err))
 			return nil, fmt.Errorf("cannot find module program: %s/%s", m.Name, r.Namespace.Name)
 		} else {
 			rtCtx := NewRuntimeContext(ps, r, r.Modules...)
 			if err := extractors.SetupModuleEventLoop(ps.printer, rtCtx, program); err != nil {
-				ps.logger.Err(err).Msg("Error creating runtime for route: " + reqCtx.route.Name)
+				ps.logger.Error("Error creating runtime for route",
+					zap.String("route", reqCtx.route.Name),
+					zap.String("namespace", reqCtx.route.Namespace.Name),
+				)
 				return nil, err
 			} else {
 				loop := rtCtx.EventLoop()
 				errorHandler, err := extractors.ExtractErrorHandlerFunction(loop)
 				if err != nil {
-					ps.logger.Err(err).Msg("Error extracting error handler function")
+					ps.logger.Error("Error extracting error handler function", zap.Error(err))
 					return nil, err
 				}
 				fetchUpstream, err := extractors.ExtractFetchUpstreamFunction(loop)
 				if err != nil {
-					ps.logger.Err(err).Msg("Error extracting fetch upstream function")
+					ps.logger.Error("Error extracting fetch upstream function", zap.Error(err))
 					return nil, err
 				}
 				reqModifier, err := extractors.ExtractRequestModifierFunction(loop)
 				if err != nil {
-					ps.logger.Err(err).Msg("Error extracting request modifier function")
+					ps.logger.Error("Error extracting request modifier function", zap.Error(err))
 					return nil, err
 				}
 				resModifier, err := extractors.ExtractResponseModifierFunction(loop)
 				if err != nil {
-					ps.logger.Err(err).Msg("Error extracting response modifier function")
+					ps.logger.Error("Error extracting response modifier function", zap.Error(err))
 					return nil, err
 				}
 				reqHandler, err := extractors.ExtractRequestHandlerFunction(loop)
 				if err != nil {
-					ps.logger.Err(err).Msg("Error extracting request handler function")
+					ps.logger.Error("Error extracting request handler function", zap.Error(err))
 					return nil, err
 				}
 				return NewModuleExtractor(
@@ -194,67 +213,15 @@ func (ps *ProxyState) createModuleExtractorFunc(r *spec.DGateRoute) ModuleExtrac
 	}
 }
 
-func (ps *ProxyState) startChangeLoop() {
-	ps.proxyLock.Lock()
-	if err := ps.reconfigureState(true, nil); err != nil {
-		ps.logger.Err(err).Msg("Error initiating state")
-		ps.Stop()
-		return
-	}
-	ps.proxyLock.Unlock()
-
-	for {
-		log := <-ps.changeChan
-		switch log.Cmd {
-		case spec.ShutdownCommand:
-			ps.logger.Warn().
-				Msg("Shutdown command received, closing change loop")
-			log.PushError(nil)
-			return
-		case spec.RestartCommand:
-			ps.logger.Warn().
-				Msg("Restart command received, not supported")
-			// 	ps.logger.Warn().
-			// 		Msg("Restart command received, restarting state")
-			// 	go ps.RestartState(func(err error) {
-			// 		ps.logger.Err(err).
-			// 			Msg("Error restarting state")
-			// 		os.Exit(1)
-			// 	})
-		}
-
-		func() {
-			ps.proxyLock.Lock()
-			defer ps.proxyLock.Unlock()
-
-			err := ps.reconfigureState(false, log)
-			if log.PushError(err); err != nil {
-				ps.logger.Err(err).
-					Msgf("Error reconfiguring state @namespace:%s", log.Namespace)
-				go ps.RestartState(func(err error) {
-					ps.logger.Err(err).
-						Msg("Error restarting state, exiting")
-					ps.changeChan <- &spec.ChangeLog{
-						Cmd: spec.ShutdownCommand,
-					}
-				})
-			}
-		}()
-	}
-}
-
 func (ps *ProxyState) startProxyServer() {
 	cfg := ps.config.ProxyConfig
 	hostPort := fmt.Sprintf("%s:%d", cfg.Host, cfg.Port)
-	ps.logger.Info().
-		Msgf("Starting proxy server on %s", hostPort)
-	proxyHttpLogger := Logger(&ps.logger,
-		WithComponentLogger("proxy-http"),
-	)
+	ps.logger.Info("Starting proxy server on " + hostPort)
+	proxyHttpLogger := ps.Logger()
 	server := &http.Server{
 		Addr:     hostPort,
 		Handler:  ps,
-		ErrorLog: log.New(proxyHttpLogger, "", 0),
+		ErrorLog: zap.NewStdLog(proxyHttpLogger),
 	}
 	if cfg.EnableHTTP2 {
 		h2Server := &http2.Server{}
@@ -267,7 +234,7 @@ func (ps *ProxyState) startProxyServer() {
 		}
 	}
 	if err := server.ListenAndServe(); err != nil {
-		ps.logger.Err(err).Msg("Error starting proxy server")
+		ps.logger.Error("Error starting proxy server", zap.Error(err))
 		os.Exit(1)
 	}
 }
@@ -278,16 +245,12 @@ func (ps *ProxyState) startProxyServerTLS() {
 		return
 	}
 	hostPort := fmt.Sprintf("%s:%d", cfg.Host, cfg.TLS.Port)
-	ps.logger.Info().
-		Msgf("Starting secure proxy server on %s", hostPort)
-	proxyHttpsLogger := Logger(&ps.logger,
-		WithComponentLogger("proxy-https"),
-		WithDefaultLevel(zerolog.InfoLevel),
-	)
+	ps.logger.Info("Starting secure proxy server on " + hostPort)
+	proxyHttpsLogger := ps.logger.Named("https")
 	secureServer := &http.Server{
 		Addr:     hostPort,
 		Handler:  ps,
-		ErrorLog: log.New(proxyHttpsLogger, "", 0),
+		ErrorLog: zap.NewStdLog(proxyHttpsLogger),
 		TLSConfig: ps.DynamicTLSConfig(
 			cfg.TLS.CertFile,
 			cfg.TLS.KeyFile,
@@ -304,16 +267,9 @@ func (ps *ProxyState) startProxyServerTLS() {
 		}
 	}
 	if err := secureServer.ListenAndServeTLS("", ""); err != nil {
-		ps.logger.Err(err).Msg("Error starting secure proxy server")
+		ps.logger.Error("Error starting secure proxy server", zap.Error(err))
 		os.Exit(1)
 	}
-}
-
-func StartProxyGateway(version string, conf *config.DGateConfig) *ProxyState {
-	ps := NewProxyState(conf)
-	ps.version = version
-
-	return ps
 }
 
 func (ps *ProxyState) Start() (err error) {
@@ -323,14 +279,13 @@ func (ps *ProxyState) Start() (err error) {
 		}
 	}()
 
-	go ps.startChangeLoop()
-	go ps.startProxyServer()
-	go ps.startProxyServerTLS()
-
 	ps.metrics.Setup(ps.config)
 	if err = ps.store.InitStore(); err != nil {
 		return err
 	}
+
+	go ps.startProxyServer()
+	go ps.startProxyServerTLS()
 
 	if !ps.replicationEnabled {
 		if err = ps.restoreFromChangeLogs(false); err != nil {
@@ -342,22 +297,28 @@ func (ps *ProxyState) Start() (err error) {
 }
 
 func (ps *ProxyState) Stop() {
-	cl := &spec.ChangeLog{
-		Cmd: spec.ShutdownCommand,
+	go func() {
+		<-time.After(10 * time.Second)
+		defer os.Exit(1)
+		ps.logger.Error("Failed to stop proxy server")
+	}()
+
+	ps.logger.Info("Stopping proxy server")
+	ps.proxyLock.Lock()
+	defer ps.proxyLock.Unlock()
+	defer os.Exit(0)
+	defer ps.Logger().Sync()
+
+	if raftNode := ps.Raft(); raftNode != nil {
+		raftNode.Shutdown().Error()
 	}
-	done := make(chan error, 1)
-	cl.SetErrorChan(done)
-	// push change to change loop
-	ps.changeChan <- cl
-	// wait for change loop to stop
-	<-done
 }
 
 func (ps *ProxyState) HandleRoute(requestCtxProvider *RequestContextProvider, pattern string) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		// ctx, cancel := context.WithCancel(requestCtxPrdovider.ctx)
 		// defer cancel()
-		ps.ProxyHandlerFunc(ps, requestCtxProvider.
+		ps.ProxyHandler(ps, requestCtxProvider.
 			CreateRequestContext(requestCtxProvider.ctx, w, r, pattern))
 	}
 }

@@ -7,7 +7,7 @@ import (
 	"time"
 
 	"github.com/dgate-io/dgate/pkg/util/heap"
-	"github.com/rs/zerolog"
+	"go.uber.org/zap"
 )
 
 type (
@@ -45,7 +45,7 @@ type scheduler struct {
 	opts        Options
 	ctx         context.Context
 	cancel      context.CancelFunc
-	logger      *zerolog.Logger
+	logger      *zap.Logger
 	tasks       map[string]*TaskDefinition
 	pendingJobs priorityQueue
 	mutex       *sync.RWMutex
@@ -74,7 +74,7 @@ var (
 
 type Options struct {
 	Interval time.Duration
-	Logger   *zerolog.Logger
+	Logger   *zap.Logger
 	AutoRun  bool
 }
 
@@ -161,9 +161,8 @@ func (s *scheduler) executeTask(tdt time.Time, taskDef *TaskDefinition) {
 			s.pendingJobs.Push(µs, taskDef)
 		}
 		if r := recover(); r != nil {
-			if s.logger != nil {
-				s.logger.Error().Msgf("panic occurred while executing task %s: %v", taskDef.Name, r)
-			}
+			s.logger.Error("panic occurred while executing task",
+				zap.String("task_name", taskDef.Name), zap.Any("error", r))
 		}
 	}()
 	taskDef.Func(taskDef.ctx)

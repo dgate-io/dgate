@@ -57,8 +57,12 @@ func (modCtx *ModuleContext) Query() url.Values {
 	return modCtx.req.Query
 }
 
-func (modCtx *ModuleContext) Params() map[string]string {
+func (modCtx *ModuleContext) PathParams() map[string]string {
 	return modCtx.params
+}
+
+func (modCtx *ModuleContext) PathParam(key string) string {
+	return modCtx.params[key]
 }
 
 func (modCtx *ModuleContext) Route() *spec.Route {

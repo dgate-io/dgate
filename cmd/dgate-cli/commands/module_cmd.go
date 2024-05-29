@@ -12,7 +12,7 @@ func ModuleCommand(client dgclient.DGateClient) *cli.Command {
 		Aliases:   []string{"mod"},
 		Args:      true,
 		ArgsUsage: "<command> <name>",
-		Usage:     "module commands",
+		Usage:     "module <action> <args>",
 		Subcommands: []*cli.Command{
 			{
 				Name:    "create",

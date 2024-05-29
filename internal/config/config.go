@@ -4,12 +4,17 @@ import (
 	"time"
 
 	"github.com/dgate-io/dgate/pkg/spec"
+	"go.uber.org/zap"
+	"go.uber.org/zap/zapcore"
 )
 
 type (
 	DGateConfig struct {
 		Version          string                 `koanf:"version"`
-		LogLevel         string                 `koanf:"log_level"`
+		LogLevel         string                 `koanf:"log_level,string"`
+		LogJson          bool                   `koanf:"log_json"`
+		LogColor         bool                   `koanf:"log_color"`
+		Logging          *LoggingConfig         `koanf:"Logger"`
 		NodeId           string                 `koanf:"node_id"`
 		Storage          DGateStorageConfig     `koanf:"storage"`
 		ProxyConfig      DGateProxyConfig       `koanf:"proxy"`
@@ -20,6 +25,16 @@ type (
 
 		DisableMetrics          bool `koanf:"disable_metrics"`
 		DisableDefaultNamespace bool `koanf:"disable_default_namespace"`
+	}
+
+	LoggingConfig struct {
+		ZapConfig  *zap.Config  `koanf:",squash"`
+		LogOutputs []*LogOutput `koanf:"log_outputs"`
+	}
+
+	LogOutput struct {
+		Name   string         `koanf:"name"`
+		Config map[string]any `koanf:",remain"`
 	}
 
 	DGateProxyConfig struct {
@@ -59,7 +74,6 @@ type (
 		XForwardedForDepth int                     `koanf:"x_forwarded_for_depth"`
 		WatchOnly          bool                    `koanf:"watch_only"`
 		Replication        *DGateReplicationConfig `koanf:"replication,omitempty"`
-		Dashboard          *DGateDashboardConfig   `koanf:"dashboard"`
 		TLS                *DGateTLSConfig         `koanf:"tls"`
 		AuthMethod         AuthMethodType          `koanf:"auth_method"`
 		BasicAuth          *DGateBasicAuthConfig   `koanf:"basic_auth"`
@@ -139,7 +153,6 @@ type (
 	}
 
 	DGateHttpTransportConfig struct {
-		//
 		DNSServer              string        `koanf:"dns_server"`
 		DNSTimeout             time.Duration `koanf:"dns_timeout"`
 		DNSPreferGo            bool          `koanf:"dns_prefer_go"`
@@ -200,3 +213,41 @@ const (
 	AuthMethodKeyAuth   AuthMethodType = "key"
 	AuthMethodJWTAuth   AuthMethodType = "jwt"
 )
+
+func (conf *DGateConfig) GetLogger() (*zap.Logger, error) {
+	level, err := zap.ParseAtomicLevel(conf.LogLevel)
+	if err != nil {
+		return nil, err
+	}
+	if conf.Logging == nil {
+		conf.Logging = &LoggingConfig{}
+	}
+	if conf.Logging.ZapConfig == nil {
+		config := zap.NewProductionConfig()
+		config.Level = level
+		config.Development = conf.Debug
+		config.EncoderConfig.EncodeTime = zapcore.RFC3339TimeEncoder
+		config.OutputPaths = []string{"stdout"}
+
+		if config.EncoderConfig.EncodeLevel = zapcore.CapitalLevelEncoder; conf.LogColor {
+			config.EncoderConfig.EncodeLevel = zapcore.CapitalColorLevelEncoder
+		}
+
+		if config.Encoding = "console"; conf.LogJson {
+			config.InitialFields = map[string]interface{}{
+				"version":     conf.Version,
+				"server_tags": conf.Tags,
+				"node_id":     conf.NodeId,
+			}
+			config.Encoding = "json"
+		}
+
+		conf.Logging.ZapConfig = &config
+	}
+
+	if logger, err := conf.Logging.ZapConfig.Build(); err != nil {
+		return nil, err
+	} else {
+		return logger, nil
+	}
+}

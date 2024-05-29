@@ -12,7 +12,7 @@ func RouteCommand(client dgclient.DGateClient) *cli.Command {
 		Aliases:   []string{"rt"},
 		Args:      true,
 		ArgsUsage: "<command> <name>",
-		Usage:     "route commands",
+		Usage:     "route <action> <args>",
 		Subcommands: []*cli.Command{
 			{
 				Name:    "create",

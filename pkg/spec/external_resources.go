@@ -36,7 +36,6 @@ type Route struct {
 	Name          string   `json:"name" koanf:"name"`
 	Paths         []string `json:"paths" koanf:"paths"`
 	Methods       []string `json:"methods" koanf:"methods"`
-	Schemes       []string `json:"schemes,omitempty" koanf:"schemes"`
 	PreserveHost  bool     `json:"preserveHost" koanf:"preserveHost"`
 	StripPath     bool     `json:"stripPath" koanf:"stripPath"`
 	ServiceName   string   `json:"service,omitempty" koanf:"service"`
@@ -54,7 +53,6 @@ type Module struct {
 	NamespaceName string     `json:"namespace" koanf:"namespace"`
 	Payload       string     `json:"payload" koanf:"payload"`
 	Type          ModuleType `json:"moduleType,omitempty" koanf:"moduleType"`
-	Permissions   []string   `json:"permissions,omitempty" koanf:"permissions"`
 	Tags          []string   `json:"tags,omitempty" koanf:"tags"`
 }
 
@@ -80,8 +78,8 @@ type Collection struct {
 	Name          string               `json:"name" koanf:"name"`
 	NamespaceName string               `json:"namespace" koanf:"namespace"`
 	Schema        any                  `json:"schema" koanf:"schema"`
-	Type          CollectionType       `json:"type" koanf:"type"`
 	Visibility    CollectionVisibility `json:"visibility" koanf:"visibility"`
+	Type          CollectionType       `json:"type" koanf:"type"`
 	// Modules       []string             `json:"modules,omitempty" koanf:"modules"`
 	Tags []string `json:"tags,omitempty" koanf:"tags"`
 }

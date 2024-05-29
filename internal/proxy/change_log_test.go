@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/dgate-io/dgate/pkg/spec"
+	"go.uber.org/zap"
 )
 
 func TestCompactChangeLog_DifferentNamespace(t *testing.T) {
@@ -33,7 +34,7 @@ func TestCompactChangeLog_DifferentNamespace(t *testing.T) {
 				},
 			}
 			setSequentialChangeLogs(logs)
-			removeList := compactChangeLogsRemoveList(nil, logs)
+			removeList := compactChangeLogsRemoveList(zap.NewNop(), logs)
 			testChangeLogRemoveList(tt, removeList)
 		})
 	}
@@ -65,7 +66,7 @@ func TestCompactChangeLog_SameNamespace(t *testing.T) {
 				},
 			}
 			setSequentialChangeLogs(logs)
-			removeList := compactChangeLogsRemoveList(nil, logs)
+			removeList := compactChangeLogsRemoveList(zap.NewNop(), logs)
 			testChangeLogRemoveList(tt, removeList, 0, 1)
 		})
 	}
@@ -85,7 +86,7 @@ func TestCompactChangeLog_Mirror(t *testing.T) {
 		newCommonChangeLog(spec.DeleteNamespaceCommand),
 	}
 	setSequentialChangeLogs(logs)
-	removeList := compactChangeLogsRemoveList(nil, logs)
+	removeList := compactChangeLogsRemoveList(zap.NewNop(), logs)
 	testChangeLogRemoveList(t, removeList, 4, 5, 3, 6, 2, 7, 1, 8, 0, 9)
 }
 
@@ -101,7 +102,7 @@ func TestCompactChangeLog_Noop(t *testing.T) {
 		newCommonChangeLog(spec.AddModuleCommand),
 	}
 	setSequentialChangeLogs(logs)
-	removeList := compactChangeLogsRemoveList(nil, logs)
+	removeList := compactChangeLogsRemoveList(zap.NewNop(), logs)
 	testChangeLogRemoveList(t, removeList, 0, 1, 2, 5)
 }
 
@@ -111,7 +112,7 @@ func TestCompactChangeLog_AddDelete(t *testing.T) {
 		newCommonChangeLog(spec.DeleteNamespaceCommand),
 	}
 	setSequentialChangeLogs(logs)
-	removeList := compactChangeLogsRemoveList(nil, logs)
+	removeList := compactChangeLogsRemoveList(zap.NewNop(), logs)
 	testChangeLogRemoveList(t, removeList, 0, 1)
 }
 
@@ -125,7 +126,7 @@ func TestCompactChangeLog_AddDeleteDiffNamespaces(t *testing.T) {
 	// 	newCommonChangeLog(spec.DeleteNamespaceCommand, "t2", "test-ns2"),
 	// }
 	// setSequentialChangeLogs(logs)
-	// removeList := compactChangeLogsRemoveList(nil, logs)
+	// removeList := compactChangeLogsRemoveList(zap.NewNop(), logs)
 	// testChangeLogRemoveList(t, removeList, 0, 1, 2, 3)
 }
 

@@ -9,11 +9,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/dgate-io/dgate/pkg/util/logger"
+	"github.com/dgate-io/dgate/pkg/util/logadapter"
 	"github.com/hashicorp/raft"
-	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
+	"go.uber.org/zap"
 )
 
 type MockTransport struct {
@@ -93,12 +93,9 @@ func (m *MockFSM) Restore(io.ReadCloser) error {
 }
 
 func setupRaftAdmin(t *testing.T) *httptest.Server {
-	lgr := zerolog.New(io.Discard)
-
 	raftConfig := raft.DefaultConfig()
 	raftConfig.LocalID = "1"
-	raftConfig.Logger = logger.NewNopHCLogger()
-
+	raftConfig.Logger = logadapter.NewZap2HCLogAdapter(zap.NewNop())
 	mockFSM := &MockFSM{}
 	mockFSM.On("Apply", mock.Anything).Return(nil)
 
@@ -133,7 +130,7 @@ func setupRaftAdmin(t *testing.T) *httptest.Server {
 	<-time.After(time.Second * 5)
 
 	raftAdmin := NewRaftAdminHTTPServer(
-		raftNode, lgr,
+		raftNode, zap.NewNop(),
 		[]raft.ServerAddress{
 			"localhost:9090",
 		},
@@ -175,7 +172,7 @@ func TestRaft(t *testing.T) {
 	client := NewHTTPAdminClient(
 		server.Client().Do,
 		"http://(address)/raftadmin",
-		zerolog.New(nil),
+		zap.NewNop(),
 	)
 	serverAddr := raft.ServerAddress(server.Listener.Addr().String())
 	leader, err := client.Leader(ctx, serverAddr)
