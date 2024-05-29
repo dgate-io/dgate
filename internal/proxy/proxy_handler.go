@@ -156,7 +156,7 @@ func handleServiceProxy(ps *ProxyState, reqCtx *RequestContext, modExt ModuleExt
 		ErrorHandler(func(w http.ResponseWriter, r *http.Request, reqErr error) {
 			upstreamErr = reqErr
 			ps.logger.Debug("Error proxying request",
-				zap.String("error", err.Error()),
+				zap.String("error", reqErr.Error()),
 				zap.String("route", reqCtx.route.Name),
 				zap.String("service", reqCtx.route.Service.Name),
 				zap.String("namespace", reqCtx.route.Namespace.Name),
