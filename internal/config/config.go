@@ -10,21 +10,22 @@ import (
 
 type (
 	DGateConfig struct {
-		Version          string                 `koanf:"version"`
-		LogLevel         string                 `koanf:"log_level,string"`
-		LogJson          bool                   `koanf:"log_json"`
-		LogColor         bool                   `koanf:"log_color"`
-		Logging          *LoggingConfig         `koanf:"Logger"`
+		Version  string `koanf:"version"`
+		LogLevel string `koanf:"log_level,string"`
+		LogJson  bool   `koanf:"log_json"`
+		LogColor bool   `koanf:"log_color"`
+
 		NodeId           string                 `koanf:"node_id"`
+		Logging          *LoggingConfig         `koanf:"Logger"`
 		Storage          DGateStorageConfig     `koanf:"storage"`
 		ProxyConfig      DGateProxyConfig       `koanf:"proxy"`
 		AdminConfig      *DGateAdminConfig      `koanf:"admin"`
 		TestServerConfig *DGateTestServerConfig `koanf:"test_server"`
-		Debug            bool                   `koanf:"debug"`
-		Tags             []string               `koanf:"tags"`
 
-		DisableMetrics          bool `koanf:"disable_metrics"`
-		DisableDefaultNamespace bool `koanf:"disable_default_namespace"`
+		DisableMetrics          bool     `koanf:"disable_metrics"`
+		DisableDefaultNamespace bool     `koanf:"disable_default_namespace"`
+		Debug                   bool     `koanf:"debug"`
+		Tags                    []string `koanf:"tags"`
 	}
 
 	LoggingConfig struct {

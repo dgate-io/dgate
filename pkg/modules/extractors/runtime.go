@@ -2,7 +2,9 @@ package extractors
 
 import (
 	"errors"
+	"os"
 	"reflect"
+	"strings"
 
 	"github.com/dgate-io/dgate/pkg/modules"
 	"github.com/dgate-io/dgate/pkg/modules/dgate"
@@ -26,21 +28,37 @@ type RuntimeOptions struct {
 	Env map[string]string
 }
 
-func prepareRuntime(rt *goja.Runtime) {
-	rt.SetFieldNameMapper(&smartFieldNameMapper{})
+var EnvVarMap = getEnvVarMap()
 
-	exports := rt.NewObject()
+func getEnvVarMap() map[string]string {
+	env := os.Environ()
+	envMap := make(map[string]string, len(env))
+	for _, e := range env {
+		pair := strings.SplitN(e, "=", 2)
+		if len(pair) == 2 {
+			envMap[pair[0]] = pair[1]
+		}
+	}
+	return envMap
+}
+
+func prepareRuntime(rt *goja.Runtime) {
+	rt.SetFieldNameMapper(&smartMapper{})
 	module := rt.NewObject()
+	exports := rt.NewObject()
 	module.Set("exports", exports)
-	rt.Set("exports", exports)
-	rt.GlobalObject().Set("process", processObject(rt))
+	po := processObject(rt)
+	rt.GlobalObject().
+		Set("process", po)
 	rt.Set("module", module)
+	rt.Set("exports", exports)
 }
 
 func processObject(rt *goja.Runtime) *goja.Object {
 	obj := rt.NewObject()
-	obj.Set("env", rt.NewObject())
-	obj.Set("args", rt.NewObject())
+	obj.Set("env", EnvVarMap)
+	hostname, _ := os.Hostname()
+	obj.Set("host", hostname)
 	return obj
 }
 
@@ -50,19 +68,18 @@ func SetupModuleEventLoop(
 	programs ...*goja.Program,
 ) error {
 	loop := rtCtx.EventLoop()
-
 	rt := loop.Runtime()
 	prepareRuntime(rt)
 
-	registry := loop.Registry()
-
-	if registerModules("dgate", rt,
-		registry, dgate.New(rtCtx),
+	req := loop.Registry()
+	if registerModules(
+		"dgate", rt, req,
+		dgate.New(rtCtx),
 	); printer == nil {
 		printer = &NoopPrinter{}
 	}
 
-	registry.RegisterNativeModule(
+	req.RegisterNativeModule(
 		"dgate_internal:console",
 		console.RequireWithPrinter(printer),
 	)
@@ -71,8 +88,8 @@ func SetupModuleEventLoop(
 	buffer.Enable(rt)
 	console.Enable(rt)
 
-	rt.Set("console", require.Require(rt, "dgate_internal:console").ToObject(rt))
 	rt.Set("fetch", require.Require(rt, "dgate/http").ToObject(rt).Get("fetch"))
+	rt.Set("console", require.Require(rt, "dgate_internal:console").ToObject(rt))
 	rt.Set("disableSetInterval", disableSetInterval)
 
 	for _, program := range programs {
@@ -125,18 +142,18 @@ func registerModules(
 	return exports
 }
 
-type smartFieldNameMapper struct{}
+type smartMapper struct{}
 
-var _ goja.FieldNameMapper = &smartFieldNameMapper{}
+var _ goja.FieldNameMapper = &smartMapper{}
 
-func (*smartFieldNameMapper) FieldName(_ reflect.Type, f reflect.StructField) string {
+func (*smartMapper) FieldName(_ reflect.Type, f reflect.StructField) string {
 	if f.Tag.Get("json") != "" {
 		return f.Tag.Get("json")
 	}
 	return strcase.LowerCamelCase(f.Name)
 }
 
-func (*smartFieldNameMapper) MethodName(_ reflect.Type, m reflect.Method) string {
+func (*smartMapper) MethodName(_ reflect.Type, m reflect.Method) string {
 	return strcase.LowerCamelCase(m.Name)
 }
 
