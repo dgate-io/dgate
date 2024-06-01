@@ -30,7 +30,6 @@ func setupRaft(
 	adminConfig := conf.AdminConfig
 	var sstore raft.StableStore
 	var lstore raft.LogStore
-	snapstore := raft.NewInmemSnapshotStore()
 	switch conf.Storage.StorageType {
 	case config.StorageTypeMemory:
 		sstore = raft.NewInmemStore()
@@ -55,6 +54,9 @@ func setupRaft(
 		panic(fmt.Errorf("invalid storage type: %s", conf.Storage.StorageType))
 	}
 	raftId := adminConfig.Replication.RaftID
+	if raftId == "" {
+		raftId = conf.NodeId
+	}
 
 	raftConfig := adminConfig.Replication.LoadRaftConfig(
 		&raft.Config{
@@ -90,7 +92,7 @@ func setupRaft(
 	)
 	raftNode, err := raft.NewRaft(
 		raftConfig, newDGateAdminFSM(logger.Named("fsm"), cs),
-		lstore, sstore, snapstore, transport,
+		lstore, sstore, raft.NewInmemSnapshotStore(), transport,
 	)
 	if err != nil {
 		panic(err)

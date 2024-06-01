@@ -104,7 +104,6 @@ func NewProxyState(logger *zap.Logger, conf *config.DGateConfig) *ProxyState {
 		replicationEnabled = true
 	}
 	state := &ProxyState{
-		version:   "unknown",
 		startTime: time.Now(),
 		raftReady: atomic.Bool{},
 		logger:    logger,

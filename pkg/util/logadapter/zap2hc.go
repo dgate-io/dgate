@@ -2,6 +2,7 @@ package logadapter
 
 import (
 	"context"
+	"fmt"
 	"io"
 	"log"
 
@@ -39,34 +40,52 @@ func (l *Zap2HCLogAdapter) IsError() bool {
 	return l.logger.Core().Enabled(hc2zapLevel(hclog.Error))
 }
 
-func (l *Zap2HCLogAdapter) Trace(format string, args ...interface{}) {}
+func (l *Zap2HCLogAdapter) Trace(format string, args ...any) {}
 
-func (l *Zap2HCLogAdapter) Debug(format string, args ...interface{}) {
-	l.logger.Debug(format)
+func prepArgs(args ...any) []zap.Field {
+	if len(args) == 0 {
+		return []zap.Field{}
+	} else if len(args)%2 != 0 {
+		args = append(args, "MISSING")
+	}
+	fields := make([]zap.Field, 0, len(args)/2)
+	for i := 0; i < len(args); i += 2 {
+		key, val := args[i].(string), args[i+1]
+		switch t := val.(type) {
+		case hclog.Format:
+			val = fmt.Sprintf(t[0].(string), t[1:]...)
+		}
+		fields = append(fields, zap.Any(key, val))
+	}
+	return fields
 }
 
-func (l *Zap2HCLogAdapter) Info(format string, args ...interface{}) {
-	l.logger.Info(format)
+func (l *Zap2HCLogAdapter) Debug(format string, args ...any) {
+	l.Log(hclog.Debug, format, args...)
 }
 
-func (l *Zap2HCLogAdapter) Warn(format string, args ...interface{}) {
-	l.logger.Warn(format)
+func (l *Zap2HCLogAdapter) Info(format string, args ...any) {
+	l.Log(hclog.Info, format, args...)
 }
 
-func (l *Zap2HCLogAdapter) Error(format string, args ...interface{}) {
-	l.logger.Error(format)
+func (l *Zap2HCLogAdapter) Warn(format string, args ...any) {
+	l.Log(hclog.Warn, format, args...)
 }
 
-func (l *Zap2HCLogAdapter) Log(level hclog.Level, format string, args ...interface{}) {
+func (l *Zap2HCLogAdapter) Error(format string, args ...any) {
+	l.Log(hclog.Error, format, args...)
+}
+
+func (l *Zap2HCLogAdapter) Log(level hclog.Level, format string, args ...any) {
 	switch level {
 	case hclog.Debug:
-		l.Debug(format, args...)
+		l.logger.Debug(format, prepArgs(args...)...)
 	case hclog.Info:
-		l.Info(format, args...)
+		l.logger.Info(format, prepArgs(args...)...)
 	case hclog.Warn:
-		l.Warn(format, args...)
+		l.logger.Warn(format, prepArgs(args...)...)
 	case hclog.Error:
-		l.Error(format, args...)
+		l.logger.Error(format, prepArgs(args...)...)
 	}
 }
 
@@ -100,7 +119,7 @@ func (l *Zap2HCLogAdapter) StandardWriter(opts *hclog.StandardLoggerOptions) io.
 	return l.StandardLogger(opts).Writer()
 }
 
-func (l *Zap2HCLogAdapter) ImpliedArgs() []interface{} {
+func (l *Zap2HCLogAdapter) ImpliedArgs() []any {
 	return nil
 }
 

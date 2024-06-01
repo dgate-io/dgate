@@ -21,13 +21,6 @@ func NewRouterWithMux(mux *chi.Mux) *DynamicRouter {
 func NewMux() *chi.Mux {
 	return chi.NewRouter()
 }
-
-func (r *DynamicRouter) ModifyMux(fn func(*chi.Mux)) {
-	r.lock.Lock()
-	defer r.lock.Unlock()
-	fn(r.router)
-}
-
 // ReplaceRouter replaces the router
 func (r *DynamicRouter) ReplaceMux(router *chi.Mux) {
 	r.lock.Lock()

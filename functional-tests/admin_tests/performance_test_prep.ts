@@ -1,3 +1,4 @@
+// @ts-ignore
 import { sleep } from "dgate";
 
 export const fetchUpstream = async (ctx) =>

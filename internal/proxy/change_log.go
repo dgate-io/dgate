@@ -86,7 +86,7 @@ func (ps *ProxyState) processChangeLog(cl *spec.ChangeLog, reload, store bool) (
 		}
 	}
 	if reload {
-		if cl.Cmd.Resource().IsRelatedTo(spec.Routes) || cl.Cmd.IsNoop() {
+		if cl.Cmd.IsNoop() || cl.Cmd.Resource().IsRelatedTo(spec.Routes) {
 			ps.logger.Debug("Registering change log", zap.Stringer("cmd", cl.Cmd))
 			err = ps.reconfigureState(false, cl)
 			if err != nil {

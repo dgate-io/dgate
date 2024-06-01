@@ -38,21 +38,22 @@ func proxyHandler(ps *ProxyState, reqCtx *RequestContext) {
 	var modExt ModuleExtractor
 	if len(reqCtx.route.Modules) != 0 {
 		runtimeStart := time.Now()
-		if reqCtx.provider.modPool == nil {
+		if modPool := reqCtx.provider.ModulePool(); modPool == nil {
 			ps.logger.Error("Error getting module buffer: invalid state")
 			util.WriteStatusCodeError(reqCtx.rw, http.StatusInternalServerError)
 			return
+		} else {
+			if modExt = modPool.Borrow(); modExt == nil {
+				ps.metrics.MeasureModuleDuration(
+					reqCtx, "module_extract", runtimeStart,
+					errors.New("error borrowing module"),
+				)
+				ps.logger.Error("Error borrowing module")
+				util.WriteStatusCodeError(reqCtx.rw, http.StatusInternalServerError)
+				return
+			}
+			defer modPool.Return(modExt)
 		}
-		if modExt = reqCtx.provider.modPool.Borrow(); modExt == nil {
-			ps.metrics.MeasureModuleDuration(
-				reqCtx, "module_extract",
-				runtimeStart, errors.New("error borrowing module"),
-			)
-			ps.logger.Error("Error borrowing module")
-			util.WriteStatusCodeError(reqCtx.rw, http.StatusInternalServerError)
-			return
-		}
-		defer reqCtx.provider.modPool.Return(modExt)
 
 		modExt.Start(reqCtx)
 		defer modExt.Stop(true)
