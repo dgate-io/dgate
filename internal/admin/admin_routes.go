@@ -35,13 +35,11 @@ func configureRoutes(
 		ipList := iplist.NewIPList()
 		for _, address := range adminConfig.AllowList {
 			if strings.Contains(address, "/") {
-				err := ipList.AddCIDRString(address)
-				if err != nil {
+				if err := ipList.AddCIDRString(address); err != nil {
 					panic(fmt.Sprintf("invalid cidr address in admin.allow_list: %s", address))
 				}
 			} else {
-				err := ipList.AddIPString(address)
-				if err != nil {
+				if err := ipList.AddIPString(address); err != nil {
 					panic(fmt.Sprintf("invalid ip address in admin.allow_list: %s", address))
 				}
 			}
@@ -181,9 +179,7 @@ func configureRoutes(
 	if adminConfig != nil {
 		server.Route("/api/v1", func(api chi.Router) {
 			apiLogger := logger.Named("api")
-			routes.ConfigureRouteAPI(
-				api,
-				apiLogger, cs, conf)
+			routes.ConfigureRouteAPI(api, apiLogger, cs, conf)
 			routes.ConfigureModuleAPI(api, apiLogger, cs, conf)
 			routes.ConfigureServiceAPI(api, apiLogger, cs, conf)
 			routes.ConfigureNamespaceAPI(api, apiLogger, cs, conf)

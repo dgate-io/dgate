@@ -27,7 +27,7 @@ func TransformDGateRoute(r *DGateRoute) *Route {
 	}
 	var modules []string
 	if r.Modules != nil && len(r.Modules) > 0 {
-		sliceutil.SliceMapper(r.Modules, func(m *DGateModule) string { return m.Name })
+		modules = sliceutil.SliceMapper(r.Modules, func(m *DGateModule) string { return m.Name })
 	}
 	return &Route{
 		Name:          r.Name,

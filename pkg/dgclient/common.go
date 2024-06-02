@@ -140,15 +140,15 @@ func validateStatusCode(code int) error {
 	} else if code < 400 {
 		return errors.New("redirect from server; retry with the --follow flag")
 	}
-	return fmt.Errorf("error code %d: %s", code, http.StatusText(code))
+	return fmt.Errorf("%d error from server", code)
 }
 
-func parseApiError(body io.Reader, defaultErr error) error {
+func parseApiError(body io.Reader, wrapErr error) error {
 	var apiError struct {
 		Error string `json:"error"`
 	}
 	if err := json.NewDecoder(body).Decode(&apiError); err != nil || apiError.Error == "" {
-		return defaultErr
+		return wrapErr
 	}
-	return errors.New("api error: " + apiError.Error)
+	return fmt.Errorf("%d: %s", wrapErr, apiError.Error)
 }

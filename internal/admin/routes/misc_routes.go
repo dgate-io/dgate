@@ -32,14 +32,6 @@ func ConfigureChangeLogAPI(server chi.Router, cs changestate.ChangeState, appCon
 			w.Write([]byte(b))
 		}
 	})
-	server.Get("/changelog/rm", func(w http.ResponseWriter, r *http.Request) {
-		if b, err := json.Marshal(cs.ResourceManager()); err != nil {
-			util.JsonError(w, http.StatusInternalServerError, err.Error())
-		} else {
-			w.Header().Set("Content-Type", "application/json")
-			w.Write([]byte(b))
-		}
-	})
 }
 
 func ConfigureHealthAPI(server chi.Router, version string, cs changestate.ChangeState) {
@@ -54,6 +46,7 @@ func ConfigureHealthAPI(server chi.Router, version string, cs changestate.Change
 	server.Get("/readyz", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		if r := cs.Raft(); r != nil {
+			w.Header().Set("X-Raft-State", r.State().String())
 			if r.Leader() == "" {
 				w.WriteHeader(http.StatusServiceUnavailable)
 				w.Write([]byte(`{"status":"no leader"}`))
