@@ -15,7 +15,7 @@ func (ps *ProxyState) GetDocuments(collection, namespace string, limit, offset i
 	if _, ok := ps.rm.GetNamespace(namespace); !ok {
 		return nil, spec.ErrNamespaceNotFound(namespace)
 	}
-	if _, ok := ps.rm.GetCollection(namespace, collection); !ok {
+	if _, ok := ps.rm.GetCollection(collection, namespace); !ok {
 		return nil, spec.ErrCollectionNotFound(collection)
 	}
 	return ps.store.FetchDocuments(namespace, collection, limit, offset)
@@ -26,7 +26,7 @@ func (ps *ProxyState) GetDocumentByID(namespace, collection, docId string) (*spe
 	if _, ok := ps.rm.GetNamespace(namespace); !ok {
 		return nil, spec.ErrNamespaceNotFound(namespace)
 	}
-	if _, ok := ps.rm.GetCollection(collection, namespace); !ok {
+	if _, ok := ps.rm.GetCollection(namespace, collection); !ok {
 		return nil, spec.ErrCollectionNotFound(collection)
 	}
 	return ps.store.FetchDocument(namespace, collection, docId)

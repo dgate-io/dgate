@@ -71,7 +71,7 @@ func (hp *ResourcesModule) fetchDocument(collection, docId string) *goja.Promise
 			return
 		}
 		doc, err := state.DocumentManager().
-			GetDocumentByID(namespace.(string), collection, docId)
+			GetDocumentByID(collection, namespace.(string), docId)
 		if err != nil {
 			reject(rt.NewGoError(err))
 			return
@@ -87,11 +87,11 @@ func (hp *ResourcesModule) fetchDocuments(args goja.FunctionCall) (*goja.Promise
 	loop := hp.modCtx.EventLoop()
 	rt := hp.modCtx.Runtime()
 
-	collection_name := ""
+	collection := ""
 	if args.Argument(0) == goja.Undefined() {
 		return nil, errors.New("collection name is required")
 	} else {
-		collection_name = args.Argument(0).String()
+		collection = args.Argument(0).String()
 	}
 	limit := 0
 	if args.Argument(1) != goja.Undefined() {
@@ -111,7 +111,10 @@ func (hp *ResourcesModule) fetchDocuments(args goja.FunctionCall) (*goja.Promise
 	docPromise, resolve, reject := rt.NewPromise()
 	loop.RunOnLoop(func(rt *goja.Runtime) {
 		doc, err := state.DocumentManager().
-			GetDocuments(namespace, collection_name, limit, offset)
+			GetDocuments(
+				collection, namespace,
+				limit, offset,
+			)
 		if err != nil {
 			reject(rt.NewGoError(err))
 			return

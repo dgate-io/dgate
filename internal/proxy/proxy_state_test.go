@@ -267,14 +267,14 @@ func TestProcessChangeLog_Route(t *testing.T) {
 }
 
 func TestProcessChangeLog_Service(t *testing.T) {
-	conf := configtest.NewTestDGateConfig()
+	conf := configtest.NewTest4DGateConfig()
 	ps := proxy.NewProxyState(zap.NewNop(), conf)
 	if err := ps.Store().InitStore(); err != nil {
 		t.Fatal(err)
 	}
 
 	s := &spec.Service{
-		Name:          "test",
+		Name:          "test123",
 		NamespaceName: "test",
 		URLs:          []string{"http://localhost:8080"},
 		Tags:          []string{"test"},
@@ -302,14 +302,14 @@ func TestProcessChangeLog_Service(t *testing.T) {
 }
 
 func TestProcessChangeLog_Module(t *testing.T) {
-	conf := configtest.NewTestDGateConfig()
+	conf := configtest.NewTest4DGateConfig()
 	ps := proxy.NewProxyState(zap.NewNop(), conf)
 	if err := ps.Store().InitStore(); err != nil {
 		t.Fatal(err)
 	}
 
 	m := &spec.Module{
-		Name:          "test",
+		Name:          "test123",
 		NamespaceName: "test",
 		Payload:       "",
 		Tags:          []string{"test"},
@@ -337,7 +337,7 @@ func TestProcessChangeLog_Module(t *testing.T) {
 }
 
 func TestProcessChangeLog_Namespace(t *testing.T) {
-	ps := proxy.NewProxyState(zap.NewNop(), configtest.NewTestDGateConfig())
+	ps := proxy.NewProxyState(zap.NewNop(), configtest.NewTest4DGateConfig())
 	if err := ps.Store().InitStore(); err != nil {
 		t.Fatal(err)
 	}
@@ -351,28 +351,30 @@ func TestProcessChangeLog_Namespace(t *testing.T) {
 	if !assert.Nil(t, err, "error should be nil") {
 		return
 	}
-	namespaces := ps.ResourceManager().GetNamespaces()
-	assert.Equal(t, 2, len(namespaces), "should have 2 items")
-	assert.Equal(t, n.Name, namespaces[1].Name, "should have the same name")
+	ns, ok := ps.ResourceManager().GetNamespace(n.Name)
+	if !assert.True(t, ok, "should be true") {
+		return
+	}
+	assert.Equal(t, n.Name, ns.Name, "should have the same name")
 
 	cl = spec.NewChangeLog(n, n.Name, spec.DeleteNamespaceCommand)
 	err = ps.ProcessChangeLog(cl, false)
 	if !assert.Nil(t, err, "error should be nil") {
 		return
 	}
-	namespaces = ps.ResourceManager().GetNamespaces()
-	assert.Equal(t, 1, len(namespaces), "should have 0 item")
+	_, ok = ps.ResourceManager().GetNamespace(n.Name)
+	assert.False(t, ok, "should be false")
 }
 
 func TestProcessChangeLog_Collection(t *testing.T) {
-	conf := configtest.NewTestDGateConfig()
+	conf := configtest.NewTest4DGateConfig()
 	ps := proxy.NewProxyState(zap.NewNop(), conf)
 	if err := ps.Store().InitStore(); err != nil {
 		t.Fatal(err)
 	}
 
 	c := &spec.Collection{
-		Name:          "test",
+		Name:          "test123",
 		NamespaceName: "test",
 		// Type:          spec.CollectionTypeDocument,
 		Visibility: spec.CollectionVisibilityPrivate,
@@ -409,11 +411,11 @@ func TestProcessChangeLog_Document(t *testing.T) {
 	}
 
 	c := &spec.Collection{
-		Name:          "test",
+		Name:          "test123",
 		NamespaceName: "test",
-		// Type:          spec.CollectionTypeDocument,
-		Visibility: spec.CollectionVisibilityPrivate,
-		Tags:       []string{"test"},
+		Type:          spec.CollectionTypeDocument,
+		Visibility:    spec.CollectionVisibilityPrivate,
+		Tags:          []string{"test"},
 	}
 
 	cl := spec.NewChangeLog(c, c.NamespaceName, spec.AddCollectionCommand)
@@ -423,9 +425,9 @@ func TestProcessChangeLog_Document(t *testing.T) {
 	}
 
 	d := &spec.Document{
-		ID:             "test",
+		ID:             "test123",
+		CollectionName: "test123",
 		NamespaceName:  "test",
-		CollectionName: "test",
 		Data:           "",
 	}
 
@@ -435,7 +437,7 @@ func TestProcessChangeLog_Document(t *testing.T) {
 		return
 	}
 	documents, err := ps.DocumentManager().GetDocuments(
-		"test", "test", 999, 0,
+		d.CollectionName, d.NamespaceName, 999, 0,
 	)
 	if !assert.Nil(t, err, "error should be nil") {
 		return
@@ -452,7 +454,7 @@ func TestProcessChangeLog_Document(t *testing.T) {
 		return
 	}
 	documents, err = ps.DocumentManager().GetDocuments(
-		"test", "test", 999, 0,
+		d.CollectionName, d.NamespaceName, 999, 0,
 	)
 	if !assert.Nil(t, err, "error should be nil") {
 		return

@@ -5,6 +5,6 @@ import (
 )
 
 type DocumentManager interface {
-	GetDocumentByID(namespace, collection, id string) (*spec.Document, error)
+	GetDocumentByID(collection, namespace, id string) (*spec.Document, error)
 	GetDocuments(collection, namespace string, limit, offset int) ([]*spec.Document, error)
 }
