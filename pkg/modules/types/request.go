@@ -19,7 +19,7 @@ type RequestWrapper struct {
 	loop *eventloop.EventLoop
 
 	Method        string
-	URL           string
+	Path          string
 	Headers       http.Header
 	Query         url.Values
 	Host          string
@@ -40,7 +40,7 @@ func NewRequestWrapper(
 		loop:  loop,
 		req:   req,
 		Query: req.URL.Query(),
-		URL:   req.URL.String(),
+		Path:  req.URL.Path,
 
 		Host:          req.Host,
 		Proto:         req.Proto,

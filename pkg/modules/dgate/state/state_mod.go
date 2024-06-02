@@ -23,8 +23,8 @@ func (hp *ResourcesModule) Exports() *modules.Exports {
 	return &modules.Exports{
 		Named: map[string]any{
 			"getCollection":    hp.fetchCollection,
-			"getDocument":      hp.fetchDocument,
-			"getDocuments":     hp.fetchDocuments,
+			"getDocument":      hp.getDocument,
+			"getDocuments":     hp.getDocuments,
 			"addCollection":    writeFunc[*spec.Collection](hp, spec.AddCollectionCommand),
 			"addDocument":      writeFunc[*spec.Document](hp, spec.AddDocumentCommand),
 			"deleteCollection": writeFunc[*spec.Collection](hp, spec.DeleteCollectionCommand),
@@ -48,7 +48,7 @@ func (hp *ResourcesModule) fetchCollection(name string) *goja.Promise {
 			))
 			return
 		}
-		collection, ok := rm.GetCollection(namespace.(string), name)
+		collection, ok := rm.GetCollection(name, namespace.(string))
 		if !ok {
 			reject(goja.Null())
 			return
@@ -58,7 +58,7 @@ func (hp *ResourcesModule) fetchCollection(name string) *goja.Promise {
 	return docPromise
 }
 
-func (hp *ResourcesModule) fetchDocument(collection, docId string) *goja.Promise {
+func (hp *ResourcesModule) getDocument(docId, collection string) *goja.Promise {
 	ctx := hp.modCtx.Context()
 	state := hp.modCtx.State()
 	loop := hp.modCtx.EventLoop()
@@ -71,7 +71,7 @@ func (hp *ResourcesModule) fetchDocument(collection, docId string) *goja.Promise
 			return
 		}
 		doc, err := state.DocumentManager().
-			GetDocumentByID(namespace.(string), collection, docId)
+			GetDocumentByID(docId, collection, namespace.(string))
 		if err != nil {
 			reject(rt.NewGoError(err))
 			return
@@ -81,25 +81,20 @@ func (hp *ResourcesModule) fetchDocument(collection, docId string) *goja.Promise
 	return docPromise
 }
 
-func (hp *ResourcesModule) fetchDocuments(args goja.FunctionCall) (*goja.Promise, error) {
+type FetchDocumentsPayload struct {
+	Collection string `json:"collection"`
+	Limit      int    `json:"limit"`
+	Offset     int    `json:"offset"`
+}
+
+func (hp *ResourcesModule) getDocuments(payload FetchDocumentsPayload) (*goja.Promise, error) {
 	ctx := hp.modCtx.Context()
 	state := hp.modCtx.State()
 	loop := hp.modCtx.EventLoop()
 	rt := hp.modCtx.Runtime()
 
-	collection_name := ""
-	if args.Argument(0) == goja.Undefined() {
+	if payload.Collection == "" {
 		return nil, errors.New("collection name is required")
-	} else {
-		collection_name = args.Argument(0).String()
-	}
-	limit := 0
-	if args.Argument(1) != goja.Undefined() {
-		limit = int(args.Argument(1).ToInteger())
-	}
-	offset := 0
-	if args.Argument(2) != goja.Undefined() {
-		offset = int(args.Argument(2).ToInteger())
 	}
 
 	namespaceVal := ctx.Value(spec.Name("namespace"))
@@ -111,7 +106,12 @@ func (hp *ResourcesModule) fetchDocuments(args goja.FunctionCall) (*goja.Promise
 	docPromise, resolve, reject := rt.NewPromise()
 	loop.RunOnLoop(func(rt *goja.Runtime) {
 		doc, err := state.DocumentManager().
-			GetDocuments(namespace, collection_name, limit, offset)
+			GetDocuments(
+				payload.Collection,
+				namespace,
+				payload.Limit,
+				payload.Offset,
+			)
 		if err != nil {
 			reject(rt.NewGoError(err))
 			return

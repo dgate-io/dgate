@@ -119,16 +119,19 @@ func (clc Command) IsRestart() bool {
 }
 
 func (resource1 Resource) IsRelatedTo(resource2 Resource) bool {
-	if resource1 == resource2 || resource1 == Namespaces || resource2 == Namespaces {
+	if resource1 == resource2 {
 		return true
+	}
+	if resource1 == Namespaces || resource2 == Namespaces {
+		if resource1 != Documents && resource2 != Documents {
+			return true
+		}
 	}
 	switch resource1 {
 	case Routes:
 		return resource2 == Services || resource2 == Modules
-	case Services:
+	case Services, Modules:
 		return resource2 == Routes
-	case Modules:
-		return resource2 == Namespaces
 	case Collections:
 		return resource2 == Documents
 	case Documents:

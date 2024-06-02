@@ -226,6 +226,8 @@ func (conf *DGateConfig) GetLogger() (*zap.Logger, error) {
 	if conf.Logging.ZapConfig == nil {
 		config := zap.NewProductionConfig()
 		config.Level = level
+		config.DisableCaller = true
+		config.DisableStacktrace = true
 		config.Development = conf.Debug
 		config.EncoderConfig.EncodeTime = zapcore.RFC3339TimeEncoder
 		config.OutputPaths = []string{"stdout"}

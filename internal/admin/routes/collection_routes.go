@@ -48,7 +48,10 @@ func ConfigureCollectionAPI(server chi.Router, logger *zap.Logger, cs changestat
 		if oldCollection, ok := rm.GetCollection(collection.Name, collection.NamespaceName); ok {
 			if oldCollection.Type == spec.CollectionTypeDocument {
 				docs, err := dm.GetDocuments(
-					collection.NamespaceName, collection.Name, 0, 0)
+					collection.Name,
+					collection.NamespaceName,
+					0, 0,
+				)
 				if err != nil {
 					util.JsonError(w, http.StatusInternalServerError, err.Error())
 					return
@@ -142,7 +145,7 @@ func ConfigureCollectionAPI(server chi.Router, logger *zap.Logger, cs changestat
 			util.JsonError(w, http.StatusBadRequest, "offset must be an integer")
 			return
 		}
-		docs, err := dm.GetDocuments(namespaceName, collectionName, offset, limit)
+		docs, err := dm.GetDocuments(collectionName, namespaceName, offset, limit)
 		if err != nil {
 			util.JsonError(w, http.StatusInternalServerError, err.Error())
 			return
@@ -194,7 +197,7 @@ func ConfigureCollectionAPI(server chi.Router, logger *zap.Logger, cs changestat
 			return
 		}
 
-		document, err := dm.GetDocumentByID(namespaceName, collectionName, documentId)
+		document, err := dm.GetDocumentByID(documentId, collectionName, namespaceName)
 		if err != nil {
 			util.JsonError(w, http.StatusNotFound, err.Error())
 			return
@@ -348,7 +351,7 @@ func ConfigureCollectionAPI(server chi.Router, logger *zap.Logger, cs changestat
 			util.JsonError(w, http.StatusBadRequest, "document_id is required")
 			return
 		}
-		document, err := dm.GetDocumentByID(namespaceName, collectionName, documentId)
+		document, err := dm.GetDocumentByID(documentId, collectionName, namespaceName)
 		if err != nil {
 			util.JsonError(w, http.StatusNotFound, err.Error())
 			return
@@ -386,7 +389,10 @@ func ConfigureCollectionAPI(server chi.Router, logger *zap.Logger, cs changestat
 		}
 		if collection.Type == spec.CollectionTypeDocument {
 			docs, err := dm.GetDocuments(
-				namespaceName, collectionName, 0, 1)
+				collectionName,
+				namespaceName,
+				1, 1,
+			)
 			if err != nil {
 				util.JsonError(w, http.StatusInternalServerError, err.Error())
 				return

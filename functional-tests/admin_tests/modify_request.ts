@@ -1,4 +1,6 @@
+// @ts-ignore
 import { fetch } from "dgate/http";
+// @ts-ignore
 import { getCache, setCache } from "dgate/storage";
 
 export const requestModifier = async (ctx) => {
@@ -23,9 +25,10 @@ export const requestModifier = async (ctx) => {
             console.error(JSON.stringify(georesp));
             throw new Error(("IP API: " + geodata?.message) ?? "Failed to fetch geodata");
         }
-        setCache('geodata:'+remoteAddr, geodata, {
-            ttl: 3600,
-        });
+
+        // setCache('geodata:'+remoteAddr, geodata, {
+        //     ttl: 3600,
+        // });
     }
 
     req.headers.set("X-Geo-Country", geodata.country);

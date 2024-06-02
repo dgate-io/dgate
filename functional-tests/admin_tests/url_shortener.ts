@@ -13,7 +13,7 @@ export const requestHandler = (ctx: any) => {
             return;
         }
         // get the document with the ID from the collection
-        return getDocument("short_link", pathId)
+        return getDocument(pathId, "short_link")
             .then((doc: any) => {
                 // check if the document contains the URL
                 if (!doc?.data?.url) {

@@ -92,12 +92,12 @@ func (store *ProxyStore) DeleteChangeLogs(logs []*spec.ChangeLog) (int, error) {
 	return removed, nil
 }
 
-func createDocumentKey(nsName, colName, docId string) string {
+func createDocumentKey(docId, colName, nsName string) string {
 	return "doc/" + nsName + "/" + colName + "/" + docId
 }
 
-func (store *ProxyStore) FetchDocument(nsName, colName, docId string) (*spec.Document, error) {
-	docBytes, err := store.storage.Get(createDocumentKey(nsName, colName, docId))
+func (store *ProxyStore) FetchDocument(docId, colName, nsName string) (*spec.Document, error) {
+	docBytes, err := store.storage.Get(createDocumentKey(docId, colName, nsName))
 	if err != nil {
 		if err == storage.ErrStoreLocked {
 			return nil, err
@@ -119,7 +119,7 @@ func (store *ProxyStore) FetchDocuments(
 	limit, offset int,
 ) ([]*spec.Document, error) {
 	docs := make([]*spec.Document, 0)
-	docPrefix := createDocumentKey(namespaceName, collectionName, "")
+	docPrefix := createDocumentKey("", collectionName, namespaceName)
 	err := store.storage.IterateValuesPrefix(docPrefix, func(key string, val []byte) error {
 		if offset -= 1; offset > 0 {
 			return nil
@@ -145,7 +145,7 @@ func (store *ProxyStore) StoreDocument(doc *spec.Document) error {
 		return err
 	}
 	store.logger.Debug("storing document")
-	err = store.storage.Set(createDocumentKey(doc.NamespaceName, doc.CollectionName, doc.ID), docBytes)
+	err = store.storage.Set(createDocumentKey(doc.ID, doc.CollectionName, doc.NamespaceName), docBytes)
 	if err != nil {
 		return err
 	}
@@ -153,7 +153,7 @@ func (store *ProxyStore) StoreDocument(doc *spec.Document) error {
 }
 
 func (store *ProxyStore) DeleteDocument(id, colName, nsName string) error {
-	err := store.storage.Delete(createDocumentKey(nsName, colName, id))
+	err := store.storage.Delete(createDocumentKey(id, colName, nsName))
 	if err != nil {
 		if err == badger.ErrKeyNotFound {
 			return nil
@@ -164,7 +164,7 @@ func (store *ProxyStore) DeleteDocument(id, colName, nsName string) error {
 }
 
 func (store *ProxyStore) DeleteDocuments(doc *spec.Document) error {
-	err := store.storage.IterateTxnPrefix(createDocumentKey(doc.NamespaceName, doc.CollectionName, ""),
+	err := store.storage.IterateTxnPrefix(createDocumentKey("", doc.CollectionName, doc.NamespaceName),
 		func(txn storage.StorageTxn, key string) error {
 			return txn.Delete(key)
 		})

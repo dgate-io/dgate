@@ -21,7 +21,7 @@ import (
 func TestAdminRoutes_Service(t *testing.T) {
 	namespaces := []string{"default", "test"}
 	for _, ns := range namespaces {
-		config := configtest.NewTest3DGateConfig()
+		config := configtest.NewTest4DGateConfig()
 		ps := proxy.NewProxyState(zap.NewNop(), config)
 		mux := chi.NewMux()
 		mux.Route("/api/v1", func(r chi.Router) {

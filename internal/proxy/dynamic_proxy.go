@@ -11,7 +11,6 @@ import (
 	"github.com/dgate-io/dgate/pkg/modules/extractors"
 	"github.com/dgate-io/dgate/pkg/spec"
 	"github.com/dgate-io/dgate/pkg/typescript"
-	"github.com/dgate-io/dgate/pkg/util/tree/avl"
 	"github.com/dop251/goja"
 	"go.uber.org/zap"
 	"golang.org/x/net/http2"
@@ -103,48 +102,48 @@ func (ps *ProxyState) setupModules() error {
 
 func (ps *ProxyState) setupRoutes() (err error) {
 	ps.logger.Debug("Setting up routes")
-	reqCtxProviders := avl.NewTree[string, *RequestContextProvider]()
+	// reqCtxProviders := avl.NewTree[string, *RequestContextProvider]()
 	for namespaceName, routes := range ps.rm.GetRouteNamespaceMap() {
 		mux := router.NewMux()
-		for _, r := range routes {
-			reqCtxProvider := NewRequestContextProvider(r, ps)
-			reqCtxProviders.Insert(r.Namespace.Name+"/"+r.Name, reqCtxProvider)
-			if len(r.Modules) > 0 {
-				modPool, err := NewModulePool(
-					256, 1024, reqCtxProvider,
-					ps.createModuleExtractorFunc(r),
-				)
-				if err != nil {
+		for _, rt := range routes {
+			reqCtxProvider := NewRequestContextProvider(rt, ps)
+			if len(rt.Modules) > 0 {
+				modExtFunc := ps.createModuleExtractorFunc(rt)
+				if modPool, err := NewModulePool(
+					256, 1024, reqCtxProvider, modExtFunc,
+				); err != nil {
 					ps.logger.Error("Error creating module buffer", zap.Error(err))
 					return err
+				} else {
+					reqCtxProvider.SetModulePool(modPool)
 				}
-				reqCtxProvider.SetModulePool(modPool)
 			}
-			err = func() (err error) {
+			ps.providers.Insert(rt.Namespace.Name+"/"+rt.Name, reqCtxProvider)
+			err = func(rt *spec.DGateRoute) (err error) {
 				defer func() {
 					if r := recover(); r != nil {
 						err = fmt.Errorf("%v", r)
 					}
 				}()
-				for _, path := range r.Paths {
-					if len(r.Methods) > 0 && r.Methods[0] == "*" {
-						if len(r.Methods) > 1 {
+				for _, path := range rt.Paths {
+					if len(rt.Methods) > 0 && rt.Methods[0] == "*" {
+						if len(rt.Methods) > 1 {
 							return errors.New("route methods cannot have other methods with *")
 						}
 						mux.Handle(path, ps.HandleRoute(reqCtxProvider, path))
 					} else {
-						if len(r.Methods) == 0 {
+						if len(rt.Methods) == 0 {
 							return errors.New("route must have at least one method")
-						} else if err = ValidateMethods(r.Methods); err != nil {
+						} else if err = ValidateMethods(rt.Methods); err != nil {
 							return err
 						}
-						for _, method := range r.Methods {
+						for _, method := range rt.Methods {
 							mux.Method(method, path, ps.HandleRoute(reqCtxProvider, path))
 						}
 					}
 				}
 				return nil
-			}()
+			}(rt)
 		}
 
 		ps.logger.Debug("Routes have changed, reloading")
@@ -158,18 +157,18 @@ func (ps *ProxyState) setupRoutes() (err error) {
 	return
 }
 
-func (ps *ProxyState) createModuleExtractorFunc(r *spec.DGateRoute) ModuleExtractorFunc {
+func (ps *ProxyState) createModuleExtractorFunc(rt *spec.DGateRoute) ModuleExtractorFunc {
 	return func(reqCtx *RequestContextProvider) (_ ModuleExtractor, err error) {
-		if len(r.Modules) == 0 {
-			return nil, fmt.Errorf("no modules found for route: %s/%s", r.Name, r.Namespace.Name)
+		if len(rt.Modules) == 0 {
+			return nil, fmt.Errorf("no modules found for route: %s/%s", rt.Name, rt.Namespace.Name)
 		}
 		// TODO: Perhaps have some entrypoint flag to determine which module to use
-		m := r.Modules[0]
-		if program, ok := ps.modPrograms.Find(m.Name + "/" + r.Namespace.Name); !ok {
+		m := rt.Modules[0]
+		if program, ok := ps.modPrograms.Find(m.Name + "/" + rt.Namespace.Name); !ok {
 			ps.logger.Error("Error getting module program: invalid state", zap.Error(err))
-			return nil, fmt.Errorf("cannot find module program: %s/%s", m.Name, r.Namespace.Name)
+			return nil, fmt.Errorf("cannot find module program: %s/%s", m.Name, rt.Namespace.Name)
 		} else {
-			rtCtx := NewRuntimeContext(ps, r, r.Modules...)
+			rtCtx := NewRuntimeContext(ps, rt, rt.Modules...)
 			if err := extractors.SetupModuleEventLoop(ps.printer, rtCtx, program); err != nil {
 				ps.logger.Error("Error creating runtime for route",
 					zap.String("route", reqCtx.route.Name),

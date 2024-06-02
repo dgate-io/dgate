@@ -5,6 +5,7 @@ import (
 	"crypto/tls"
 	"net"
 	"net/http"
+	"sync"
 
 	"github.com/dgate-io/chi-router"
 	"github.com/dgate-io/dgate/internal/proxy/reverse_proxy"
@@ -14,10 +15,11 @@ import (
 type S string
 
 type RequestContextProvider struct {
-	ctx     context.Context
-	route   *spec.DGateRoute
-	rpb     reverse_proxy.Builder
-	modPool ModulePool
+	ctx    context.Context
+	route  *spec.DGateRoute
+	rpb    reverse_proxy.Builder
+	mtx    *sync.Mutex
+	modBuf ModulePool
 }
 
 type RequestContext struct {
@@ -73,11 +75,23 @@ func NewRequestContextProvider(route *spec.DGateRoute, ps *ProxyState) *RequestC
 		ctx:   ctx,
 		route: route,
 		rpb:   rpb,
+		mtx:   &sync.Mutex{},
 	}
 }
 
 func (reqCtxProvider *RequestContextProvider) SetModulePool(mb ModulePool) {
-	reqCtxProvider.modPool = mb
+	reqCtxProvider.mtx.Lock()
+	defer reqCtxProvider.mtx.Unlock()
+	if reqCtxProvider.modBuf != nil {
+		reqCtxProvider.modBuf.Close()
+	}
+	reqCtxProvider.modBuf = mb
+}
+
+func (reqCtxProvider *RequestContextProvider) ModulePool() ModulePool {
+	reqCtxProvider.mtx.Lock()
+	defer reqCtxProvider.mtx.Unlock()
+	return reqCtxProvider.modBuf
 }
 
 func (reqCtxProvider *RequestContextProvider) CreateRequestContext(

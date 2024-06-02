@@ -157,9 +157,30 @@ func (rm *ResourceManager) GetRoute(name, namespace string) (*spec.DGateRoute, b
 
 func (rm *ResourceManager) getRoute(name, namespace string) (*spec.DGateRoute, bool) {
 	if lk, ok := rm.routes.Find(name + "/" + namespace); ok {
-		return lk.Item().Read(), true
+		return rm.updateRouteRef(lk), true
 	}
 	return nil, false
+}
+
+func (rm *ResourceManager) updateRouteRef(
+	lk *linker.Link[string, safe.Ref[spec.DGateRoute]],
+) *spec.DGateRoute {
+	rt := lk.Item().Read()
+	rt.Modules = []*spec.DGateModule{}
+	lk.Each("modules", func(_ string, lk linker.Linker[string]) {
+		mdLk := linker.NamedVertexWithVertex[string, safe.Ref[spec.DGateModule]](lk)
+		rt.Modules = append(rt.Modules, mdLk.Item().Read())
+	})
+	if mods, ok := rm.getRouteModules(rt.Name, rt.Namespace.Name); ok {
+		rt.Modules = mods
+	}
+	if rt.Service != nil {
+		svcKey := rt.Service.Name + "/" + rt.Namespace.Name
+		if svc, ok := rm.services.Find(svcKey); ok {
+			rt.Service = svc.Item().Read()
+		}
+	}
+	return rt
 }
 
 // GetRoutes returns a list of all routes
@@ -167,7 +188,7 @@ func (rm *ResourceManager) GetRoutes() []*spec.DGateRoute {
 	defer rm.mutex.RLockMain()()
 	var routes []*spec.DGateRoute
 	rm.routes.Each(func(_ string, rtlk *linker.Link[string, safe.Ref[spec.DGateRoute]]) bool {
-		routes = append(routes, rtlk.Item().Read())
+		routes = append(routes, rm.updateRouteRef(rtlk))
 		return true
 	})
 	return routes
@@ -179,8 +200,8 @@ func (rm *ResourceManager) GetRoutesByNamespace(namespace string) []*spec.DGateR
 	var routes []*spec.DGateRoute
 	if nsLk, ok := rm.namespaces.Find(namespace); ok {
 		nsLk.Each("routes", func(_ string, lk linker.Linker[string]) {
-			rtLk := linker.NamedVertexWithVertex[string, safe.Ref[spec.DGateRoute]](lk)
-			routes = append(routes, rtLk.Item().Read())
+			rtlk := linker.NamedVertexWithVertex[string, safe.Ref[spec.DGateRoute]](lk)
+			routes = append(routes, rm.updateRouteRef(rtlk))
 		})
 	}
 	return routes
@@ -193,8 +214,8 @@ func (rm *ResourceManager) GetRouteNamespaceMap() map[string][]*spec.DGateRoute 
 	rm.namespaces.Each(func(ns string, lk *linker.Link[string, safe.Ref[spec.DGateNamespace]]) bool {
 		routes := []*spec.DGateRoute{}
 		lk.Each("routes", func(_ string, lk linker.Linker[string]) {
-			rtLk := linker.NamedVertexWithVertex[string, safe.Ref[spec.DGateRoute]](lk)
-			routes = append(routes, rtLk.Item().Read())
+			rtlk := linker.NamedVertexWithVertex[string, safe.Ref[spec.DGateRoute]](lk)
+			routes = append(routes, rm.updateRouteRef(rtlk))
 		})
 		if len(routes) > 0 {
 			routeMap[ns] = routes
@@ -374,15 +395,20 @@ func (rm *ResourceManager) AddService(service *spec.Service) (*spec.DGateService
 	if err != nil {
 		return nil, err
 	}
-	rw := safe.NewRef(svc)
-	svcLk := linker.NewNamedVertexWithValue(rw, "routes", "namespaces")
-	if nsLk, ok := rm.namespaces.Find(service.NamespaceName); ok {
-		svcLk.LinkOneMany("namespaces", service.NamespaceName, nsLk)
-		nsLk.LinkOneMany("services", service.Name, svcLk)
-		rm.services.Insert(service.Name+"/"+service.NamespaceName, svcLk)
-		return rw.Read(), nil
+	if svcLk, ok := rm.services.Find(service.Name + "/" + service.NamespaceName); ok {
+		svcLk.Item().Replace(svc)
+		return svc, nil
 	} else {
-		return nil, ErrNamespaceNotFound(service.NamespaceName)
+		rw := safe.NewRef(svc)
+		svcLk = linker.NewNamedVertexWithValue(rw, "routes", "namespaces")
+		if nsLk, ok := rm.namespaces.Find(service.NamespaceName); ok {
+			svcLk.LinkOneMany("namespaces", service.NamespaceName, nsLk)
+			nsLk.LinkOneMany("services", service.Name, svcLk)
+			rm.services.Insert(service.Name+"/"+service.NamespaceName, svcLk)
+			return rw.Read(), nil
+		} else {
+			return nil, ErrNamespaceNotFound(service.NamespaceName)
+		}
 	}
 }
 
@@ -493,13 +519,18 @@ func (rm *ResourceManager) AddDomain(domain *spec.Domain) (*spec.DGateDomain, er
 	if err != nil {
 		return nil, err
 	}
-	rw := safe.NewRef(dm)
-	dmLk := linker.NewNamedVertexWithValue(rw, "namespace")
-	if nsLk, ok := rm.namespaces.Find(domain.NamespaceName); ok {
-		nsLk.LinkOneMany("domains", domain.Name, dmLk)
-		dmLk.LinkOneOne("namespace", domain.NamespaceName, nsLk)
-		rm.domains.Insert(domain.Name+"/"+domain.NamespaceName, dmLk)
-		return rw.Read(), nil
+	if dmLk, ok := rm.domains.Find(domain.Name + "/" + domain.NamespaceName); ok {
+		dmLk.Item().Replace(dm)
+		return dm, nil
+	} else {
+		rw := safe.NewRef(dm)
+		dmLk = linker.NewNamedVertexWithValue(rw, "namespace")
+		if nsLk, ok := rm.namespaces.Find(domain.NamespaceName); ok {
+			nsLk.LinkOneMany("domains", domain.Name, dmLk)
+			dmLk.LinkOneOne("namespace", domain.NamespaceName, nsLk)
+			rm.domains.Insert(domain.Name+"/"+domain.NamespaceName, dmLk)
+			return rw.Read(), nil
+		}
 	}
 	return nil, ErrNamespaceNotFound(domain.NamespaceName)
 }
@@ -566,18 +597,24 @@ func (rm *ResourceManager) GetModules() []*spec.DGateModule {
 // GetRouteModules returns a list of all modules in a route
 func (rm *ResourceManager) GetRouteModules(name, namespace string) ([]*spec.DGateModule, bool) {
 	defer rm.mutex.RLock(namespace)()
-	route, ok := rm.getRoute(name, namespace)
-	if !ok {
+	return rm.getRouteModules(name, namespace)
+}
+
+// getRouteModules returns a list of all modules in a route
+func (rm *ResourceManager) getRouteModules(name, namespace string) ([]*spec.DGateModule, bool) {
+	if lk, ok := rm.routes.Find(name + "/" + namespace); ok {
+		rt := lk.Item().Read()
+		var modules []*spec.DGateModule
+		if rtLk, ok := rm.routes.Find(rt.Name + "/" + rt.Namespace.Name); ok {
+			rtLk.Each("modules", func(_ string, lk linker.Linker[string]) {
+				mdLk := linker.NamedVertexWithVertex[string, safe.Ref[spec.DGateModule]](lk)
+				modules = append(modules, mdLk.Item().Read())
+			})
+		}
+		return modules, true
+	} else {
 		return nil, false
 	}
-	var modules []*spec.DGateModule
-	if rtLk, ok := rm.routes.Find(route.Name + "/" + route.Namespace.Name); ok {
-		rtLk.Each("modules", func(_ string, lk linker.Linker[string]) {
-			mdLk := linker.NamedVertexWithVertex[string, safe.Ref[spec.DGateModule]](lk)
-			modules = append(modules, mdLk.Item().Read())
-		})
-	}
-	return modules, true
 }
 
 // GetModulesByNamespace returns a list of all modules in a namespace
@@ -595,19 +632,22 @@ func (rm *ResourceManager) GetModulesByNamespace(namespace string) []*spec.DGate
 
 func (rm *ResourceManager) AddModule(module *spec.Module) (*spec.DGateModule, error) {
 	defer rm.mutex.Lock(module.NamespaceName)()
-	md, err := rm.transformModule(module)
-	if err != nil {
+	if md, err := rm.transformModule(module); err != nil {
 		return nil, err
-	}
-	rw := safe.NewRef(md)
-	modLk := linker.NewNamedVertexWithValue(rw, "namespace", "routes")
-	if nsLk, ok := rm.namespaces.Find(module.NamespaceName); ok {
-		nsLk.LinkOneMany("modules", module.Name, modLk)
-		modLk.LinkOneOne("namespace", module.NamespaceName, nsLk)
-		rm.modules.Insert(module.Name+"/"+module.NamespaceName, modLk)
-		return rw.Read(), nil
+	} else if modLk, ok := rm.modules.Find(module.Name + "/" + module.NamespaceName); ok {
+		modLk.Item().Replace(md)
+		return md, nil
 	} else {
-		return nil, ErrNamespaceNotFound(module.NamespaceName)
+		rw := safe.NewRef(md)
+		modLk = linker.NewNamedVertexWithValue(rw, "namespace", "routes")
+		if nsLk, ok := rm.namespaces.Find(module.NamespaceName); ok {
+			nsLk.LinkOneMany("modules", module.Name, modLk)
+			modLk.LinkOneOne("namespace", module.NamespaceName, nsLk)
+			rm.modules.Insert(module.Name+"/"+module.NamespaceName, modLk)
+			return rw.Read(), nil
+		} else {
+			return nil, ErrNamespaceNotFound(module.NamespaceName)
+		}
 	}
 }
 
@@ -683,15 +723,20 @@ func (rm *ResourceManager) AddCollection(collection *spec.Collection) (*spec.DGa
 	if err != nil {
 		return nil, err
 	}
-	rw := safe.NewRef(cl)
-	colLk := linker.NewNamedVertexWithValue(rw, "namespace")
-	if nsLk, ok := rm.namespaces.Find(collection.NamespaceName); ok {
-		nsLk.LinkOneMany("collections", collection.Name, colLk)
-		colLk.LinkOneOne("namespace", collection.NamespaceName, nsLk)
-		rm.collections.Insert(collection.Name+"/"+collection.NamespaceName, colLk)
-		return rw.Read(), nil
+	if clLk, ok := rm.collections.Find(collection.Name + "/" + collection.NamespaceName); ok {
+		clLk.Item().Replace(cl)
+		return cl, nil
 	} else {
-		return nil, ErrNamespaceNotFound(collection.NamespaceName)
+		rw := safe.NewRef(cl)
+		colLk := linker.NewNamedVertexWithValue(rw, "namespace")
+		if nsLk, ok := rm.namespaces.Find(collection.NamespaceName); ok {
+			nsLk.LinkOneMany("collections", collection.Name, colLk)
+			colLk.LinkOneOne("namespace", collection.NamespaceName, nsLk)
+			rm.collections.Insert(collection.Name+"/"+collection.NamespaceName, colLk)
+			return rw.Read(), nil
+		} else {
+			return nil, ErrNamespaceNotFound(collection.NamespaceName)
+		}
 	}
 }
 
@@ -773,19 +818,24 @@ func (rm *ResourceManager) GetSecretsByNamespace(namespace string) []*spec.DGate
 
 func (rm *ResourceManager) AddSecret(secret *spec.Secret) (*spec.DGateSecret, error) {
 	defer rm.mutex.Lock(secret.NamespaceName)()
-	md, err := rm.transformSecret(secret)
+	sec, err := rm.transformSecret(secret)
 	if err != nil {
 		return nil, err
 	}
-	rw := safe.NewRef(md)
-	scrtLk := linker.NewNamedVertexWithValue(rw, "namespace")
-	if nsLk, ok := rm.namespaces.Find(secret.NamespaceName); ok {
-		nsLk.LinkOneMany("secrets", secret.Name, scrtLk)
-		scrtLk.LinkOneOne("namespace", secret.NamespaceName, nsLk)
-		rm.secrets.Insert(secret.Name+"/"+secret.NamespaceName, scrtLk)
-		return rw.Read(), nil
+	if rw, ok := rm.secrets.Find(secret.Name + "/" + secret.NamespaceName); ok {
+		rw.Item().Replace(sec)
+		return sec, nil
 	} else {
-		return nil, ErrNamespaceNotFound(secret.NamespaceName)
+		rw := safe.NewRef(sec)
+		scrtLk := linker.NewNamedVertexWithValue(rw, "namespace")
+		if nsLk, ok := rm.namespaces.Find(secret.NamespaceName); ok {
+			nsLk.LinkOneMany("secrets", secret.Name, scrtLk)
+			scrtLk.LinkOneOne("namespace", secret.NamespaceName, nsLk)
+			rm.secrets.Insert(secret.Name+"/"+secret.NamespaceName, scrtLk)
+			return rw.Read(), nil
+		} else {
+			return nil, ErrNamespaceNotFound(secret.NamespaceName)
+		}
 	}
 }
 
