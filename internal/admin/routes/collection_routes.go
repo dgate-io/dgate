@@ -197,7 +197,7 @@ func ConfigureCollectionAPI(server chi.Router, logger *zap.Logger, cs changestat
 			return
 		}
 
-		document, err := dm.GetDocumentByID(collectionName, namespaceName, documentId)
+		document, err := dm.GetDocumentByID(documentId, collectionName, namespaceName)
 		if err != nil {
 			util.JsonError(w, http.StatusNotFound, err.Error())
 			return
@@ -351,7 +351,7 @@ func ConfigureCollectionAPI(server chi.Router, logger *zap.Logger, cs changestat
 			util.JsonError(w, http.StatusBadRequest, "document_id is required")
 			return
 		}
-		document, err := dm.GetDocumentByID(collectionName, namespaceName, documentId)
+		document, err := dm.GetDocumentByID(documentId, collectionName, namespaceName)
 		if err != nil {
 			util.JsonError(w, http.StatusNotFound, err.Error())
 			return
