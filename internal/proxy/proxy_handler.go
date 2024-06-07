@@ -25,12 +25,24 @@ func proxyHandler(ps *ProxyState, reqCtx *RequestContext) {
 			With(
 				zap.String("route", reqCtx.route.Name),
 				zap.String("namespace", reqCtx.route.Namespace.Name),
+				zap.String("path", reqCtx.req.URL.Path),
+				zap.String("method", reqCtx.req.Method),
+				zap.String("query", reqCtx.req.URL.RawQuery),
+				zap.String("protocol", reqCtx.req.Proto),
+				zap.String("remote_address", reqCtx.req.RemoteAddr),
+				zap.String("user_agent", reqCtx.req.UserAgent()),
+				zap.Int64("content_length", reqCtx.req.ContentLength),
+				zap.String("content_type", reqCtx.req.Header.Get("Content-Type")),
 			)
 
 		if reqCtx.route.Service != nil {
 			event = event.With(zap.String("service", reqCtx.route.Service.Name))
 		}
-		event.Debug("Request Log")
+		if ps.config.ProxyConfig.StrictMode {
+			event.Info("Request log")
+		} else {
+			event.Debug("Request log")
+		}
 	}()
 
 	defer ps.metrics.MeasureProxyRequest(reqCtx, time.Now())

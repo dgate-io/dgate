@@ -21,27 +21,17 @@ func newDGateAdminFSM(logger *zap.Logger, cs changestate.ChangeState) *dgateAdmi
 	return &dgateAdminFSM{cs, logger}
 }
 
-func (fsm *dgateAdminFSM) isReplay(log *raft.Log) bool {
-	return !fsm.cs.Ready() &&
-		log.Index+1 >= fsm.cs.Raft().LastIndex() &&
-		log.Index+1 >= fsm.cs.Raft().AppliedIndex()
+func (fsm *dgateAdminFSM) isLatestLog(log *raft.Log) bool {
+	rft := fsm.cs.Raft()
+	return log.Index == rft.CommitIndex() ||
+		log.Index+1 == rft.CommitIndex()
 }
 
-func (fsm *dgateAdminFSM) checkLast(log *raft.Log) {
-	rft := fsm.cs.Raft()
-	if !fsm.cs.Ready() && fsm.isReplay(log) {
-		fsm.logger.Info("FSM is not ready, setting ready",
-			zap.Uint64("index", log.Index),
-			zap.Uint64("applied-index", rft.AppliedIndex()),
-			zap.Uint64("last-index", rft.LastIndex()),
-		)
-		defer func() {
-			if err := fsm.cs.ReloadState(false); err != nil {
-				fsm.logger.Error("Error processing change log in FSM", zap.Error(err))
-			} else {
-				fsm.cs.SetReady()
-			}
-		}()
+func (fsm *dgateAdminFSM) reload(cls ...*spec.ChangeLog) {
+	if err := fsm.cs.ReloadState(false, cls...); err != nil {
+		fsm.logger.Error("Error processing change log in FSM", zap.Error(err))
+	} else {
+		fsm.cs.SetReady()
 	}
 }
 
@@ -82,43 +72,56 @@ func (fsm *dgateAdminFSM) applyLog(log *raft.Log) (*spec.ChangeLog, error) {
 }
 
 func (fsm *dgateAdminFSM) Apply(log *raft.Log) any {
-	defer fsm.checkLast(log)
-	_, err := fsm.applyLog(log)
+	rft := fsm.cs.Raft()
+	fsm.logger.Debug("applying log",
+		zap.Uint64("current", log.Index),
+		zap.Uint64("applied", rft.AppliedIndex()),
+		zap.Uint64("commit", rft.CommitIndex()),
+		zap.Uint64("last", rft.LastIndex()),
+	)
+	cl, err := fsm.applyLog(log)
+	if err != nil && !fsm.cs.Ready() {
+		fsm.reload(cl)
+	} else {
+		fsm.logger.Error("Error processing change log in FSM", zap.Error(err))
+	}
 	return err
 }
 
 func (fsm *dgateAdminFSM) ApplyBatch(logs []*raft.Log) []any {
-	lastLog := logs[len(logs)-1]
-	if fsm.isReplay(lastLog) {
-		rft := fsm.cs.Raft()
-		fsm.logger.Info("applying log batch logs",
-			zap.Int("size", len(logs)),
-			zap.Uint64("current", lastLog.Index),
-			zap.Uint64("applied", rft.AppliedIndex()),
-			zap.Uint64("commit", rft.CommitIndex()),
-			zap.Uint64("last", rft.LastIndex()),
-		)
+	if len(logs) == 0 || logs == nil {
+		fsm.logger.Warn("No logs to apply in ApplyBatch")
+		return nil
 	}
+	lastLog := logs[len(logs)-1]
+	rft := fsm.cs.Raft()
+	fsm.logger.Info("applying batch logs",
+		zap.Int("size", len(logs)),
+		zap.Uint64("current", lastLog.Index),
+		zap.Uint64("applied", rft.AppliedIndex()),
+		zap.Uint64("commit", rft.CommitIndex()),
+		zap.Uint64("last", rft.LastIndex()),
+	)
+
 	cls := make([]*spec.ChangeLog, 0, len(logs))
-	defer func() {
-		if !fsm.cs.Ready() {
-			fsm.checkLast(logs[len(logs)-1])
-			return
-		}
-
-		if err := fsm.cs.ReloadState(true, cls...); err != nil {
-			fsm.logger.Error("Error reloading state @ FSM ApplyBatch", zap.Error(err))
-		}
-	}()
-
 	results := make([]any, len(logs))
 	for i, log := range logs {
-		var cl *spec.ChangeLog
-		cl, results[i] = fsm.applyLog(log)
-		if cl != nil {
+		var (
+			cl  *spec.ChangeLog
+			err error
+		)
+		if cl, err = fsm.applyLog(log); err != nil {
+			results[i] = err
+			fsm.logger.Error("Error processing change log in FSM", zap.Error(err))
+		} else {
 			cls = append(cls, cl)
 		}
 	}
+
+	if fsm.cs.Ready() || fsm.isLatestLog(lastLog) {
+		fsm.reload(cls...)
+	}
+
 	return results
 }
 

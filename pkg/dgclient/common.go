@@ -150,5 +150,5 @@ func parseApiError(body io.Reader, wrapErr error) error {
 	if err := json.NewDecoder(body).Decode(&apiError); err != nil || apiError.Error == "" {
 		return wrapErr
 	}
-	return fmt.Errorf("%d: %s", wrapErr, apiError.Error)
+	return fmt.Errorf("%s: %s", wrapErr, apiError.Error)
 }

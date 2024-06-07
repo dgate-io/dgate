@@ -1,6 +1,8 @@
 package spec
 
 import (
+	"bufio"
+	"net"
 	"net/http"
 )
 
@@ -17,6 +19,7 @@ type rwTracker struct {
 	bytesWritten int64
 }
 
+var _ http.Hijacker = (*rwTracker)(nil)
 var _ ResponseWriterTracker = (*rwTracker)(nil)
 
 func NewResponseWriterTracker(rw http.ResponseWriter) ResponseWriterTracker {
@@ -60,4 +63,12 @@ func (t *rwTracker) HeadersSent() bool {
 
 func (t *rwTracker) BytesWritten() int64 {
 	return t.bytesWritten
+}
+
+func (t *rwTracker) Hijack() (net.Conn, *bufio.ReadWriter, error) {
+	hijacker, ok := t.rw.(http.Hijacker)
+	if !ok {
+		return nil, nil, http.ErrNotSupported
+	}
+	return hijacker.Hijack()
 }

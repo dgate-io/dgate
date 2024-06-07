@@ -81,7 +81,7 @@ func (ps *ProxyState) processChangeLog(cl *spec.ChangeLog, reload, store bool) (
 			err = fmt.Errorf("unknown command: %s", cl.Cmd)
 		}
 		if err != nil {
-			ps.logger.Error("decoding or processing change log", zap.Error(err))
+			ps.logger.Error("error processing change log", zap.Error(err))
 			return
 		}
 	}
@@ -97,10 +97,8 @@ func (ps *ProxyState) processChangeLog(cl *spec.ChangeLog, reload, store bool) (
 			//   even if the change is a noop, we still need to update the hash
 			changeHash, err := HashAny(ps.changeHash, cl)
 			if err != nil {
-				if !ps.config.Debug {
-					return err
-				}
 				ps.logger.Error("error updating change log hash", zap.Error(err))
+				return err
 			} else {
 				ps.changeHash = changeHash
 			}
@@ -254,25 +252,8 @@ func (ps *ProxyState) processSecret(scrt *spec.Secret, cl *spec.ChangeLog) (err 
 	return err
 }
 
-// applyChange - apply a change to the proxy state, returns a channel that will receive an error when the state has been updated
-func (ps *ProxyState) applyChange(changeLog *spec.ChangeLog) <-chan error {
-	done := make(chan error, 1)
-	if changeLog == nil {
-		changeLog = &spec.ChangeLog{
-			Cmd: spec.NoopCommand,
-		}
-	}
-	changeLog.SetErrorChan(done)
-	if err := ps.processChangeLog(changeLog, true, true); err != nil {
-		done <- err
-	}
-	return done
-}
-
 func (ps *ProxyState) restoreFromChangeLogs(directApply bool) error {
-	// restore state change logs
-	logs, err := ps.store.FetchChangeLogs()
-	if err != nil {
+	if logs, err := ps.store.FetchChangeLogs(); err != nil {
 		if err == badger.ErrKeyNotFound {
 			ps.logger.Debug("no state change logs found in storage")
 		} else {
@@ -295,17 +276,12 @@ func (ps *ProxyState) restoreFromChangeLogs(directApply bool) error {
 				return err
 			}
 		}
-		if !directApply {
-			if err = ps.processChangeLog(nil, true, false); err != nil {
-				return err
-			}
-		} else {
+		if directApply {
 			if err = ps.reconfigureState(false, nil); err != nil {
-				return nil
+				return err
 			}
 		}
 
-		// TODO: optionally compact change logs through a flag in config?
 		if len(logs) > 1 {
 			removed, err := ps.compactChangeLogs(logs)
 			if err != nil {

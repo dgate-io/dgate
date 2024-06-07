@@ -82,22 +82,16 @@ func configureRoutes(
 				allowed, err := ipList.Contains(remoteHost)
 				if !allowed && adminConfig.XForwardedForDepth > 0 {
 					xForwardedForIps := r.Header.Values("X-Forwarded-For")
-					count := min(adminConfig.XForwardedForDepth, len(xForwardedForIps))
-					for i := 0; i < count; i++ {
-						allowed, err = ipList.Contains(xForwardedForIps[i])
-						if err != nil {
-							logger.Error("error checking x-forwarded-for ip",
-								zap.Error(err),
-							)
-							if conf.Debug {
-								http.Error(w, "Bad Request: could not parse x-forwarded-for IP address", http.StatusBadRequest)
-							}
-							http.Error(w, "Bad Request", http.StatusBadRequest)
-							return
+					if adminConfig.XForwardedForDepth >= len(xForwardedForIps) {
+						depth := min(adminConfig.XForwardedForDepth, len(xForwardedForIps))
+						targetIp := xForwardedForIps[len(xForwardedForIps)-depth]
+						allowed, err = ipList.Contains(targetIp)
+						if err == nil && allowed {
+							remoteHost = targetIp
+						} else {
+							allowed = false
 						}
-						if allowed {
-							break
-						}
+
 					}
 				}
 
@@ -145,17 +139,18 @@ func configureRoutes(
 					return
 				}
 			}
-			raftInstance := cs.Raft()
-			if r.Method == http.MethodPut && raftInstance != nil {
-				leader := raftInstance.Leader()
-				if leader == "" {
-					util.JsonError(w, http.StatusServiceUnavailable, "raft: no leader")
-					return
-				}
-				if raftInstance.State() != raft.Leader {
-					r.URL.Host = string(leader)
-					http.Redirect(w, r, r.URL.String(), http.StatusTemporaryRedirect)
-					return
+			if raftInstance := cs.Raft(); raftInstance != nil {
+				if r.Method == http.MethodPut || r.Method == http.MethodDelete {
+					leader := raftInstance.Leader()
+					if leader == "" {
+						util.JsonError(w, http.StatusServiceUnavailable, "raft: no leader")
+						return
+					}
+					if raftInstance.State() != raft.Leader {
+						r.URL.Host = string(leader)
+						http.Redirect(w, r, r.URL.String(), http.StatusTemporaryRedirect)
+						return
+					}
 				}
 			}
 
@@ -165,10 +160,14 @@ func configureRoutes(
 
 	server.Get("/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/plain")
-		w.Header().Set("X-DGate-Raft", fmt.Sprintf("%t", cs.Raft() != nil))
 		w.Header().Set("X-DGate-WatchOnly", fmt.Sprintf("%t", adminConfig.WatchOnly))
 		w.Header().Set("X-DGate-ChangeHash", fmt.Sprintf("%d", cs.ChangeHash()))
-		w.Header().Set("X-DGate-AdminAPI", "true")
+		if raftInstance := cs.Raft(); raftInstance != nil {
+			w.Header().Set(
+				"X-DGate-Raft-State",
+				raftInstance.State().String(),
+			)
+		}
 		w.WriteHeader(http.StatusOK)
 		w.Write([]byte("DGate Admin API"))
 	}))

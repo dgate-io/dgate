@@ -1,4 +1,5 @@
 version: v1
+debug: true
 log_level: info
 
 tags:

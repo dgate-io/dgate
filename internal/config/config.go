@@ -39,19 +39,21 @@ type (
 	}
 
 	DGateProxyConfig struct {
-		Host                 string                   `koanf:"host"`
-		Port                 int                      `koanf:"port"`
-		TLS                  *DGateTLSConfig          `koanf:"tls"`
-		EnableH2C            bool                     `koanf:"enable_h2c"`
-		EnableHTTP2          bool                     `koanf:"enable_http2"`
-		EnableConsoleLogger  bool                     `koanf:"enable_console_logger"`
-		RedirectHttpsDomains []string                 `koanf:"redirect_https"`
-		AllowedDomains       []string                 `koanf:"allowed_domains"`
-		GlobalHeaders        map[string]string        `koanf:"global_headers"`
-		Transport            DGateHttpTransportConfig `koanf:"client_transport"`
+		Host                     string                   `koanf:"host"`
+		Port                     int                      `koanf:"port"`
+		TLS                      *DGateTLSConfig          `koanf:"tls"`
+		EnableH2C                bool                     `koanf:"enable_h2c"`
+		EnableHTTP2              bool                     `koanf:"enable_http2"`
+		EnableConsoleLogger      bool                     `koanf:"enable_console_logger"`
+		RedirectHttpsDomains     []string                 `koanf:"redirect_https"`
+		AllowedDomains           []string                 `koanf:"allowed_domains"`
+		GlobalHeaders            map[string]string        `koanf:"global_headers"`
+		Transport                DGateHttpTransportConfig `koanf:"client_transport"`
+		DisableXForwardedHeaders bool                     `koanf:"disable_x_forwarded_headers"`
+		StrictMode               bool                     `koanf:"strict_mode"`
+
 		// WARN: debug use only
-		InitResources            *DGateResources `koanf:"init_resources"`
-		DisableXForwardedHeaders bool            `koanf:"disable_x_forwarded_headers"`
+		InitResources *DGateResources `koanf:"init_resources"`
 	}
 
 	DGateTestServerConfig struct {
