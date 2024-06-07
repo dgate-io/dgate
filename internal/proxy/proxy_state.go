@@ -581,12 +581,13 @@ func (ps *ProxyState) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			closeConnection(w)
 			return
 		}
+		trustedIp := util.GetTrustedIP(r, ps.config.ProxyConfig.XForwardedForDepth)
 		ps.logger.Debug("No namespace found for request",
 			zap.String("protocol", r.Proto),
 			zap.String("host", r.Host),
 			zap.String("path", r.URL.Path),
 			zap.Bool("secure", r.TLS != nil),
-			zap.String("remote_addr", r.RemoteAddr),
+			zap.String("remote_addr", trustedIp),
 		)
 		util.WriteStatusCodeError(w, http.StatusNotFound)
 	}

@@ -51,6 +51,7 @@ type (
 		Transport                DGateHttpTransportConfig `koanf:"client_transport"`
 		DisableXForwardedHeaders bool                     `koanf:"disable_x_forwarded_headers"`
 		StrictMode               bool                     `koanf:"strict_mode"`
+		XForwardedForDepth       int                      `koanf:"x_forwarded_for_depth"`
 
 		// WARN: debug use only
 		InitResources *DGateResources `koanf:"init_resources"`

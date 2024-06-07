@@ -20,7 +20,7 @@ func GetTrustedIP(r *http.Request, depth int) string {
 	if len(ips) == 0 || depth > len(ips) {
 		remoteHost, _, err := net.SplitHostPort(r.RemoteAddr)
 		if err != nil {
-			remoteHost = r.RemoteAddr
+			return r.RemoteAddr
 		}
 		return remoteHost
 	}
