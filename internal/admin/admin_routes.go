@@ -3,7 +3,6 @@ package admin
 import (
 	"fmt"
 	"log"
-	"net"
 	"net/http"
 	"strings"
 
@@ -75,37 +74,20 @@ func configureRoutes(
 		}
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			if ipList.Len() > 0 {
-				remoteHost, _, err := net.SplitHostPort(r.RemoteAddr)
-				if err != nil {
-					remoteHost = r.RemoteAddr
-				}
-				allowed, err := ipList.Contains(remoteHost)
-				if !allowed && adminConfig.XForwardedForDepth > 0 {
-					xForwardedForIps := r.Header.Values("X-Forwarded-For")
-					if adminConfig.XForwardedForDepth >= len(xForwardedForIps) {
-						depth := min(adminConfig.XForwardedForDepth, len(xForwardedForIps))
-						targetIp := xForwardedForIps[len(xForwardedForIps)-depth]
-						allowed, err = ipList.Contains(targetIp)
-						if err == nil && allowed {
-							remoteHost = targetIp
-						} else {
-							allowed = false
-						}
-
-					}
-				}
-
+				remoteIp := util.GetTrustedIP(r,
+					conf.AdminConfig.XForwardedForDepth)
+				allowed, err := ipList.Contains(remoteIp)
 				if err != nil {
 					if conf.Debug {
 						http.Error(w, err.Error(), http.StatusInternalServerError)
 						return
 					}
-					http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+					http.Error(w, "could not parse X-Forwarded-For IP", http.StatusBadRequest)
 					return
 				}
 				if !allowed {
 					if conf.Debug {
-						http.Error(w, "Unauthorized IP Address: "+remoteHost, http.StatusUnauthorized)
+						http.Error(w, "Unauthorized IP Address: "+remoteIp, http.StatusUnauthorized)
 						return
 					}
 					http.Error(w, "Unauthorized", http.StatusUnauthorized)
@@ -132,7 +114,7 @@ func configureRoutes(
 				} else if adminConfig.KeyAuth.HeaderName != "" {
 					key = r.Header.Get(adminConfig.KeyAuth.HeaderName)
 				} else {
-					key = r.Header.Get("X-API-Key")
+					key = r.Header.Get("X-DGate-Key")
 				}
 				if _, keyFound := keyMap[key]; !keyFound {
 					http.Error(w, "Unauthorized", http.StatusUnauthorized)
