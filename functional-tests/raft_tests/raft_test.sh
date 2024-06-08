@@ -34,7 +34,7 @@ dgate-cli -f domain create name=dm-$id \
 
 dgate-cli -f service create \
     name=svc-$id namespace=ns-$id \
-    urls="http://localhost:8888/$RANDOM"
+    urls="http://localhost:8081/$RANDOM"
 
 dgate-cli -f route create \
     name=rt-$id \

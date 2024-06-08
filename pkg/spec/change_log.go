@@ -1,6 +1,7 @@
 package spec
 
 import (
+	"encoding/json"
 	"strconv"
 	"strings"
 	"time"
@@ -14,6 +15,14 @@ type ChangeLog struct {
 	Item      any     `json:"item"`
 	Version   int     `json:"version"`
 	errChan   chan error
+}
+
+func NewNoopChangeLog() *ChangeLog {
+	return &ChangeLog{
+		Version: 1,
+		ID:      strconv.FormatInt(time.Now().UnixNano(), 36),
+		Cmd:     NoopCommand,
+	}
 }
 
 func NewChangeLog(item Named, namespace string, cmd Command) *ChangeLog {
@@ -47,6 +56,10 @@ func (cl *ChangeLog) PushError(err error) {
 	if cl.errChan != nil {
 		cl.errChan <- err
 	}
+}
+
+func (cl *ChangeLog) JSONBytes() ([]byte, error) {
+	return json.Marshal(cl)
 }
 
 type Command string

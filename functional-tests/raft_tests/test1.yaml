@@ -1,6 +1,6 @@
 version: v1
 debug: true
-log_level: info
+log_level: debug
 
 tags:
  - "dev"

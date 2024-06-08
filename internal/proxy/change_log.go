@@ -14,12 +14,13 @@ import (
 )
 
 // processChangeLog - processes a change log and applies the change to the proxy state
-func (ps *ProxyState) processChangeLog(cl *spec.ChangeLog, reload, store bool) (err error) {
+func (ps *ProxyState) processChangeLog(cl *spec.ChangeLog, reload, store bool) error {
 	if cl == nil {
 		cl = &spec.ChangeLog{
 			Cmd: spec.NoopCommand,
 		}
 	} else if !cl.Cmd.IsNoop() {
+		var err error
 		switch cl.Cmd.Resource() {
 		case spec.Namespaces:
 			var item spec.Namespace
@@ -82,16 +83,16 @@ func (ps *ProxyState) processChangeLog(cl *spec.ChangeLog, reload, store bool) (
 		}
 		if err != nil {
 			ps.logger.Error("error processing change log", zap.Error(err))
-			return
+			return err
 		}
 	}
 	if reload {
 		if cl.Cmd.IsNoop() || cl.Cmd.Resource().IsRelatedTo(spec.Routes) {
 			ps.logger.Debug("Registering change log", zap.Stringer("cmd", cl.Cmd))
-			err = ps.reconfigureState(false, cl)
+			err := ps.reconfigureState(false, cl)
 			if err != nil {
 				ps.logger.Error("Error registering change log", zap.Error(err))
-				return
+				return err
 			}
 			// update change log hash only when the change is successfully applied
 			//   even if the change is a noop, we still need to update the hash
@@ -105,11 +106,15 @@ func (ps *ProxyState) processChangeLog(cl *spec.ChangeLog, reload, store bool) (
 		}
 	}
 	if store {
-		if err = ps.store.StoreChangeLog(cl); err != nil {
+		if cl.Cmd.IsNoop() {
+			ps.logger.Debug("Noop change log, skipping storage")
+			return nil
+		}
+		if err := ps.store.StoreChangeLog(cl); err != nil {
 			// TODO: find a way to revert the change and reload the state
 			// TODO: OR add flag in config to ignore storage errors
 			ps.logger.Error("Error storing change log", zap.Error(err))
-			return
+			return err
 		}
 	}
 

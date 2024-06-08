@@ -205,28 +205,52 @@ func (ps *ProxyState) WaitForChanges() error {
 }
 
 func (ps *ProxyState) ApplyChangeLog(log *spec.ChangeLog) error {
+	ps.logger.Debug("applying change log",
+		zap.Bool("replication", ps.replicationEnabled),
+	)
 	if ps.replicationEnabled {
-		if log.Cmd.IsNoop() {
-			return ps.processChangeLog(log, true, false)
-		}
-		r := ps.replicationSettings.raft
+		r := ps.Raft()
 		if r.State() != raft.Leader {
 			return raft.ErrNotLeader
 		}
-		encodedCL, err := json.Marshal(log)
-		if err != nil {
+		if ecl, err := json.Marshal(log); err != nil {
 			return err
+		} else {
+			restartCallback := func(err error) {
+				if err != nil {
+					ps.logger.Error("Error restarting state", zap.Error(err))
+					go ps.Stop()
+				} else {
+					ps.logger.Info("State successfully restarted")
+				}
+			}
+			raftLog := raft.Log{Data: ecl}
+			future := r.ApplyLog(raftLog, time.Second*15)
+			if err := future.Error(); err != nil {
+				ps.restartState(restartCallback)
+				return err
+			}
+			resp := future.Response()
+			if resp != nil {
+				ps.restartState(restartCallback)
+				switch val := resp.(type) {
+				case error:
+					return val
+				default:
+					ps.logger.Error("unexpected response from raft",
+						zap.Any("response", val),
+					)
+					return errors.New("unexpected response from raft")
+				}
+			}
+			ps.logger.With().
+				Info("waiting for reply from raft",
+					zap.String("id", log.ID),
+					zap.Stringer("command", log.Cmd),
+					zap.Error(err),
+				)
+			return nil
 		}
-		raftLog := raft.Log{
-			Data: encodedCL,
-		}
-		future := r.ApplyLog(raftLog, time.Second*15)
-		ps.logger.With().
-			Debug("waiting for reply from raft",
-				zap.String("id", log.ID),
-				zap.Stringer("command", log.Cmd),
-			)
-		return future.Error()
 	} else {
 		return ps.processChangeLog(log, true, true)
 	}
@@ -291,7 +315,7 @@ func (ps *ProxyState) ReloadState(check bool, logs ...*spec.ChangeLog) error {
 		}
 	}
 	if reload {
-		return ps.processChangeLog(nil, true, true)
+		return ps.processChangeLog(nil, true, false)
 	}
 	return nil
 }
@@ -300,8 +324,9 @@ func (ps *ProxyState) ProcessChangeLog(log *spec.ChangeLog, reload bool) error {
 	err := ps.processChangeLog(log, reload, !ps.replicationEnabled)
 	if err != nil {
 		ps.logger.Error("processing error", zap.Error(err))
+		return err
 	}
-	return err
+	return nil
 }
 
 func (ps *ProxyState) DynamicTLSConfig(certFile, keyFile string) *tls.Config {
@@ -399,7 +424,11 @@ func (ps *ProxyState) initConfigResources(resources *config.DGateResources) erro
 			return err
 		}
 		if numChanges > 0 {
-			defer ps.processChangeLog(nil, false, false)
+			defer func() {
+				if err != nil {
+					err = ps.processChangeLog(nil, false, false)
+				}
+			}()
 		}
 		ps.logger.Info("Initializing resources")
 		for _, ns := range resources.Namespaces {

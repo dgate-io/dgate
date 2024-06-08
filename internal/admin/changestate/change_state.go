@@ -10,7 +10,7 @@ import (
 type ChangeState interface {
 	// Change state
 	ApplyChangeLog(cl *spec.ChangeLog) error
-	ProcessChangeLog(*spec.ChangeLog, bool) error
+	ProcessChangeLog(cl *spec.ChangeLog, reload bool) error
 	WaitForChanges() error
 	ReloadState(bool, ...*spec.ChangeLog) error
 	ChangeHash() uint32
