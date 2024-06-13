@@ -185,7 +185,7 @@ func handleServiceProxy(ps *ProxyState, reqCtx *RequestContext, modExt ModuleExt
 				}
 			}
 			if !reqCtx.rw.HeadersSent() && reqCtx.rw.BytesWritten() == 0 {
-				util.WriteStatusCodeError(reqCtx.rw, http.StatusInternalServerError)
+				util.WriteStatusCodeError(reqCtx.rw, http.StatusBadGateway)
 			}
 		})
 

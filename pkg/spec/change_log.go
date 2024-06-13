@@ -16,6 +16,14 @@ type ChangeLog struct {
 	errChan   chan error
 }
 
+func NewNoopChangeLog() *ChangeLog {
+	return &ChangeLog{
+		Version: 1,
+		ID:      strconv.FormatInt(time.Now().UnixNano(), 36),
+		Cmd:     NoopCommand,
+	}
+}
+
 func NewChangeLog(item Named, namespace string, cmd Command) *ChangeLog {
 	if item == nil {
 		panic("item cannot be nil")

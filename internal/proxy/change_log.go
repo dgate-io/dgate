@@ -2,6 +2,7 @@ package proxy
 
 import (
 	"fmt"
+	"strconv"
 	"time"
 
 	"errors"
@@ -15,11 +16,19 @@ import (
 
 // processChangeLog - processes a change log and applies the change to the proxy state
 func (ps *ProxyState) processChangeLog(cl *spec.ChangeLog, reload, store bool) (err error) {
-	if cl == nil {
-		cl = &spec.ChangeLog{
-			Cmd: spec.NoopCommand,
+	defer func() {
+		ps.raftReady.Store(true)
+	}()
+	if !cl.Cmd.IsNoop() {
+		if len(ps.changeLogs) > 0 {
+			xcl := ps.changeLogs[len(ps.changeLogs)-1]
+			if xcl.ID == cl.ID {
+				ps.logger.Debug("duplicate change log", zap.String("id", cl.ID))
+				return nil
+			}
 		}
-	} else if !cl.Cmd.IsNoop() {
+		strconv.FormatInt(time.Now().UnixNano(), 36)
+		ps.changeLogs = append(ps.changeLogs, cl)
 		switch cl.Cmd.Resource() {
 		case spec.Namespaces:
 			var item spec.Namespace
@@ -88,8 +97,7 @@ func (ps *ProxyState) processChangeLog(cl *spec.ChangeLog, reload, store bool) (
 	if reload {
 		if cl.Cmd.IsNoop() || cl.Cmd.Resource().IsRelatedTo(spec.Routes) {
 			ps.logger.Debug("Registering change log", zap.Stringer("cmd", cl.Cmd))
-			err = ps.reconfigureState(false, cl)
-			if err != nil {
+			if err = ps.reconfigureState(false, cl); err != nil {
 				ps.logger.Error("Error registering change log", zap.Error(err))
 				return
 			}
@@ -108,9 +116,12 @@ func (ps *ProxyState) processChangeLog(cl *spec.ChangeLog, reload, store bool) (
 	}
 	if store {
 		if err = ps.store.StoreChangeLog(cl); err != nil {
-			// TODO: find a way to revert the change and reload the state
-			// TODO: OR add flag in config to ignore storage errors
-			ps.logger.Error("Error storing change log", zap.Error(err))
+			ps.logger.Error("Error storing change log, restarting state", zap.Error(err))
+			ps.restartState(func(err error) {
+				if err != nil {
+					go ps.Stop()
+				}
+			})
 			return
 		}
 	}
@@ -258,9 +269,7 @@ func (ps *ProxyState) processSecret(scrt *spec.Secret, cl *spec.ChangeLog) (err 
 func (ps *ProxyState) applyChange(changeLog *spec.ChangeLog) <-chan error {
 	done := make(chan error, 1)
 	if changeLog == nil {
-		changeLog = &spec.ChangeLog{
-			Cmd: spec.NoopCommand,
-		}
+		changeLog = spec.NewNoopChangeLog()
 	}
 	changeLog.SetErrorChan(done)
 	if err := ps.processChangeLog(changeLog, true, true); err != nil {
@@ -270,7 +279,6 @@ func (ps *ProxyState) applyChange(changeLog *spec.ChangeLog) <-chan error {
 }
 
 func (ps *ProxyState) restoreFromChangeLogs(directApply bool) error {
-	// restore state change logs
 	logs, err := ps.store.FetchChangeLogs()
 	if err != nil {
 		if err == badger.ErrKeyNotFound {
@@ -296,7 +304,8 @@ func (ps *ProxyState) restoreFromChangeLogs(directApply bool) error {
 			}
 		}
 		if !directApply {
-			if err = ps.processChangeLog(nil, true, false); err != nil {
+			cl := spec.NewNoopChangeLog()
+			if err = ps.processChangeLog(cl, true, false); err != nil {
 				return err
 			}
 		} else {

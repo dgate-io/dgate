@@ -3,13 +3,11 @@ package proxy
 import "github.com/hashicorp/raft"
 
 type ProxyReplication struct {
-	raft       *raft.Raft
-	raftConfig *raft.Config
+	raft *raft.Raft
 }
 
-func NewProxyReplication(raft *raft.Raft, raftConfig *raft.Config) *ProxyReplication {
+func NewProxyReplication(raft *raft.Raft) *ProxyReplication {
 	return &ProxyReplication{
-		raft:       raft,
-		raftConfig: raftConfig,
+		raft: raft,
 	}
 }

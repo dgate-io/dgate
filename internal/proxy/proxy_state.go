@@ -43,6 +43,7 @@ type ProxyState struct {
 	store      *proxystore.ProxyStore
 	proxyLock  *sync.RWMutex
 	changeHash uint32
+	changeLogs []*spec.ChangeLog
 
 	metrics     *ProxyMetrics
 	sharedCache cache.TCache
@@ -190,10 +191,37 @@ func (ps *ProxyState) Raft() *raft.Raft {
 	return nil
 }
 
-func (ps *ProxyState) SetupRaft(r *raft.Raft, rc *raft.Config) {
+func (ps *ProxyState) SetupRaft(r *raft.Raft, oc chan raft.Observation) {
 	ps.proxyLock.Lock()
 	defer ps.proxyLock.Unlock()
-	ps.replicationSettings = NewProxyReplication(r, rc)
+	go func() {
+		for obs := range oc {
+			switch raftObs := obs.Data.(type) {
+			case raft.PeerObservation:
+				ps.logger.Info("peer observation",
+					zap.Stringer("suffrage", raftObs.Peer.Suffrage),
+					zap.String("address", string(raftObs.Peer.Address)),
+					zap.String("id", string(raftObs.Peer.ID)),
+				)
+			case raft.LeaderObservation:
+				ps.logger.Info("leader observation",
+					zap.String("leader_addr", string(raftObs.LeaderAddr)),
+					zap.String("leader_id", string(raftObs.LeaderID)),
+				)
+			case raft.RequestVoteRequest:
+				ps.logger.Info("request vote request",
+					zap.String("candidate_id", string(raftObs.GetRPCHeader().ID)),
+					zap.String("candidate_addr", string(raftObs.GetRPCHeader().Addr)),
+					zap.Uint64("term", raftObs.Term),
+					zap.Uint64("last-log-index", raftObs.LastLogIndex),
+					zap.Uint64("last-log-term", raftObs.LastLogTerm),
+				)
+			}
+		}
+
+	}()
+
+	ps.replicationSettings = NewProxyReplication(r)
 }
 
 func (ps *ProxyState) WaitForChanges() error {
@@ -217,6 +245,10 @@ func (ps *ProxyState) ApplyChangeLog(log *spec.ChangeLog) error {
 		}
 		raftLog := raft.Log{
 			Data: encodedCL,
+		}
+		err = ps.ProcessChangeLog(log, true)
+		if err != nil {
+			return err
 		}
 		future := r.ApplyLog(raftLog, time.Second*15)
 		ps.logger.With().
@@ -256,22 +288,30 @@ func (ps *ProxyState) restartState(fn func(error)) {
 	ps.routers.Clear()
 	ps.sharedCache.Clear()
 	ps.Scheduler().Stop()
+
 	if err := ps.initConfigResources(ps.config.ProxyConfig.InitResources); err != nil {
 		fn(err)
 		return
 	}
 	if ps.replicationEnabled {
-		raft := ps.Raft()
-		err := raft.ReloadConfig(raft.ReloadableConfig())
-		if err != nil {
+		for _, log := range ps.changeLogs {
+			if err := ps.processChangeLog(log, false, false); err != nil {
+				fn(err)
+				return
+			}
+		}
+		cl := spec.NewNoopChangeLog()
+		if err := ps.processChangeLog(cl, true, false); err != nil {
+			fn(err)
+			return
+		}
+	} else {
+		if err := ps.restoreFromChangeLogs(true); err != nil {
 			fn(err)
 			return
 		}
 	}
-	if err := ps.restoreFromChangeLogs(true); err != nil {
-		fn(err)
-		return
-	}
+
 	ps.logger.Info("State successfully restarted")
 	fn(nil)
 }
@@ -397,7 +437,8 @@ func (ps *ProxyState) initConfigResources(resources *config.DGateResources) erro
 			return err
 		}
 		if numChanges > 0 {
-			defer ps.processChangeLog(nil, false, false)
+			cl := spec.NewNoopChangeLog()
+			defer ps.processChangeLog(cl, false, false)
 		}
 		ps.logger.Info("Initializing resources")
 		for _, ns := range resources.Namespaces {

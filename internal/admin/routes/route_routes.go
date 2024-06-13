@@ -58,7 +58,8 @@ func ConfigureRouteAPI(server chi.Router, logger *zap.Logger, cs changestate.Cha
 			}
 		}
 
-		util.JsonResponse(w, http.StatusCreated, spec.TransformDGateRoutes(rm.GetRoutesByNamespace(route.NamespaceName)...))
+		util.JsonResponse(w, http.StatusCreated, spec.TransformDGateRoutes(
+			rm.GetRoutesByNamespace(route.NamespaceName)...))
 	})
 
 	server.Delete("/route", func(w http.ResponseWriter, r *http.Request) {

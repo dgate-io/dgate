@@ -95,7 +95,7 @@ func LoadConfig(dgateConfigPath string) (*DGateConfig, error) {
 		shell := "/bin/sh"
 		if shellEnv := os.Getenv("SHELL"); shellEnv != "" {
 			shell = shellEnv
-		} 
+		}
 		resolveConfigStringPattern(data, CommandRegex, func(value string, results map[string]string) (string, error) {
 			cmdResult, err := exec.CommandContext(
 				ctx, shell, "-c", results["cmd"]).Output()
@@ -192,6 +192,7 @@ func LoadConfig(dgateConfigPath string) (*DGateConfig, error) {
 		}
 
 		if k.Exists("admin.replication") {
+			kDefault(k, "admin.replication.raft_id", k.Get("node_id"))
 			err = kRequireAll(k, "admin.host")
 			if err != nil {
 				return nil, err
@@ -297,10 +298,11 @@ func (config *DGateReplicationConfig) LoadRaftConfig(defaultConfig *raft.Config)
 		}
 		if config.RaftID != "" {
 			rc.LocalID = raft.ServerID(config.RaftID)
+		} else {
+			rc.LocalID = defaultConfig.LocalID
 		}
 	}
-	err := raft.ValidateConfig(rc)
-	if err != nil {
+	if err := raft.ValidateConfig(rc); err != nil {
 		panic(err)
 	}
 	return rc
