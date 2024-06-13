@@ -7,7 +7,6 @@
   - server management (start-proxy, stop-proxy, restart, status, logs, stats, etc.)
   - cluster management (raft commands, replica commands, etc.) (low priority)
   - other commands (backup, restore, etc.) (low priority)
-  - replace k6 with wrk for performance tests
 
 ## Add Module Tests
 
@@ -16,9 +15,6 @@
   - [ ] - Add option to specify export variables when ambiguous (?)
   - [ ] - check how global variable conflicts are handled
 
-## Start using Pkl
-
-replace dgate server config with pkl.
 
 ## dgate-cli declaritive config
 
@@ -69,10 +65,6 @@ expose metrics for the following:
 - Add Server Tags
 - Add Transactions
   - [ ] - Add transactional support for admin API
-
-## DGate Documentation (dgate.io/docs)
-
-Use Docusaurus to create the documentation for DGate.
 
 ## DGate Admin Console (low priority)
 
@@ -136,14 +128,6 @@ A good example of a bundle would be a bundle that adds support for OAuth2 authen
 Differing from common resource versioning, modules can have multiple versions that can be used at the same time. This can be used to test new versions of modules before deploying them to the cluster.
 
 
-## DGate CLI - argument variable suggestions
-
-For example, if the user types an argument that is not recognized, the CLI can suggest the correct argument by search the available arguments and finding the closest match.
-```
-dgate-cli ns mk my-ns nmae=my-ns
-Variable 'nmae' is not recognized. Did you mean 'name'?
-```
-
 ## DGate CLI - help command show required variables
 
 When the user runs the help command, the CLI should show the required variables for the command. For example, if the user runs `dgate-cli ns mk --help`, the CLI should show the required variables for the `ns mk` command. `name` is a required variable for the `ns mk` command. Also, the CLI should show non-required variables.
@@ -160,3 +144,7 @@ Add stack tracing for typescript modules.
 Currently, Raft Implementation is tightly coupled with the Admin API. This makes it difficult to change the Raft Implementation without changing the Admin API. Decouple the Raft Implementation from the Admin API to make it easier to change the Raft Implementation.
 
 ## Add Telemetry (sentry, datadog, etc.)
+
+## ResourceManager callback for resource changes
+
+Add a callback to the ResourceManager that is called when a resource is changed. This can be used to invalidate caches, update modules, and more.

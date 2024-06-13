@@ -43,6 +43,7 @@ type ProxyState struct {
 	store      *proxystore.ProxyStore
 	proxyLock  *sync.RWMutex
 	changeHash uint32
+	changeLogs []*spec.ChangeLog
 
 	metrics     *ProxyMetrics
 	sharedCache cache.TCache
@@ -167,15 +168,6 @@ func (ps *ProxyState) ChangeHash() uint32 {
 	return ps.changeHash
 }
 
-func (ps *ProxyState) SetReady() {
-	if ps.replicationEnabled && !ps.raftReady.Load() {
-		ps.logger.Info("Replication status is now ready after " +
-			time.Since(ps.startTime).String())
-		ps.raftReady.Store(true)
-		return
-	}
-}
-
 func (ps *ProxyState) Ready() bool {
 	if ps.replicationEnabled {
 		return ps.raftReady.Load()
@@ -190,16 +182,46 @@ func (ps *ProxyState) Raft() *raft.Raft {
 	return nil
 }
 
-func (ps *ProxyState) SetupRaft(r *raft.Raft, rc *raft.Config) {
+func (ps *ProxyState) SetupRaft(r *raft.Raft, oc chan raft.Observation) {
 	ps.proxyLock.Lock()
 	defer ps.proxyLock.Unlock()
-	ps.replicationSettings = NewProxyReplication(r, rc)
+	go func() {
+		for obs := range oc {
+			switch raftObs := obs.Data.(type) {
+			case raft.PeerObservation:
+				ps.logger.Info("peer observation",
+					zap.Stringer("suffrage", raftObs.Peer.Suffrage),
+					zap.String("address", string(raftObs.Peer.Address)),
+					zap.String("id", string(raftObs.Peer.ID)),
+				)
+			case raft.LeaderObservation:
+				ps.logger.Info("leader observation",
+					zap.String("leader_addr", string(raftObs.LeaderAddr)),
+					zap.String("leader_id", string(raftObs.LeaderID)),
+				)
+			case raft.RequestVoteRequest:
+				ps.logger.Info("request vote request",
+					zap.String("candidate_id", string(raftObs.GetRPCHeader().ID)),
+					zap.String("candidate_addr", string(raftObs.GetRPCHeader().Addr)),
+					zap.Uint64("term", raftObs.Term),
+					zap.Uint64("last-log-index", raftObs.LastLogIndex),
+					zap.Uint64("last-log-term", raftObs.LastLogTerm),
+				)
+			}
+		}
+
+	}()
+
+	ps.replicationSettings = NewProxyReplication(r)
 }
 
 func (ps *ProxyState) WaitForChanges() error {
 	ps.proxyLock.RLock()
 	defer ps.proxyLock.RUnlock()
-	return <-ps.applyChange(nil)
+	if rft := ps.Raft(); rft != nil {
+		return rft.Barrier(time.Second * 5).Error()
+	}
+	return nil
 }
 
 func (ps *ProxyState) ApplyChangeLog(log *spec.ChangeLog) error {
@@ -217,6 +239,10 @@ func (ps *ProxyState) ApplyChangeLog(log *spec.ChangeLog) error {
 		}
 		raftLog := raft.Log{
 			Data: encodedCL,
+		}
+		err = ps.ProcessChangeLog(log, true)
+		if err != nil {
+			return err
 		}
 		future := r.ApplyLog(raftLog, time.Second*15)
 		ps.logger.With().
@@ -289,7 +315,7 @@ func (ps *ProxyState) ReloadState(check bool, logs ...*spec.ChangeLog) error {
 		}
 	}
 	if reload {
-		<-ps.applyChange(nil)
+		return ps.processChangeLog(nil, true, false)
 	}
 	return nil
 }
@@ -298,8 +324,9 @@ func (ps *ProxyState) ProcessChangeLog(log *spec.ChangeLog, reload bool) error {
 	err := ps.processChangeLog(log, reload, !ps.replicationEnabled)
 	if err != nil {
 		ps.logger.Error("processing error", zap.Error(err))
+		return err
 	}
-	return err
+	return nil
 }
 
 func (ps *ProxyState) DynamicTLSConfig(certFile, keyFile string) *tls.Config {
@@ -397,7 +424,11 @@ func (ps *ProxyState) initConfigResources(resources *config.DGateResources) erro
 			return err
 		}
 		if numChanges > 0 {
-			defer ps.processChangeLog(nil, false, false)
+			defer func() {
+				if err != nil {
+					err = ps.processChangeLog(nil, false, false)
+				}
+			}()
 		}
 		ps.logger.Info("Initializing resources")
 		for _, ns := range resources.Namespaces {
@@ -572,19 +603,30 @@ func (ps *ProxyState) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		if router, ok := ps.routers.Find(ns.Name); ok {
 			router.ServeHTTP(w, r)
 		} else {
-			ps.logger.Debug("No router found for namespace",
-				zap.String("namespace", ns.Name),
-			)
 			util.WriteStatusCodeError(w, http.StatusNotFound)
 		}
 	} else {
+		if ps.config.ProxyConfig.StrictMode {
+			closeConnection(w)
+			return
+		}
+		trustedIp := util.GetTrustedIP(r, ps.config.ProxyConfig.XForwardedForDepth)
 		ps.logger.Debug("No namespace found for request",
 			zap.String("protocol", r.Proto),
 			zap.String("host", r.Host),
 			zap.String("path", r.URL.Path),
 			zap.Bool("secure", r.TLS != nil),
-			zap.String("remote_addr", r.RemoteAddr),
+			zap.String("remote_addr", trustedIp),
 		)
 		util.WriteStatusCodeError(w, http.StatusNotFound)
+	}
+}
+
+func closeConnection(w http.ResponseWriter) {
+	if loot, ok := w.(http.Hijacker); ok {
+		if conn, _, err := loot.Hijack(); err == nil {
+			defer conn.Close()
+			return
+		}
 	}
 }

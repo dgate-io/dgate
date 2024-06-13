@@ -13,6 +13,7 @@ import (
 	"github.com/dgate-io/dgate/internal/config"
 	"github.com/dgate-io/dgate/pkg/raftadmin"
 	"github.com/dgate-io/dgate/pkg/rafthttp"
+	"github.com/dgate-io/dgate/pkg/spec"
 	"github.com/dgate-io/dgate/pkg/storage"
 	"github.com/dgate-io/dgate/pkg/util/logadapter"
 	raftbadgerdb "github.com/dgate-io/raft-badger"
@@ -53,23 +54,18 @@ func setupRaft(
 	default:
 		panic(fmt.Errorf("invalid storage type: %s", conf.Storage.StorageType))
 	}
-	raftId := adminConfig.Replication.RaftID
-	if raftId == "" {
-		raftId = conf.NodeId
-	}
-
 	raftConfig := adminConfig.Replication.LoadRaftConfig(
 		&raft.Config{
 			ProtocolVersion:    raft.ProtocolVersionMax,
-			LocalID:            raft.ServerID(raftId),
+			LocalID:            raft.ServerID(adminConfig.Replication.RaftID),
 			HeartbeatTimeout:   time.Second * 4,
 			ElectionTimeout:    time.Second * 5,
 			CommitTimeout:      time.Second * 4,
-			BatchApplyCh:       true,
-			MaxAppendEntries:   16,
+			BatchApplyCh:       false,
+			MaxAppendEntries:   512,
 			LeaderLeaseTimeout: time.Second * 4,
 			// TODO: Support snapshots
-			SnapshotInterval:  time.Hour * 24,
+			SnapshotInterval:  time.Hour*2 ^ 32,
 			SnapshotThreshold: ^uint64(0),
 			Logger:            logadapter.NewZap2HCLogAdapter(logger),
 		},
@@ -90,15 +86,21 @@ func setupRaft(
 		address, http.DefaultClient, raftHttpLogger,
 		adminConfig.Replication.AdvertScheme+"://(address)/raft",
 	)
+	fsmLogger := logger.Named("fsm")
+	snapstore := raft.NewInmemSnapshotStore()
+	fsm := newDGateAdminFSM(fsmLogger, cs)
 	raftNode, err := raft.NewRaft(
-		raftConfig, newDGateAdminFSM(logger.Named("fsm"), cs),
-		lstore, sstore, raft.NewInmemSnapshotStore(), transport,
+		raftConfig, fsm, lstore,
+		sstore, snapstore, transport,
 	)
 	if err != nil {
 		panic(err)
 	}
 
-	cs.SetupRaft(raftNode, raftConfig)
+	observerChan := make(chan raft.Observation, 10)
+	raftNode.RegisterObserver(raft.NewObserver(observerChan, false, nil))
+	cs.SetupRaft(raftNode, observerChan)
+
 	// Setup raft handler
 	server.Handle("/raft/*", transport)
 
@@ -120,16 +122,27 @@ func setupRaft(
 	})
 
 	configFuture := raftNode.GetConfiguration()
-
 	if err = configFuture.Error(); err != nil {
 		panic(err)
 	}
 	serverConfig := configFuture.Configuration()
+	raftId := string(raftConfig.LocalID)
+	logger.Info("replication config",
+		zap.String("raft_id", raftId),
+		zap.Any("config", serverConfig),
+		zap.Int("max_append_entries", raftConfig.MaxAppendEntries),
+		zap.Bool("batch_chan", raftConfig.BatchApplyCh),
+		zap.Duration("commit_timeout", raftConfig.CommitTimeout),
+		zap.Int("config_proto", int(raftConfig.ProtocolVersion)),
+	)
 
-	logger.Debug("Replication config",
-		zap.Any("config", serverConfig))
+	defer cs.ProcessChangeLog(spec.NewNoopChangeLog(), false)
 
-	if adminConfig.Replication.BootstrapCluster {
+	if adminConfig.Replication.BootstrapCluster && len(serverConfig.Servers) == 0 {
+		logger.Info("bootstrapping cluster",
+			zap.String("id", raftId),
+			zap.String("advert_addr", advertAddr),
+		)
 		raftNode.BootstrapCluster(raft.Configuration{
 			Servers: []raft.Server{
 				{
@@ -162,6 +175,11 @@ func setupRaft(
 					addresses = append(addresses, fmt.Sprintf("%s:%d", addr, adminConfig.Port))
 				}
 			}
+			logger.Info("no servers found in configuration, adding myself to cluster",
+				zap.String("id", raftId),
+				zap.String("advert_addr", advertAddr),
+				zap.Strings("cluster_addrs", addresses),
+			)
 
 			if adminConfig.Replication.ClusterAddrs != nil && len(adminConfig.Replication.ClusterAddrs) > 0 {
 				addresses = append(addresses, adminConfig.Replication.ClusterAddrs...)

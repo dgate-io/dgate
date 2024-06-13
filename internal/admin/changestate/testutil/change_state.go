@@ -65,13 +65,8 @@ func (m *MockChangeState) ReloadState(a bool, cls ...*spec.ChangeLog) error {
 	return m.Called(a, cls).Error(0)
 }
 
-// SetReady implements changestate.ChangeState.
-func (m *MockChangeState) SetReady() {
-	m.Called()
-}
-
 // SetupRaft implements changestate.ChangeState.
-func (m *MockChangeState) SetupRaft(*raft.Raft, *raft.Config) {
+func (m *MockChangeState) SetupRaft(*raft.Raft, chan raft.Observation) {
 	m.Called().Error(0)
 }
 

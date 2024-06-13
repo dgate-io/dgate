@@ -25,12 +25,20 @@ func proxyHandler(ps *ProxyState, reqCtx *RequestContext) {
 			With(
 				zap.String("route", reqCtx.route.Name),
 				zap.String("namespace", reqCtx.route.Namespace.Name),
+				zap.String("path", reqCtx.req.URL.Path),
+				zap.String("method", reqCtx.req.Method),
+				zap.String("query", reqCtx.req.URL.RawQuery),
+				zap.String("protocol", reqCtx.req.Proto),
+				zap.String("remote_address", reqCtx.req.RemoteAddr),
+				zap.String("user_agent", reqCtx.req.UserAgent()),
+				zap.Int64("content_length", reqCtx.req.ContentLength),
+				zap.String("content_type", reqCtx.req.Header.Get("Content-Type")),
 			)
 
 		if reqCtx.route.Service != nil {
 			event = event.With(zap.String("service", reqCtx.route.Service.Name))
 		}
-		event.Debug("Request Log")
+		event.Info("Request log")
 	}()
 
 	defer ps.metrics.MeasureProxyRequest(reqCtx, time.Now())
@@ -156,7 +164,7 @@ func handleServiceProxy(ps *ProxyState, reqCtx *RequestContext, modExt ModuleExt
 		}).
 		ErrorHandler(func(w http.ResponseWriter, r *http.Request, reqErr error) {
 			upstreamErr = reqErr
-			ps.logger.Debug("Error proxying request",
+			ps.logger.Error("Error proxying request",
 				zap.String("error", reqErr.Error()),
 				zap.String("route", reqCtx.route.Name),
 				zap.String("service", reqCtx.route.Service.Name),
@@ -185,7 +193,13 @@ func handleServiceProxy(ps *ProxyState, reqCtx *RequestContext, modExt ModuleExt
 				}
 			}
 			if !reqCtx.rw.HeadersSent() && reqCtx.rw.BytesWritten() == 0 {
-				util.WriteStatusCodeError(reqCtx.rw, http.StatusInternalServerError)
+				ps.logger.Error("Writing error response",
+					zap.String("error", reqErr.Error()),
+					zap.String("route", reqCtx.route.Name),
+					zap.String("service", reqCtx.route.Service.Name),
+					zap.String("namespace", reqCtx.route.Namespace.Name),
+				)
+				util.WriteStatusCodeError(reqCtx.rw, http.StatusBadGateway)
 			}
 		})
 

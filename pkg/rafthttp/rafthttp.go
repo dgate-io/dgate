@@ -297,6 +297,7 @@ func (t *HTTPTransport) ServeHTTP(res http.ResponseWriter, req *http.Request) {
 // SetHeartbeatHandler implements the raft.Transport interface.
 func (t *HTTPTransport) SetHeartbeatHandler(cb func(rpc raft.RPC)) {
 	// Not supported
+	
 }
 
 // TimeoutNow implements the raft.Transport interface.

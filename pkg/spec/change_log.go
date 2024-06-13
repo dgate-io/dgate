@@ -13,7 +13,14 @@ type ChangeLog struct {
 	Namespace string  `json:"namespace"`
 	Item      any     `json:"item"`
 	Version   int     `json:"version"`
-	errChan   chan error
+}
+
+func NewNoopChangeLog() *ChangeLog {
+	return &ChangeLog{
+		Version: 1,
+		ID:      strconv.FormatInt(time.Now().UnixNano(), 36),
+		Cmd:     NoopCommand,
+	}
 }
 
 func NewChangeLog(item Named, namespace string, cmd Command) *ChangeLog {
@@ -33,19 +40,6 @@ func NewChangeLog(item Named, namespace string, cmd Command) *ChangeLog {
 		Item:      item,
 		Name:      item.GetName(),
 		Namespace: namespace,
-	}
-}
-
-func (cl *ChangeLog) SetErrorChan(errChan chan error) {
-	cl.errChan = errChan
-}
-
-func (cl *ChangeLog) PushError(err error) {
-	if cl == nil {
-		return
-	}
-	if cl.errChan != nil {
-		cl.errChan <- err
 	}
 }
 

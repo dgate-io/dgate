@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"time"
 
 	"github.com/dgate-io/chi-router"
 	"github.com/dgate-io/dgate/internal/admin/changestate"
@@ -67,8 +66,7 @@ func ConfigureServiceAPI(server chi.Router, logger *zap.Logger, cs changestate.C
 
 		if repl := cs.Raft(); repl != nil {
 			logger.Debug("Waiting for raft barrier")
-			future := repl.Barrier(time.Second * 5)
-			if err := future.Error(); err != nil {
+			if err := cs.WaitForChanges(); err != nil {
 				util.JsonError(w, http.StatusInternalServerError, err.Error())
 				return
 			}

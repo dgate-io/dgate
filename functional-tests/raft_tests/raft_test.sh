@@ -34,7 +34,7 @@ dgate-cli -f domain create name=dm-$id \
 
 dgate-cli -f service create \
     name=svc-$id namespace=ns-$id \
-    urls="http://localhost:8888/$RANDOM"
+    urls="http://localhost:8081/$RANDOM"
 
 dgate-cli -f route create \
     name=rt-$id \
@@ -55,14 +55,14 @@ for i in {1..5}; do
 done
 
 if dgate-cli --admin $ADMIN_URL4 namespace create name=0; then
-    echo "Expected error when creating namespace"
+    echo "Expected error when creating namespace on non-voter"
     exit 1
 fi
 
 export DGATE_ADMIN_API=$ADMIN_URL5
 
 if dgate-cli --admin $ADMIN_URL5 namespace create name=0; then
-    echo "Expected error when creating namespace"
+    echo "Expected error when creating namespace on non-voter"
     exit 1
 fi
 

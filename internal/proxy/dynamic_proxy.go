@@ -17,7 +17,7 @@ import (
 	"golang.org/x/net/http2/h2c"
 )
 
-func (ps *ProxyState) reconfigureState(init bool, log *spec.ChangeLog) (err error) {
+func (ps *ProxyState) reconfigureState(init bool) (err error) {
 	defer func() {
 		if err != nil {
 			ps.restartState(func(err error) {
@@ -27,7 +27,6 @@ func (ps *ProxyState) reconfigureState(init bool, log *spec.ChangeLog) (err erro
 				}
 			})
 		}
-		log.PushError(err)
 	}()
 
 	ps.proxyLock.Lock()
@@ -297,19 +296,24 @@ func (ps *ProxyState) Start() (err error) {
 
 func (ps *ProxyState) Stop() {
 	go func() {
-		<-time.After(10 * time.Second)
-		defer os.Exit(1)
+		defer os.Exit(3)
+		<-time.After(5 * time.Second)
 		ps.logger.Error("Failed to stop proxy server")
 	}()
 
 	ps.logger.Info("Stopping proxy server")
-	ps.proxyLock.Lock()
-	defer ps.proxyLock.Unlock()
 	defer os.Exit(0)
 	defer ps.Logger().Sync()
 
-	if raftNode := ps.Raft(); raftNode != nil {
-		raftNode.Shutdown().Error()
+	ps.proxyLock.Lock()
+	raftNode := ps.Raft()
+	ps.proxyLock.Unlock()
+
+	if raftNode != nil {
+		ps.logger.Info("Stopping Raft node")
+		if err := raftNode.Shutdown().Error(); err != nil {
+			ps.logger.Error("Error stopping Raft node", zap.Error(err))
+		}
 	}
 }
 

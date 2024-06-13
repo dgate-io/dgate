@@ -17,10 +17,9 @@ type ChangeState interface {
 
 	// Readiness
 	Ready() bool
-	SetReady()
 
 	// Replication
-	SetupRaft(*raft.Raft, *raft.Config)
+	SetupRaft(*raft.Raft, chan raft.Observation)
 	Raft() *raft.Raft
 
 	// Resources

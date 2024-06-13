@@ -95,7 +95,7 @@ func LoadConfig(dgateConfigPath string) (*DGateConfig, error) {
 		shell := "/bin/sh"
 		if shellEnv := os.Getenv("SHELL"); shellEnv != "" {
 			shell = shellEnv
-		} 
+		}
 		resolveConfigStringPattern(data, CommandRegex, func(value string, results map[string]string) (string, error) {
 			cmdResult, err := exec.CommandContext(
 				ctx, shell, "-c", results["cmd"]).Output()
@@ -182,6 +182,7 @@ func LoadConfig(dgateConfigPath string) (*DGateConfig, error) {
 	}
 	if k.Exists("admin") {
 		kDefault(k, "admin.host", "127.0.0.1")
+		kDefault(k, "admin.x_forwarded_for_depth", -1)
 		err = kRequireAll(k, "admin.port")
 		if err != nil {
 			return nil, err
@@ -192,6 +193,7 @@ func LoadConfig(dgateConfigPath string) (*DGateConfig, error) {
 		}
 
 		if k.Exists("admin.replication") {
+			kDefault(k, "admin.replication.raft_id", k.Get("node_id"))
 			err = kRequireAll(k, "admin.host")
 			if err != nil {
 				return nil, err
