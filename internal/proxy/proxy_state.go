@@ -168,15 +168,6 @@ func (ps *ProxyState) ChangeHash() uint32 {
 	return ps.changeHash
 }
 
-func (ps *ProxyState) SetReady() {
-	if ps.replicationEnabled && !ps.raftReady.Load() {
-		ps.logger.Info("Replication status is now ready after " +
-			time.Since(ps.startTime).String())
-		ps.raftReady.Store(true)
-		return
-	}
-}
-
 func (ps *ProxyState) Ready() bool {
 	if ps.replicationEnabled {
 		return ps.raftReady.Load()
@@ -227,7 +218,10 @@ func (ps *ProxyState) SetupRaft(r *raft.Raft, oc chan raft.Observation) {
 func (ps *ProxyState) WaitForChanges() error {
 	ps.proxyLock.RLock()
 	defer ps.proxyLock.RUnlock()
-	return <-ps.applyChange(nil)
+	if rft := ps.Raft(); rft != nil {
+		return rft.Barrier(time.Second * 5).Error()
+	}
+	return nil
 }
 
 func (ps *ProxyState) ApplyChangeLog(log *spec.ChangeLog) error {
@@ -288,30 +282,22 @@ func (ps *ProxyState) restartState(fn func(error)) {
 	ps.routers.Clear()
 	ps.sharedCache.Clear()
 	ps.Scheduler().Stop()
-
 	if err := ps.initConfigResources(ps.config.ProxyConfig.InitResources); err != nil {
 		fn(err)
 		return
 	}
 	if ps.replicationEnabled {
-		for _, log := range ps.changeLogs {
-			if err := ps.processChangeLog(log, false, false); err != nil {
-				fn(err)
-				return
-			}
-		}
-		cl := spec.NewNoopChangeLog()
-		if err := ps.processChangeLog(cl, true, false); err != nil {
-			fn(err)
-			return
-		}
-	} else {
-		if err := ps.restoreFromChangeLogs(true); err != nil {
+		raft := ps.Raft()
+		err := raft.ReloadConfig(raft.ReloadableConfig())
+		if err != nil {
 			fn(err)
 			return
 		}
 	}
-
+	if err := ps.restoreFromChangeLogs(true); err != nil {
+		fn(err)
+		return
+	}
 	ps.logger.Info("State successfully restarted")
 	fn(nil)
 }
@@ -329,7 +315,7 @@ func (ps *ProxyState) ReloadState(check bool, logs ...*spec.ChangeLog) error {
 		}
 	}
 	if reload {
-		<-ps.applyChange(nil)
+		return ps.processChangeLog(nil, true, false)
 	}
 	return nil
 }
@@ -338,8 +324,9 @@ func (ps *ProxyState) ProcessChangeLog(log *spec.ChangeLog, reload bool) error {
 	err := ps.processChangeLog(log, reload, !ps.replicationEnabled)
 	if err != nil {
 		ps.logger.Error("processing error", zap.Error(err))
+		return err
 	}
-	return err
+	return nil
 }
 
 func (ps *ProxyState) DynamicTLSConfig(certFile, keyFile string) *tls.Config {
@@ -437,8 +424,11 @@ func (ps *ProxyState) initConfigResources(resources *config.DGateResources) erro
 			return err
 		}
 		if numChanges > 0 {
-			cl := spec.NewNoopChangeLog()
-			defer ps.processChangeLog(cl, false, false)
+			defer func() {
+				if err != nil {
+					err = ps.processChangeLog(nil, false, false)
+				}
+			}()
 		}
 		ps.logger.Info("Initializing resources")
 		for _, ns := range resources.Namespaces {
@@ -613,19 +603,30 @@ func (ps *ProxyState) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		if router, ok := ps.routers.Find(ns.Name); ok {
 			router.ServeHTTP(w, r)
 		} else {
-			ps.logger.Debug("No router found for namespace",
-				zap.String("namespace", ns.Name),
-			)
 			util.WriteStatusCodeError(w, http.StatusNotFound)
 		}
 	} else {
+		if ps.config.ProxyConfig.StrictMode {
+			closeConnection(w)
+			return
+		}
+		trustedIp := util.GetTrustedIP(r, ps.config.ProxyConfig.XForwardedForDepth)
 		ps.logger.Debug("No namespace found for request",
 			zap.String("protocol", r.Proto),
 			zap.String("host", r.Host),
 			zap.String("path", r.URL.Path),
 			zap.Bool("secure", r.TLS != nil),
-			zap.String("remote_addr", r.RemoteAddr),
+			zap.String("remote_addr", trustedIp),
 		)
 		util.WriteStatusCodeError(w, http.StatusNotFound)
+	}
+}
+
+func closeConnection(w http.ResponseWriter) {
+	if loot, ok := w.(http.Hijacker); ok {
+		if conn, _, err := loot.Hijack(); err == nil {
+			defer conn.Close()
+			return
+		}
 	}
 }

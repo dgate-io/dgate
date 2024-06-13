@@ -97,7 +97,7 @@ func (ps *ProxyState) processChangeLog(cl *spec.ChangeLog, reload, store bool) (
 	if reload {
 		if cl.Cmd.IsNoop() || cl.Cmd.Resource().IsRelatedTo(spec.Routes) {
 			ps.logger.Debug("Registering change log", zap.Stringer("cmd", cl.Cmd))
-			if err = ps.reconfigureState(false, cl); err != nil {
+			if err = ps.reconfigureState(false); err != nil {
 				ps.logger.Error("Error registering change log", zap.Error(err))
 				return
 			}
@@ -265,19 +265,6 @@ func (ps *ProxyState) processSecret(scrt *spec.Secret, cl *spec.ChangeLog) (err 
 	return err
 }
 
-// applyChange - apply a change to the proxy state, returns a channel that will receive an error when the state has been updated
-func (ps *ProxyState) applyChange(changeLog *spec.ChangeLog) <-chan error {
-	done := make(chan error, 1)
-	if changeLog == nil {
-		changeLog = spec.NewNoopChangeLog()
-	}
-	changeLog.SetErrorChan(done)
-	if err := ps.processChangeLog(changeLog, true, true); err != nil {
-		done <- err
-	}
-	return done
-}
-
 func (ps *ProxyState) restoreFromChangeLogs(directApply bool) error {
 	logs, err := ps.store.FetchChangeLogs()
 	if err != nil {
@@ -309,7 +296,7 @@ func (ps *ProxyState) restoreFromChangeLogs(directApply bool) error {
 				return err
 			}
 		} else {
-			if err = ps.reconfigureState(false, nil); err != nil {
+			if err = ps.reconfigureState(false); err != nil {
 				return nil
 			}
 		}

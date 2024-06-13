@@ -3,7 +3,6 @@ package routes
 import (
 	"encoding/json"
 	"net/http"
-	"time"
 
 	"github.com/dgate-io/chi-router"
 	"github.com/dgate-io/dgate/internal/admin/changestate"
@@ -14,8 +13,7 @@ import (
 func ConfigureChangeLogAPI(server chi.Router, cs changestate.ChangeState, appConfig *config.DGateConfig) {
 	server.Get("/changelog/hash", func(w http.ResponseWriter, r *http.Request) {
 		if repl := cs.Raft(); repl != nil {
-			future := repl.Barrier(time.Second * 5)
-			if err := future.Error(); err != nil {
+			if err := cs.WaitForChanges(); err != nil {
 				util.JsonError(w, http.StatusInternalServerError, err.Error())
 				return
 			}

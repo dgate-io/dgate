@@ -182,6 +182,7 @@ func LoadConfig(dgateConfigPath string) (*DGateConfig, error) {
 	}
 	if k.Exists("admin") {
 		kDefault(k, "admin.host", "127.0.0.1")
+		kDefault(k, "admin.x_forwarded_for_depth", -1)
 		err = kRequireAll(k, "admin.port")
 		if err != nil {
 			return nil, err
@@ -298,11 +299,10 @@ func (config *DGateReplicationConfig) LoadRaftConfig(defaultConfig *raft.Config)
 		}
 		if config.RaftID != "" {
 			rc.LocalID = raft.ServerID(config.RaftID)
-		} else {
-			rc.LocalID = defaultConfig.LocalID
 		}
 	}
-	if err := raft.ValidateConfig(rc); err != nil {
+	err := raft.ValidateConfig(rc)
+	if err != nil {
 		panic(err)
 	}
 	return rc

@@ -17,17 +17,16 @@ import (
 	"golang.org/x/net/http2/h2c"
 )
 
-func (ps *ProxyState) reconfigureState(init bool, log *spec.ChangeLog) (err error) {
+func (ps *ProxyState) reconfigureState(init bool) (err error) {
 	defer func() {
 		if err != nil {
-			go ps.restartState(func(err error) {
+			ps.restartState(func(err error) {
 				if err != nil {
 					ps.logger.Error("Error restarting state", zap.Error(err))
 					go ps.Stop()
 				}
 			})
 		}
-		log.PushError(err)
 	}()
 
 	ps.proxyLock.Lock()
@@ -309,7 +308,7 @@ func (ps *ProxyState) Stop() {
 	ps.proxyLock.Lock()
 	raftNode := ps.Raft()
 	ps.proxyLock.Unlock()
-	
+
 	if raftNode != nil {
 		ps.logger.Info("Stopping Raft node")
 		if err := raftNode.Shutdown().Error(); err != nil {
