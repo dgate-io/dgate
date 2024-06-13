@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"io"
 	"net/http"
-	"time"
 
 	"github.com/dgate-io/chi-router"
 	"github.com/dgate-io/dgate/internal/admin/changestate"
@@ -15,7 +14,12 @@ import (
 	"go.uber.org/zap"
 )
 
-func ConfigureCollectionAPI(server chi.Router, logger *zap.Logger, cs changestate.ChangeState, appConfig *config.DGateConfig) {
+func ConfigureCollectionAPI(
+	server chi.Router,
+	logger *zap.Logger,
+	cs changestate.ChangeState,
+	appConfig *config.DGateConfig,
+) {
 	rm := cs.ResourceManager()
 	dm := cs.DocumentManager()
 	server.Put("/collection", func(w http.ResponseWriter, r *http.Request) {
@@ -63,19 +67,14 @@ func ConfigureCollectionAPI(server chi.Router, logger *zap.Logger, cs changestat
 			}
 		}
 
-		cl := spec.NewChangeLog(&collection, collection.NamespaceName, spec.AddCollectionCommand)
-		err = cs.ApplyChangeLog(cl)
-		if err != nil {
+		cl := spec.NewChangeLog(
+			&collection,
+			collection.NamespaceName,
+			spec.AddCollectionCommand,
+		)
+		if err = cs.ApplyChangeLog(cl); err != nil {
 			util.JsonError(w, http.StatusInternalServerError, err.Error())
 			return
-		}
-
-		if repl := cs.Raft(); repl != nil {
-			future := repl.Barrier(time.Second * 5)
-			if err := future.Error(); err != nil {
-				util.JsonError(w, http.StatusInternalServerError, err.Error())
-				return
-			}
 		}
 
 		util.JsonResponse(w, http.StatusCreated, spec.TransformDGateCollections(
@@ -272,18 +271,9 @@ func ConfigureCollectionAPI(server chi.Router, logger *zap.Logger, cs changestat
 		}
 
 		cl := spec.NewChangeLog(&doc, doc.NamespaceName, spec.AddDocumentCommand)
-		err = cs.ApplyChangeLog(cl)
-		if err != nil {
+		if err = cs.ApplyChangeLog(cl); err != nil {
 			util.JsonError(w, http.StatusInternalServerError, err.Error())
 			return
-		}
-
-		if repl := cs.Raft(); repl != nil {
-			future := repl.Barrier(time.Second * 5)
-			if err := future.Error(); err != nil {
-				util.JsonError(w, http.StatusInternalServerError, err.Error())
-				return
-			}
 		}
 
 		util.JsonResponse(w, http.StatusCreated, doc)

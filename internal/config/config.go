@@ -72,39 +72,35 @@ type (
 	}
 
 	DGateAdminConfig struct {
-		Host               string                  `koanf:"host"`
-		Port               int                     `koanf:"port"`
-		AllowList          []string                `koanf:"allow_list"`
-		XForwardedForDepth int                     `koanf:"x_forwarded_for_depth"`
-		WatchOnly          bool                    `koanf:"watch_only"`
-		Replication        *DGateReplicationConfig `koanf:"replication,omitempty"`
-		TLS                *DGateTLSConfig         `koanf:"tls"`
-		AuthMethod         AuthMethodType          `koanf:"auth_method"`
-		BasicAuth          *DGateBasicAuthConfig   `koanf:"basic_auth"`
-		KeyAuth            *DGateKeyAuthConfig     `koanf:"key_auth"`
-		JWTAuth            *DGateJWTAuthConfig     `koanf:"jwt_auth"`
+		Host               string                `koanf:"host"`
+		Port               int                   `koanf:"port"`
+		AllowList          []string              `koanf:"allow_list"`
+		AdvertAddr         string                `koanf:"advert_address"`
+		XForwardedForDepth int                   `koanf:"x_forwarded_for_depth"`
+		WatchOnly          bool                  `koanf:"watch_only"`
+		TLS                *DGateTLSConfig       `koanf:"tls"`
+		AuthMethod         AuthMethodType        `koanf:"auth_method"`
+		BasicAuth          *DGateBasicAuthConfig `koanf:"basic_auth"`
+		KeyAuth            *DGateKeyAuthConfig   `koanf:"key_auth"`
+		JWTAuth            *DGateJWTAuthConfig   `koanf:"jwt_auth"`
 	}
 
 	DGateReplicationConfig struct {
-		RaftID           string      `koanf:"id"`
-		SharedKey        string      `koanf:"shared_key"`
-		BootstrapCluster bool        `koanf:"bootstrap_cluster"`
-		DiscoveryDomain  string      `koanf:"discovery_domain"`
-		ClusterAddrs     []string    `koanf:"cluster_address"`
-		AdvertAddr       string      `koanf:"advert_address"`
-		AdvertScheme     string      `koanf:"advert_scheme"`
-		RaftConfig       *RaftConfig `koanf:"raft_config"`
+		RaftID            string            `koanf:"id"`
+		Host              string            `koanf:"host"`
+		Port              int               `koanf:"port"`
+		BootstrapCluster  bool              `koanf:"bootstrap_cluster"`
+		DiscoveryDomain   string            `koanf:"discovery_domain"`
+		ClusterAddrs      map[string]string `koanf:"cluster_addresses"`
+		AdvertAddr        string            `koanf:"advert_address"`
+		HeartbeatInterval time.Duration     `koanf:"heartbeat_internal"`
+		ElectionTimeout   time.Duration     `koanf:"election_timeout"`
+		ApplyTimeout      time.Duration     `koanf:"apply_timeout"`
+		LeaseDuration     time.Duration     `koanf:"lease_timeout"`
 	}
 
 	RaftConfig struct {
-		HeartbeatTimeout   time.Duration `koanf:"heartbeat_timeout"`
-		ElectionTimeout    time.Duration `koanf:"election_timeout"`
-		CommitTimeout      time.Duration `koanf:"commit_timeout"`
-		SnapshotInterval   time.Duration `koanf:"snapshot_interval"`
-		SnapshotThreshold  int           `koanf:"snapshot_threshold"`
-		MaxAppendEntries   int           `koanf:"max_append_entries"`
-		TrailingLogs       int           `koanf:"trailing_logs"`
-		LeaderLeaseTimeout time.Duration `koanf:"leader_lease_timeout"`
+		// SnapshotThreshold int           `koanf:"snapshot_threshold"`
 	}
 
 	DGateDashboardConfig struct {
@@ -179,8 +175,9 @@ type (
 	}
 
 	DGateStorageConfig struct {
-		StorageType StorageType    `koanf:"type"`
-		Config      map[string]any `koanf:",remain"`
+		StorageType StorageType             `koanf:"type"`
+		Replication *DGateReplicationConfig `koanf:"replication"`
+		Config      map[string]any          `koanf:",remain"`
 	}
 
 	DGateFileConfig struct {

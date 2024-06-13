@@ -36,12 +36,15 @@ func proxyHandler(ps *ProxyState, reqCtx *RequestContext) {
 			)
 
 		if reqCtx.route.Service != nil {
-			event = event.With(zap.String("service", reqCtx.route.Service.Name))
+			event = event.With(
+				zap.String("service", reqCtx.route.Service.Name),
+				zap.Stringers("upstream_urls", reqCtx.route.Service.URLs),
+			)
 		}
 		if ps.config.ProxyConfig.StrictMode {
-			event.Info("Request log")
+			event.Info("request log")
 		} else {
-			event.Debug("Request log")
+			event.Debug("request log")
 		}
 	}()
 

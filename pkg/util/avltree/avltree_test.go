@@ -1,15 +1,15 @@
-package avl_test
+package avltree_test
 
 import (
 	"math/rand"
 	"testing"
 
-	"github.com/dgate-io/dgate/pkg/util/tree/avl"
+	"github.com/dgate-io/dgate/pkg/util/avltree"
 )
 
 // Test AVL Tree Insertion
 func TestAVLTreeInsertDelete(t *testing.T) {
-	tree := avl.NewTree[string, int]() // Example with string keys and int values
+	tree := avltree.NewTree[string, int]() // Example with string keys and int values
 
 	testCases := map[string]int{
 		"lemon":      110,
@@ -119,7 +119,7 @@ func TestAVLTreeInsertDelete(t *testing.T) {
 }
 
 func TestAVLTreeEach(t *testing.T) {
-	tree := avl.NewTree[int, int]() // Example with string keys and int values
+	tree := avltree.NewTree[int, int]() // Example with string keys and int values
 
 	// Insertion tests
 	for i := 0; i < 1000; i++ {
@@ -151,7 +151,7 @@ func TestAVLTreeEach(t *testing.T) {
 }
 
 func TestAVLTreeHeight(t *testing.T) {
-	tree := avl.NewTree[int, int]() // Example with string keys and int values
+	tree := avltree.NewTree[int, int]() // Example with string keys and int values
 	if tree.Height() != 0 {
 		t.Errorf("Expected height 1, got %d", tree.Height())
 	}
@@ -172,7 +172,7 @@ func TestAVLTreeHeight(t *testing.T) {
 }
 
 func TestAVLTreeInsertion(t *testing.T) {
-	tree := avl.NewTree[int, int]() // Example with string keys and int values
+	tree := avltree.NewTree[int, int]() // Example with string keys and int values
 
 	t.Run("0-999", func(t *testing.T) {
 		// Insertion tests
@@ -216,12 +216,12 @@ func TestAVLTreeInsertion(t *testing.T) {
 	})
 }
 
-func treeHeight(t *testing.T, tree avl.Tree[int, int]) int {
+func treeHeight(t *testing.T, tree avltree.Tree[int, int]) int {
 	if tree.Empty() {
 		return 0
 	}
-	l := avl.NewTreeFromLeft(tree)
-	r := avl.NewTreeFromRight(tree)
+	l := avltree.NewTreeFromLeft(tree)
+	r := avltree.NewTreeFromRight(tree)
 	totalTreeHeight := 1 + max(treeHeight(t, l), treeHeight(t, r))
 	if totalTreeHeight != tree.Height() {
 		t.Errorf("Expected height %d, got %d", totalTreeHeight, tree.Height())
@@ -229,12 +229,12 @@ func treeHeight(t *testing.T, tree avl.Tree[int, int]) int {
 	return totalTreeHeight
 }
 
-func treeLength(t *testing.T, tree avl.Tree[int, int]) int {
+func treeLength(t *testing.T, tree avltree.Tree[int, int]) int {
 	if tree.Empty() {
 		return 0
 	}
-	l := avl.NewTreeFromLeft(tree)
-	r := avl.NewTreeFromRight(tree)
+	l := avltree.NewTreeFromLeft(tree)
+	r := avltree.NewTreeFromRight(tree)
 	totalTreeLength := 1 + treeLength(t, l) + treeLength(t, r)
 	if totalTreeLength != tree.Length() {
 		t.Errorf("Expected length %d, got %d", totalTreeLength, tree.Length())
@@ -244,7 +244,7 @@ func treeLength(t *testing.T, tree avl.Tree[int, int]) int {
 
 // Benchmark AVL Tree Insertion in ascending order
 func BenchmarkAVLTreeInsertAsc(b *testing.B) {
-	tree := avl.NewTree[int, int]() // Example with string keys and int values
+	tree := avltree.NewTree[int, int]() // Example with string keys and int values
 
 	// Run the insertion operation b.N times
 	for i := 0; i < b.N; i++ {
@@ -254,7 +254,7 @@ func BenchmarkAVLTreeInsertAsc(b *testing.B) {
 
 // Benchmark AVL Tree Insertion in descending order
 func BenchmarkAVLTreeInsertDesc(b *testing.B) {
-	tree := avl.NewTree[int, int]() // Example with string keys and int values
+	tree := avltree.NewTree[int, int]() // Example with string keys and int values
 
 	// Run the insertion operation b.N times
 	for i := 0; i < b.N; i++ {
@@ -264,7 +264,7 @@ func BenchmarkAVLTreeInsertDesc(b *testing.B) {
 
 // Benchmark AVL Tree Find operation
 func BenchmarkAVLTreeFind(b *testing.B) {
-	tree := avl.NewTree[int, int]()
+	tree := avltree.NewTree[int, int]()
 
 	// Insert k nodes into the tree
 	k := 1_000_000
@@ -284,7 +284,7 @@ func BenchmarkAVLTreeFind(b *testing.B) {
 
 // Benchmark AVL Tree Each operation
 func BenchmarkAVLTreeEach(b *testing.B) {
-	tree := avl.NewTree[int, int]()
+	tree := avltree.NewTree[int, int]()
 
 	// Insert k nodes into the tree
 	k := 10_000
@@ -305,7 +305,7 @@ func BenchmarkAVLTreeEach(b *testing.B) {
 }
 
 func BenchmarkAVLTreeInsertAndFindParallel(b *testing.B) {
-	tree := avl.NewTree[int, int]()
+	tree := avltree.NewTree[int, int]()
 	b.RunParallel(func(pb *testing.PB) {
 		i := 0
 		for pb.Next() {

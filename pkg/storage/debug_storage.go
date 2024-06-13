@@ -4,7 +4,7 @@ import (
 	"errors"
 	"strings"
 
-	"github.com/dgate-io/dgate/pkg/util/tree/avl"
+	"github.com/dgate-io/dgate/pkg/util/avltree"
 	"go.uber.org/zap"
 )
 
@@ -13,14 +13,14 @@ type DebugStoreConfig struct {
 }
 
 type DebugStore struct {
-	tree avl.Tree[string, []byte]
+	tree avltree.Tree[string, []byte]
 }
 
 var _ Storage = &DebugStore{}
 
 func NewDebugStore(cfg *DebugStoreConfig) *DebugStore {
 	return &DebugStore{
-		tree: avl.NewTree[string, []byte](),
+		tree: avltree.NewTree[string, []byte](),
 	}
 }
 

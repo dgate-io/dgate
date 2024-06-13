@@ -3,46 +3,43 @@ package proxy
 import (
 	"crypto/tls"
 	"encoding/base64"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"net"
 	"net/http"
 	"os"
 	"sync"
-	"sync/atomic"
 	"time"
 
 	"github.com/dgate-io/dgate/internal/config"
-	"github.com/dgate-io/dgate/internal/pattern"
 	"github.com/dgate-io/dgate/internal/proxy/proxy_transport"
-	"github.com/dgate-io/dgate/internal/proxy/proxystore"
 	"github.com/dgate-io/dgate/internal/proxy/reverse_proxy"
 	"github.com/dgate-io/dgate/internal/router"
+	"github.com/dgate-io/dgate/internal/store"
 	"github.com/dgate-io/dgate/pkg/cache"
 	"github.com/dgate-io/dgate/pkg/modules/extractors"
 	"github.com/dgate-io/dgate/pkg/resources"
 	"github.com/dgate-io/dgate/pkg/scheduler"
 	"github.com/dgate-io/dgate/pkg/spec"
-	"github.com/dgate-io/dgate/pkg/storage"
 	"github.com/dgate-io/dgate/pkg/util"
-	"github.com/dgate-io/dgate/pkg/util/tree/avl"
+	"github.com/dgate-io/dgate/pkg/util/avltree"
+	"github.com/dgate-io/dgate/pkg/util/pattern"
 	"github.com/dop251/goja"
 	"github.com/dop251/goja_nodejs/console"
-	"github.com/hashicorp/raft"
 	"go.uber.org/zap"
 )
 
 type ProxyState struct {
-	version    string
-	debugMode  bool
-	startTime  time.Time
-	config     *config.DGateConfig
-	logger     *zap.Logger
-	printer    console.Printer
-	store      *proxystore.ProxyStore
-	proxyLock  *sync.RWMutex
-	changeHash uint32
+	version       string
+	debugMode     bool
+	startTime     time.Time
+	config        *config.DGateConfig
+	logger        *zap.Logger
+	printer       console.Printer
+	store         *store.Store
+	proxyLock     *sync.RWMutex
+	changeHash    uint32
+	changeLogList []*spec.ChangeLog
 
 	metrics     *ProxyMetrics
 	sharedCache cache.TCache
@@ -50,14 +47,10 @@ type ProxyState struct {
 	rm   *resources.ResourceManager
 	skdr scheduler.Scheduler
 
-	providers   avl.Tree[string, *RequestContextProvider]
-	modPrograms avl.Tree[string, *goja.Program]
+	providers   avltree.Tree[string, *RequestContextProvider]
+	modPrograms avltree.Tree[string, *goja.Program]
 
-	raftReady           atomic.Bool
-	replicationSettings *ProxyReplication
-	replicationEnabled  bool
-
-	routers avl.Tree[string, *router.DynamicRouter]
+	routers avltree.Tree[string, *router.DynamicRouter]
 
 	ReverseProxyBuilder   reverse_proxy.Builder
 	ProxyTransportBuilder proxy_transport.Builder
@@ -65,26 +58,6 @@ type ProxyState struct {
 }
 
 func NewProxyState(logger *zap.Logger, conf *config.DGateConfig) *ProxyState {
-	var dataStore storage.Storage
-	switch conf.Storage.StorageType {
-	case config.StorageTypeDebug:
-		dataStore = storage.NewDebugStore(&storage.DebugStoreConfig{
-			Logger: logger,
-		})
-	case config.StorageTypeMemory:
-		dataStore = storage.NewMemoryStore(&storage.MemoryStoreConfig{
-			Logger: logger,
-		})
-	case config.StorageTypeFile:
-		fileConfig, err := config.StoreConfig[storage.FileStoreConfig](conf.Storage.Config)
-		if err != nil {
-			panic(fmt.Errorf("invalid config: %s", err))
-		}
-		fileConfig.Logger = logger
-		dataStore = storage.NewFileStore(&fileConfig)
-	default:
-		panic(fmt.Errorf("invalid storage type: %s", conf.Storage.StorageType))
-	}
 	var opt resources.Options
 	if conf.DisableDefaultNamespace {
 		logger.Debug("default namespace disabled")
@@ -95,36 +68,26 @@ func NewProxyState(logger *zap.Logger, conf *config.DGateConfig) *ProxyState {
 	if conf.ProxyConfig.EnableConsoleLogger {
 		printer = NewProxyPrinter(logger)
 	}
-	rpLogger := logger.Named("reverse-proxy")
-	storeLogger := logger.Named("store")
-	schedulerLogger := logger.Named("scheduler")
 
-	replicationEnabled := false
-	if conf.AdminConfig != nil && conf.AdminConfig.Replication != nil {
-		replicationEnabled = true
-	}
-	state := &ProxyState{
+	ps := &ProxyState{
 		startTime: time.Now(),
-		raftReady: atomic.Bool{},
 		logger:    logger,
 		debugMode: conf.Debug,
 		config:    conf,
 		metrics:   NewProxyMetrics(),
 		printer:   printer,
-		routers:   avl.NewTree[string, *router.DynamicRouter](),
+		routers:   avltree.NewTree[string, *router.DynamicRouter](),
 		rm:        resources.NewManager(opt),
 		skdr: scheduler.New(scheduler.Options{
-			Logger: schedulerLogger,
+			Logger: logger.Named("scheduler"),
 		}),
-		providers:          avl.NewTree[string, *RequestContextProvider](),
-		modPrograms:        avl.NewTree[string, *goja.Program](),
-		proxyLock:          new(sync.RWMutex),
-		sharedCache:        cache.New(),
-		store:              proxystore.New(dataStore, storeLogger),
-		replicationEnabled: replicationEnabled,
+		providers:   avltree.NewTree[string, *RequestContextProvider](),
+		modPrograms: avltree.NewTree[string, *goja.Program](),
+		proxyLock:   new(sync.RWMutex),
+		sharedCache: cache.New(),
 		ReverseProxyBuilder: reverse_proxy.NewBuilder().
 			FlushInterval(-1).
-			ErrorLogger(zap.NewStdLog(rpLogger)).
+			ErrorLogger(zap.NewStdLog(logger.Named("reverse-proxy"))).
 			CustomRewrite(func(in *http.Request, out *http.Request) {
 				if in.URL.Scheme == "ws" {
 					out.URL.Scheme = "http"
@@ -142,20 +105,26 @@ func NewProxyState(logger *zap.Logger, conf *config.DGateConfig) *ProxyState {
 		ProxyHandler:          proxyHandler,
 	}
 
+	st, err := store.NewStore(logger.Named("store"), ps, conf)
+	if err != nil {
+		panic("error creating store: " + err.Error())
+	}
+	ps.store = st
+
 	if conf.Debug {
-		if err := state.initConfigResources(conf.ProxyConfig.InitResources); err != nil {
+		if err := ps.initConfigResources(conf.ProxyConfig.InitResources); err != nil {
 			panic("error initializing resources: " + err.Error())
 		}
 	}
 
-	return state
+	return ps
 }
 
 func (ps *ProxyState) Version() string {
 	return ps.version
 }
 
-func (ps *ProxyState) Store() *proxystore.ProxyStore {
+func (ps *ProxyState) Store() *store.Store {
 	return ps.store
 }
 
@@ -167,93 +136,17 @@ func (ps *ProxyState) ChangeHash() uint32 {
 	return ps.changeHash
 }
 
-func (ps *ProxyState) SetReady() {
-	if ps.replicationEnabled && !ps.raftReady.Load() {
-		ps.logger.Info("Replication status is now ready")
-		ps.raftReady.Store(true)
-		return
-	}
-}
-
 func (ps *ProxyState) Ready() bool {
-	if ps.replicationEnabled {
-		return ps.raftReady.Load()
-	}
 	return true
-}
-
-func (ps *ProxyState) Raft() *raft.Raft {
-	if ps.replicationEnabled {
-		return ps.replicationSettings.raft
-	}
-	return nil
-}
-
-func (ps *ProxyState) SetupRaft(r *raft.Raft, rc *raft.Config) {
-	ps.proxyLock.Lock()
-	defer ps.proxyLock.Unlock()
-	ps.replicationSettings = NewProxyReplication(r, rc)
-}
-
-func (ps *ProxyState) WaitForChanges() error {
-	ps.proxyLock.RLock()
-	defer ps.proxyLock.RUnlock()
-	if rft := ps.Raft(); rft != nil {
-		return rft.Barrier(time.Second * 5).Error()
-	}
-	return nil
 }
 
 func (ps *ProxyState) ApplyChangeLog(log *spec.ChangeLog) error {
 	ps.logger.Debug("applying change log",
-		zap.Bool("replication", ps.replicationEnabled),
+		zap.String("id", log.ID),
+		zap.Stringer("cmd", log.Cmd),
+		zap.String("ref", log.Name+"@"+log.Namespace),
 	)
-	if ps.replicationEnabled {
-		r := ps.Raft()
-		if r.State() != raft.Leader {
-			return raft.ErrNotLeader
-		}
-		if ecl, err := json.Marshal(log); err != nil {
-			return err
-		} else {
-			restartCallback := func(err error) {
-				if err != nil {
-					ps.logger.Error("Error restarting state", zap.Error(err))
-					go ps.Stop()
-				} else {
-					ps.logger.Info("State successfully restarted")
-				}
-			}
-			raftLog := raft.Log{Data: ecl}
-			future := r.ApplyLog(raftLog, time.Second*15)
-			if err := future.Error(); err != nil {
-				ps.restartState(restartCallback)
-				return err
-			}
-			resp := future.Response()
-			if resp != nil {
-				ps.restartState(restartCallback)
-				switch val := resp.(type) {
-				case error:
-					return val
-				default:
-					ps.logger.Error("unexpected response from raft",
-						zap.Any("response", val),
-					)
-					return errors.New("unexpected response from raft")
-				}
-			}
-			ps.logger.With().
-				Info("waiting for reply from raft",
-					zap.String("id", log.ID),
-					zap.Stringer("command", log.Cmd),
-					zap.Error(err),
-				)
-			return nil
-		}
-	} else {
-		return ps.processChangeLog(log, true, true)
-	}
+	return ps.processChangeLog(log, true, true)
 }
 
 func (ps *ProxyState) ResourceManager() *resources.ResourceManager {
@@ -269,42 +162,40 @@ func (ps *ProxyState) SharedCache() cache.TCache {
 }
 
 // restartState - restart state clears the state and reloads the configuration
-// this is useful for rollbacks when broken changes are made.
-func (ps *ProxyState) restartState(fn func(error)) {
+// this is useful for rollbacks when broken changes are made. the fn callback
+// is called synchronously with the error if one occurs.
+func (ps *ProxyState) restartState(fn func(error)) error {
 	ps.proxyLock.Lock()
 	defer ps.proxyLock.Unlock()
 
+	if fn == nil {
+		fn = func(error) {}
+	}
 	ps.logger.Info("Attempting to restart state...")
 
 	ps.rm.Empty()
 	ps.modPrograms.Clear()
+	ps.sharedCache.Clear()
 	ps.providers.Clear()
 	ps.routers.Clear()
-	ps.sharedCache.Clear()
 	ps.Scheduler().Stop()
 	if err := ps.initConfigResources(ps.config.ProxyConfig.InitResources); err != nil {
 		fn(err)
-		return
-	}
-	if ps.replicationEnabled {
-		raft := ps.Raft()
-		err := raft.ReloadConfig(raft.ReloadableConfig())
-		if err != nil {
-			fn(err)
-			return
-		}
+		return err
 	}
 	if err := ps.restoreFromChangeLogs(true); err != nil {
 		fn(err)
-		return
+		return err
 	}
 	ps.logger.Info("State successfully restarted")
 	fn(nil)
+	return nil
 }
 
-// ReloadState - reload state checks the change logs to see if a reload is required,
-// specifying check as false skips this step and automatically reloads
-func (ps *ProxyState) ReloadState(check bool, logs ...*spec.ChangeLog) error {
+// reloadState - checks the change logs to see if a reload is required,
+// specifying check as false skips this step and automatically reloads. This is useful
+// for when a change log is applied and the state needs to be reloaded.
+func (ps *ProxyState) reloadState(check bool, logs ...*spec.ChangeLog) error {
 	reload := !check
 	if check {
 		for _, log := range logs {
@@ -320,13 +211,11 @@ func (ps *ProxyState) ReloadState(check bool, logs ...*spec.ChangeLog) error {
 	return nil
 }
 
-func (ps *ProxyState) ProcessChangeLog(log *spec.ChangeLog, reload bool) error {
-	err := ps.processChangeLog(log, reload, !ps.replicationEnabled)
-	if err != nil {
+func (ps *ProxyState) ProcessChangeLog(log *spec.ChangeLog, reload bool) (err error) {
+	if err = ps.processChangeLog(log, reload, !ps.store.ReplicationEnabled()); err != nil {
 		ps.logger.Error("processing error", zap.Error(err))
-		return err
 	}
-	return nil
+	return err
 }
 
 func (ps *ProxyState) DynamicTLSConfig(certFile, keyFile string) *tls.Config {

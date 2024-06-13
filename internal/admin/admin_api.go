@@ -20,8 +20,10 @@ import (
 )
 
 func StartAdminAPI(
-	version string, conf *config.DGateConfig,
-	logger *zap.Logger, cs changestate.ChangeState,
+	version string,
+	conf *config.DGateConfig,
+	logger *zap.Logger,
+	cs changestate.ChangeState,
 ) {
 	if conf.AdminConfig == nil {
 		logger.Warn("Admin API is disabled")

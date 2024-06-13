@@ -13,9 +13,6 @@ import (
 	"go.uber.org/zap"
 )
 
-// Raft Test -> ApplyChangeLog, WaitForChanges,
-//   CaptureState, EnableRaft, Raft, PersistState, RestoreState,
-
 // DynamicTLSConfig
 
 func TestDynamicTLSConfig_DomainCert(t *testing.T) {

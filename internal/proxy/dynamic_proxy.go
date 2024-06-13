@@ -1,6 +1,7 @@
 package proxy
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"net/http"
@@ -102,7 +103,7 @@ func (ps *ProxyState) setupModules() error {
 
 func (ps *ProxyState) setupRoutes() (err error) {
 	ps.logger.Debug("Setting up routes")
-	// reqCtxProviders := avl.NewTree[string, *RequestContextProvider]()
+	// reqCtxProviders := avltree.NewTree[string, *RequestContextProvider]()
 	for namespaceName, routes := range ps.rm.GetRouteNamespaceMap() {
 		mux := router.NewMux()
 		for _, rt := range routes {
@@ -286,10 +287,8 @@ func (ps *ProxyState) Start() (err error) {
 	go ps.startProxyServer()
 	go ps.startProxyServerTLS()
 
-	if !ps.replicationEnabled {
-		if err = ps.restoreFromChangeLogs(false); err != nil {
-			return err
-		}
+	if err = ps.restoreFromChangeLogs(false); err != nil {
+		return err
 	}
 
 	return nil
@@ -305,19 +304,16 @@ func (ps *ProxyState) Stop() {
 	ps.logger.Info("Stopping proxy server")
 	ps.proxyLock.Lock()
 	defer ps.proxyLock.Unlock()
+
 	defer os.Exit(0)
 	defer ps.Logger().Sync()
-
-	if raftNode := ps.Raft(); raftNode != nil {
-		raftNode.Shutdown().Error()
-	}
 }
 
-func (ps *ProxyState) HandleRoute(requestCtxProvider *RequestContextProvider, pattern string) http.HandlerFunc {
+func (ps *ProxyState) HandleRoute(reqCtxProv *RequestContextProvider, pattern string) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		// ctx, cancel := context.WithCancel(requestCtxPrdovider.ctx)
-		// defer cancel()
-		ps.ProxyHandler(ps, requestCtxProvider.
-			CreateRequestContext(requestCtxProvider.ctx, w, r, pattern))
+		ctx, cancel := context.WithCancel(reqCtxProv.ctx)
+		defer cancel()
+		reqCtx := reqCtxProv.RequestContext(ctx, w, r, pattern)
+		ps.ProxyHandler(ps, reqCtx)
 	}
 }

@@ -9,6 +9,16 @@ tags:
 storage:
   type: file
   dir: .dgate/test3/data/
+  replication:
+    port: 9033
+    id: "test3"
+    bootstrap_cluster: false
+    cluster_addresses:
+      test1: "localhost:9031"
+      test2: "localhost:9032"
+      test3: "localhost:9033"
+      test4: "localhost:9034"
+      test5: "localhost:9035"
 stats?:
   enable_request_stats: true
   enable_response_stats: true
@@ -29,12 +39,3 @@ proxy:
 admin:
   port: 9083
   host: 0.0.0.0
-  # read_only: true
-  replication:
-    id: "test3"
-    bootstrap_cluster: false
-    advert_address: "localhost:9083"
-    cluster_address:
-      - "localhost:9081"
-      - "localhost:9082"
-      - "localhost:9083"

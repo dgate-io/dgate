@@ -19,7 +19,17 @@ func (ps *ProxyState) processChangeLog(cl *spec.ChangeLog, reload, store bool) e
 		cl = &spec.ChangeLog{
 			Cmd: spec.NoopCommand,
 		}
-	} else if !cl.Cmd.IsNoop() {
+	} else if len(ps.changeLogList) > 0 {
+		// potential race condition for ps.changeLogList
+		lastCl := ps.changeLogList[len(ps.changeLogList)-1]
+		if lastCl.ID == cl.ID {
+			ps.logger.Info("Skipping change log id:" + cl.ID)
+			return nil
+		}
+	}
+
+	if !cl.Cmd.IsNoop() {
+		ps.changeLogList = append(ps.changeLogList, cl)
 		var err error
 		switch cl.Cmd.Resource() {
 		case spec.Namespaces:
@@ -114,6 +124,10 @@ func (ps *ProxyState) processChangeLog(cl *spec.ChangeLog, reload, store bool) e
 			// TODO: find a way to revert the change and reload the state
 			// TODO: OR add flag in config to ignore storage errors
 			ps.logger.Error("Error storing change log", zap.Error(err))
+			ps.restartState(func(err error) {
+				ps.logger.Error("Error restarting state", zap.Error(err))
+				go ps.Stop()
+			})
 			return err
 		}
 	}

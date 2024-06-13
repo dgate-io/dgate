@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"time"
 
 	"github.com/dgate-io/chi-router"
 	"github.com/dgate-io/dgate/internal/admin/changestate"
@@ -15,7 +14,12 @@ import (
 	"go.uber.org/zap"
 )
 
-func ConfigureServiceAPI(server chi.Router, logger *zap.Logger, cs changestate.ChangeState, appConfig *config.DGateConfig) {
+func ConfigureServiceAPI(
+	server chi.Router,
+	logger *zap.Logger,
+	cs changestate.ChangeState,
+	appConfig *config.DGateConfig,
+) {
 	rm := cs.ResourceManager()
 	server.Put("/service", func(w http.ResponseWriter, r *http.Request) {
 		eb, err := io.ReadAll(r.Body)
@@ -63,15 +67,6 @@ func ConfigureServiceAPI(server chi.Router, logger *zap.Logger, cs changestate.C
 		if err != nil {
 			util.JsonError(w, http.StatusBadRequest, err.Error())
 			return
-		}
-
-		if repl := cs.Raft(); repl != nil {
-			logger.Debug("Waiting for raft barrier")
-			future := repl.Barrier(time.Second * 5)
-			if err := future.Error(); err != nil {
-				util.JsonError(w, http.StatusInternalServerError, err.Error())
-				return
-			}
 		}
 		svcs := rm.GetServicesByNamespace(svc.NamespaceName)
 		util.JsonResponse(w, http.StatusCreated,

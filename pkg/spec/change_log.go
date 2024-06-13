@@ -17,12 +17,12 @@ type ChangeLog struct {
 	errChan   chan error
 }
 
-func NewNoopChangeLog() *ChangeLog {
-	return &ChangeLog{
-		Version: 1,
-		ID:      strconv.FormatInt(time.Now().UnixNano(), 36),
-		Cmd:     NoopCommand,
+func NewChangeLogFromBytes(b []byte) *ChangeLog {
+	var cl ChangeLog
+	if err := json.Unmarshal(b, &cl); err != nil {
+		panic(err)
 	}
+	return &cl
 }
 
 func NewChangeLog(item Named, namespace string, cmd Command) *ChangeLog {

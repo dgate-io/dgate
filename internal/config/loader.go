@@ -12,7 +12,7 @@ import (
 	"strings"
 
 	"github.com/dgate-io/dgate/pkg/util"
-	"github.com/hashicorp/raft"
+	"github.com/dgate-io/raft"
 	kjson "github.com/knadh/koanf/parsers/json"
 	ktoml "github.com/knadh/koanf/parsers/toml"
 	kyaml "github.com/knadh/koanf/parsers/yaml"
@@ -180,6 +180,7 @@ func LoadConfig(dgateConfigPath string) (*DGateConfig, error) {
 			panic("test_server: enable_h2c is true but enable_http2 is false")
 		}
 	}
+
 	if k.Exists("admin") {
 		kDefault(k, "admin.host", "127.0.0.1")
 		kDefault(k, "admin.x_forwarded_for_depth", -1)
@@ -191,28 +192,8 @@ func LoadConfig(dgateConfigPath string) (*DGateConfig, error) {
 		if err != nil {
 			return nil, err
 		}
-
-		if k.Exists("admin.replication") {
-			err = kRequireAll(k, "admin.host")
-			if err != nil {
-				return nil, err
-			}
-			err = kRequireAll(k, "admin.replication.bootstrap_cluster")
-			if err != nil {
-				return nil, err
-			}
-			defaultScheme := "http"
-			if k.Exists("admin.tls") {
-				defaultScheme = "https"
-				address := fmt.Sprintf("%s:%s", k.Get("admin.host"), k.Get("admin.tls.port"))
-				kDefault(k, "admin.replication.advert_address", address)
-			} else {
-				address := fmt.Sprintf("%s:%s", k.Get("admin.host"), k.Get("admin.port"))
-				kDefault(k, "admin.replication.advert_address", address)
-			}
-			kDefault(k, "admin.replication.advert_scheme", defaultScheme)
-		}
-
+		kDefault(k, "admin.advert_address",
+			k.String("admin.host")+":"+k.String("admin.port"))
 		if k.Exists("admin.auth_method") {
 			switch authMethod := k.Get("admin.auth_method"); authMethod {
 			case "basic":
@@ -232,6 +213,35 @@ func LoadConfig(dgateConfigPath string) (*DGateConfig, error) {
 				return nil, err
 			}
 		}
+	}
+
+	if k.Exists("storage.replication") {
+		kDefault(k, "storage.replication.host", "0.0.0.0")
+		err = kRequireAll(k, "storage.replication.port")
+		if err != nil {
+			return nil, err
+		}
+		err = kRequireAll(k, "storage.replication.bootstrap_cluster")
+		if err != nil {
+			return nil, err
+		}
+		kDefault(k, ".advert_address",
+			k.String("storage.replication.host")+":"+k.String("storage.replication.port"))
+		if bootstrap, ok := k.Get("storage.replication.bootstrap_cluster").(bool); !ok {
+			return nil, errors.New("storage.replication.bootstrap_cluster must be a boolean")
+		} else if !bootstrap {
+			err = kRequireAny(k,
+				"storage.replication.cluster_addresses",
+				"storage.replication.discovery_domain",
+			)
+			if err != nil {
+				return nil, err
+			}
+		}
+		kDefault(k, "storage.replication.heartbeat_interval", "2s")
+		kDefault(k, "storage.replication.election_timeout", "3s")
+		kDefault(k, "storage.replication.apply_timeout", "7s")
+		kDefault(k, "storage.replication.lease_timeout", "5s")
 	}
 
 	err = k.UnmarshalWithConf("", dgateConfig, koanf.UnmarshalConf{
@@ -263,46 +273,20 @@ func determineParser(configDataType string) (koanf.Parser, error) {
 	}
 }
 
-func (config *DGateReplicationConfig) LoadRaftConfig(defaultConfig *raft.Config) *raft.Config {
-	rc := defaultConfig
-	if defaultConfig == nil {
-		rc = raft.DefaultConfig()
+func (config *DGateReplicationConfig) LoadRaftOptions(transport raft.Transport) []raft.Option {
+	var options []raft.Option
+	if config.HeartbeatInterval != 0 {
+		options = append(options, raft.WithHeartbeatInterval(config.HeartbeatInterval))
 	}
-	if rc.ProtocolVersion == raft.ProtocolVersionMin {
-		rc.ProtocolVersion = raft.ProtocolVersionMax
+	if config.ElectionTimeout != 0 {
+		options = append(options, raft.WithElectionTimeout(config.ElectionTimeout))
 	}
-	if config.RaftConfig != nil {
-		if config.RaftConfig.HeartbeatTimeout != 0 {
-			rc.HeartbeatTimeout = config.RaftConfig.HeartbeatTimeout
-		}
-		if config.RaftConfig.ElectionTimeout != 0 {
-			rc.ElectionTimeout = config.RaftConfig.ElectionTimeout
-		}
-		if config.RaftConfig.SnapshotThreshold > 0 {
-			rc.SnapshotThreshold = uint64(config.RaftConfig.SnapshotThreshold)
-		}
-		if config.RaftConfig.SnapshotInterval != 0 {
-			rc.SnapshotInterval = config.RaftConfig.SnapshotInterval
-		}
-		if config.RaftConfig.LeaderLeaseTimeout != 0 {
-			rc.LeaderLeaseTimeout = config.RaftConfig.LeaderLeaseTimeout
-		}
-		if config.RaftConfig.CommitTimeout != 0 {
-			rc.CommitTimeout = config.RaftConfig.CommitTimeout
-		}
-		if config.RaftConfig.MaxAppendEntries != 0 {
-			rc.MaxAppendEntries = config.RaftConfig.MaxAppendEntries
-		}
-		if config.RaftConfig.TrailingLogs > 0 {
-			rc.TrailingLogs = uint64(config.RaftConfig.TrailingLogs)
-		}
-		if config.RaftID != "" {
-			rc.LocalID = raft.ServerID(config.RaftID)
-		}
+	if config.LeaseDuration != 0 {
+		options = append(options, raft.WithLeaseDuration(config.LeaseDuration))
 	}
-	err := raft.ValidateConfig(rc)
-	if err != nil {
-		panic(err)
+	if transport != nil {
+		options = append(options, raft.WithTransport(transport))
 	}
-	return rc
+	// TODO: impl more options (snapshot_threshold, apply_timeout, etc.)
+	return options
 }

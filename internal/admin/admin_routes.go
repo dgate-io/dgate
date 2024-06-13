@@ -12,7 +12,6 @@ import (
 	"github.com/dgate-io/dgate/internal/config"
 	"github.com/dgate-io/dgate/pkg/util"
 	"github.com/dgate-io/dgate/pkg/util/iplist"
-	"github.com/hashicorp/raft"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/exporters/prometheus"
@@ -79,31 +78,27 @@ func configureRoutes(
 				allowed, err := ipList.Contains(remoteIp)
 				if err != nil {
 					if conf.Debug {
-						http.Error(w, err.Error(), http.StatusInternalServerError)
+						util.JsonError(w, http.StatusInternalServerError, err.Error())
 						return
 					}
-					http.Error(w, "could not parse X-Forwarded-For IP", http.StatusBadRequest)
+					util.JsonError(w, http.StatusBadRequest, "could not parse X-Forwarded-For IP")
 					return
 				}
 				if !allowed {
 					if conf.Debug {
-						http.Error(w, "Unauthorized IP Address: "+remoteIp, http.StatusUnauthorized)
+						util.JsonError(w, http.StatusUnauthorized, "Unauthorized IP Address: "+remoteIp)
 						return
 					}
-					http.Error(w, "Unauthorized", http.StatusUnauthorized)
+					util.JsonError(w, http.StatusUnauthorized, "Unauthorized")
 					return
 				}
 			}
 			// basic auth
-			if adminConfig.AuthMethod == config.AuthMethodBasicAuth {
-				if len(adminConfig.BasicAuth.Users) == 0 {
-					http.Error(w, "Unauthorized", http.StatusUnauthorized)
-					return
-				}
+			if adminConfig.AuthMethod == config.AuthMethodBasicAuth && len(adminConfig.BasicAuth.Users) > 0 {
 				user, pass, ok := r.BasicAuth()
 				if userPass, userFound := userMap[user]; !ok || !userFound || userPass != pass {
 					w.Header().Set("WWW-Authenticate", `Basic realm="Access to DGate Admin API"`)
-					http.Error(w, "Unauthorized", http.StatusUnauthorized)
+					util.JsonError(w, http.StatusUnauthorized, "Unauthorized")
 					return
 				}
 			} else if adminConfig.KeyAuth != nil && len(adminConfig.KeyAuth.Keys) > 0 {
@@ -117,24 +112,24 @@ func configureRoutes(
 					key = r.Header.Get("X-DGate-Key")
 				}
 				if _, keyFound := keyMap[key]; !keyFound {
-					http.Error(w, "Unauthorized", http.StatusUnauthorized)
+					util.JsonError(w, http.StatusUnauthorized, "Unauthorized")
 					return
 				}
 			}
-			if raftInstance := cs.Raft(); raftInstance != nil {
-				if r.Method == http.MethodPut || r.Method == http.MethodDelete {
-					leader := raftInstance.Leader()
-					if leader == "" {
-						util.JsonError(w, http.StatusServiceUnavailable, "raft: no leader")
+
+			if r.Method == http.MethodPut || r.Method == http.MethodDelete {
+				if st := cs.Store(); st.ReplicationEnabled() && !st.IsLeader() {
+					if addr := st.LeaderAdminAddr(); addr != "" {
+						http.Redirect(w, r, addr, http.StatusTemporaryRedirect)
 						return
 					}
-					if raftInstance.State() != raft.Leader {
-						r.URL.Host = string(leader)
-						http.Redirect(w, r, r.URL.String(), http.StatusTemporaryRedirect)
-						return
-					}
+					util.JsonError(w, http.StatusServiceUnavailable, "Not a leader")
+					return
 				}
 			}
+
+			w.Header().Set("X-DGate-WatchOnly", fmt.Sprintf("%t", adminConfig.WatchOnly))
+			w.Header().Set("X-DGate-ChangeHash", fmt.Sprintf("%d", cs.ChangeHash()))
 
 			next.ServeHTTP(w, r)
 		})
@@ -142,21 +137,10 @@ func configureRoutes(
 
 	server.Get("/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/plain")
-		w.Header().Set("X-DGate-WatchOnly", fmt.Sprintf("%t", adminConfig.WatchOnly))
-		w.Header().Set("X-DGate-ChangeHash", fmt.Sprintf("%d", cs.ChangeHash()))
-		if raftInstance := cs.Raft(); raftInstance != nil {
-			w.Header().Set(
-				"X-DGate-Raft-State",
-				raftInstance.State().String(),
-			)
-		}
 		w.WriteHeader(http.StatusOK)
 		w.Write([]byte("DGate Admin API"))
 	}))
 
-	if adminConfig.Replication != nil {
-		setupRaft(server, logger.Named("raft"), conf, cs)
-	}
 	if adminConfig != nil {
 		server.Route("/api/v1", func(api chi.Router) {
 			apiLogger := logger.Named("api")

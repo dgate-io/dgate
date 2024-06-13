@@ -57,7 +57,7 @@ func TestProxyHandler_ReverseProxy(t *testing.T) {
 		wr.SetWriteFallThrough()
 		wr.On("Header").Return(http.Header{})
 		wr.On("Write", mock.Anything).Return(0, nil).Maybe()
-		reqCtx := reqCtxProvider.CreateRequestContext(
+		reqCtx := reqCtxProvider.RequestContext(
 			context.Background(), wr, req, "/")
 
 		modExt := NewMockModuleExtractor()
@@ -129,7 +129,7 @@ func TestProxyHandler_ProxyHandler(t *testing.T) {
 		modPool.On("Return", modExt).Return().Once()
 		reqCtxProvider.SetModulePool(modPool)
 
-		reqCtx := reqCtxProvider.CreateRequestContext(
+		reqCtx := reqCtxProvider.RequestContext(
 			context.Background(), wr, req, "/")
 		ps.ProxyHandler(ps, reqCtx)
 
@@ -181,7 +181,7 @@ func TestProxyHandler_ProxyHandlerError(t *testing.T) {
 		modPool.On("Return", modExt).Return().Once()
 		reqCtxProvider := proxy.NewRequestContextProvider(rt, ps)
 		reqCtxProvider.SetModulePool(modPool)
-		reqCtx := reqCtxProvider.CreateRequestContext(
+		reqCtx := reqCtxProvider.RequestContext(
 			context.Background(), wr, req, "/")
 		ps.ProxyHandler(ps, reqCtx)
 

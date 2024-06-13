@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"io"
 	"net/http"
-	"time"
 
 	"github.com/dgate-io/chi-router"
 	"github.com/dgate-io/dgate/internal/admin/changestate"
@@ -14,7 +13,12 @@ import (
 	"go.uber.org/zap"
 )
 
-func ConfigureModuleAPI(server chi.Router, logger *zap.Logger, cs changestate.ChangeState, appConfig *config.DGateConfig) {
+func ConfigureModuleAPI(
+	server chi.Router,
+	logger *zap.Logger,
+	cs changestate.ChangeState,
+	appConfig *config.DGateConfig,
+) {
 	rm := cs.ResourceManager()
 	server.Put("/module", func(w http.ResponseWriter, r *http.Request) {
 		eb, err := io.ReadAll(r.Body)
@@ -47,13 +51,6 @@ func ConfigureModuleAPI(server chi.Router, logger *zap.Logger, cs changestate.Ch
 		if err = cs.ApplyChangeLog(cl); err != nil {
 			util.JsonError(w, http.StatusBadRequest, err.Error())
 			return
-		}
-		if repl := cs.Raft(); repl != nil {
-			future := repl.Barrier(time.Second * 5)
-			if err := future.Error(); err != nil {
-				util.JsonError(w, http.StatusInternalServerError, err.Error())
-				return
-			}
 		}
 		util.JsonResponse(w, http.StatusCreated, spec.TransformDGateModules(
 			rm.GetModulesByNamespace(mod.NamespaceName)...))

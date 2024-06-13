@@ -94,7 +94,7 @@ func (reqCtxProvider *RequestContextProvider) ModulePool() ModulePool {
 	return reqCtxProvider.modBuf
 }
 
-func (reqCtxProvider *RequestContextProvider) CreateRequestContext(
+func (reqCtxProvider *RequestContextProvider) RequestContext(
 	ctx context.Context, rw http.ResponseWriter,
 	req *http.Request, pattern string,
 ) *RequestContext {

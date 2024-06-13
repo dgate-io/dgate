@@ -5,8 +5,8 @@ import (
 	"encoding/json"
 	"fmt"
 
+	"github.com/dgate-io/dgate/pkg/util/avltree"
 	"github.com/dgate-io/dgate/pkg/util/safe"
-	"github.com/dgate-io/dgate/pkg/util/tree/avl"
 )
 
 type kv[T, U any] struct {
@@ -36,7 +36,7 @@ var _ Linker[string] = &Link[string, any]{}
 // There are two types of edges: one-to-one and one-to-many.
 type Link[K cmp.Ordered, V any] struct {
 	item  *safe.Ref[V]
-	edges []*kv[K, avl.Tree[K, Linker[K]]]
+	edges []*kv[K, avltree.Tree[K, Linker[K]]]
 }
 
 func NamedVertexWithVertex[K cmp.Ordered, V any](vertex Linker[K]) *Link[K, V] {
@@ -48,10 +48,10 @@ func NewNamedVertex[K cmp.Ordered, V any](names ...K) *Link[K, V] {
 }
 
 func NewNamedVertexWithValue[K cmp.Ordered, V any](item *V, names ...K) *Link[K, V] {
-	edges := make([]*kv[K, avl.Tree[K, Linker[K]]], len(names))
+	edges := make([]*kv[K, avltree.Tree[K, Linker[K]]], len(names))
 	for i, name := range names {
-		edges[i] = &kv[K, avl.Tree[K, Linker[K]]]{
-			key: name, val: avl.NewTree[K, Linker[K]](),
+		edges[i] = &kv[K, avltree.Tree[K, Linker[K]]]{
+			key: name, val: avltree.NewTree[K, Linker[K]](),
 		}
 	}
 
@@ -188,9 +188,9 @@ func (nl *Link[K, V]) UnlinkOneOne(name K) (Linker[K], bool) {
 
 // Clone returns a copy of the vertex
 func (nl *Link[K, V]) Clone() Linker[K] {
-	edges := make([]*kv[K, avl.Tree[K, Linker[K]]], len(nl.edges))
+	edges := make([]*kv[K, avltree.Tree[K, Linker[K]]], len(nl.edges))
 	for i, edge := range nl.edges {
-		edges[i] = &kv[K, avl.Tree[K, Linker[K]]]{
+		edges[i] = &kv[K, avltree.Tree[K, Linker[K]]]{
 			key: edge.key, val: edge.val.Clone(),
 		}
 	}

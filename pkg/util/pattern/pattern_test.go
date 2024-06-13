@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/dgate-io/dgate/internal/pattern"
+	"github.com/dgate-io/dgate/pkg/util/pattern"
 	"github.com/stretchr/testify/assert"
 )
 

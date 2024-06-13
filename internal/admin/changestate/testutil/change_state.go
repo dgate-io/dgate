@@ -5,9 +5,10 @@ import (
 	"log/slog"
 
 	"github.com/dgate-io/dgate/internal/admin/changestate"
+	"github.com/dgate-io/dgate/internal/store"
 	"github.com/dgate-io/dgate/pkg/resources"
 	"github.com/dgate-io/dgate/pkg/spec"
-	"github.com/hashicorp/raft"
+	"github.com/dgate-io/raft"
 	"github.com/stretchr/testify/mock"
 	"go.uber.org/zap"
 )
@@ -41,11 +42,6 @@ func (m *MockChangeState) Logger() *zap.Logger {
 	return m.Called().Get(0).(*zap.Logger)
 }
 
-// ProcessChangeLog implements changestate.ChangeState.
-func (m *MockChangeState) ProcessChangeLog(cl *spec.ChangeLog, a bool) error {
-	return m.Called(cl, a).Error(0)
-}
-
 // Raft implements changestate.ChangeState.
 func (m *MockChangeState) Raft() *raft.Raft {
 	args := m.Called()
@@ -60,29 +56,18 @@ func (m *MockChangeState) Ready() bool {
 	return m.Called().Get(0).(bool)
 }
 
-// ReloadState implements changestate.ChangeState.
-func (m *MockChangeState) ReloadState(a bool, cls ...*spec.ChangeLog) error {
-	return m.Called(a, cls).Error(0)
-}
-
-// SetReady implements changestate.ChangeState.
-func (m *MockChangeState) SetReady() {
-	m.Called()
-}
-
-// SetupRaft implements changestate.ChangeState.
-func (m *MockChangeState) SetupRaft(*raft.Raft, *raft.Config) {
-	m.Called().Error(0)
-}
-
-// Version implements changestate.ChangeState.
-func (m *MockChangeState) Version() string {
-	return m.Called().Get(0).(string)
-}
-
 // WaitForChanges implements changestate.ChangeState.
 func (m *MockChangeState) WaitForChanges() error {
 	return m.Called().Error(0)
+}
+
+// Store implements changestate.ChangeState.
+func (m *MockChangeState) Store() *store.Store {
+	args := m.Called()
+	if st := args.Get(0); st != nil {
+		return st.(*store.Store)
+	}
+	return nil
 }
 
 var _ changestate.ChangeState = &MockChangeState{}

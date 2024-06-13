@@ -5,13 +5,13 @@ import (
 	"sort"
 
 	"github.com/dgate-io/dgate/pkg/spec"
+	"github.com/dgate-io/dgate/pkg/util/avltree"
 	"github.com/dgate-io/dgate/pkg/util/keylock"
 	"github.com/dgate-io/dgate/pkg/util/linker"
 	"github.com/dgate-io/dgate/pkg/util/safe"
-	"github.com/dgate-io/dgate/pkg/util/tree/avl"
 )
 
-type avlTreeLinker[T any] avl.Tree[string, *linker.Link[string, safe.Ref[T]]]
+type avlTreeLinker[T any] avltree.Tree[string, *linker.Link[string, safe.Ref[T]]]
 
 // ResourceManager is a struct that handles all resources and their links between each other
 type ResourceManager struct {
@@ -29,13 +29,13 @@ type Options func(*ResourceManager)
 
 func NewManager(opts ...Options) *ResourceManager {
 	rm := &ResourceManager{
-		namespaces:  avl.NewTree[string, *linker.Link[string, safe.Ref[spec.DGateNamespace]]](),
-		services:    avl.NewTree[string, *linker.Link[string, safe.Ref[spec.DGateService]]](),
-		domains:     avl.NewTree[string, *linker.Link[string, safe.Ref[spec.DGateDomain]]](),
-		modules:     avl.NewTree[string, *linker.Link[string, safe.Ref[spec.DGateModule]]](),
-		routes:      avl.NewTree[string, *linker.Link[string, safe.Ref[spec.DGateRoute]]](),
-		collections: avl.NewTree[string, *linker.Link[string, safe.Ref[spec.DGateCollection]]](),
-		secrets:     avl.NewTree[string, *linker.Link[string, safe.Ref[spec.DGateSecret]]](),
+		namespaces:  avltree.NewTree[string, *linker.Link[string, safe.Ref[spec.DGateNamespace]]](),
+		services:    avltree.NewTree[string, *linker.Link[string, safe.Ref[spec.DGateService]]](),
+		domains:     avltree.NewTree[string, *linker.Link[string, safe.Ref[spec.DGateDomain]]](),
+		modules:     avltree.NewTree[string, *linker.Link[string, safe.Ref[spec.DGateModule]]](),
+		routes:      avltree.NewTree[string, *linker.Link[string, safe.Ref[spec.DGateRoute]]](),
+		collections: avltree.NewTree[string, *linker.Link[string, safe.Ref[spec.DGateCollection]]](),
+		secrets:     avltree.NewTree[string, *linker.Link[string, safe.Ref[spec.DGateSecret]]](),
 		mutex:       keylock.NewKeyLock(),
 	}
 	for _, opt := range opts {
