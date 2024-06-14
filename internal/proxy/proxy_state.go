@@ -216,10 +216,11 @@ func (ps *ProxyState) SetupRaft(r *raft.Raft, oc chan raft.Observation) {
 }
 
 func (ps *ProxyState) WaitForChanges() error {
-	ps.proxyLock.RLock()
-	defer ps.proxyLock.RUnlock()
 	if rft := ps.Raft(); rft != nil {
 		return rft.Barrier(time.Second * 5).Error()
+	} else {
+		ps.proxyLock.RLock()
+		defer ps.proxyLock.RUnlock()
 	}
 	return nil
 }

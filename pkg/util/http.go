@@ -17,7 +17,8 @@ func WriteStatusCodeError(w http.ResponseWriter, code int) {
 // the request has passed through.
 func GetTrustedIP(r *http.Request, depth int) string {
 	ips := r.Header.Values("X-Forwarded-For")
-	if len(ips) == 0 || depth > len(ips) {
+	depth = min(depth, len(ips))
+	if depth <= 0 {
 		remoteHost, _, err := net.SplitHostPort(r.RemoteAddr)
 		if err != nil {
 			return r.RemoteAddr
