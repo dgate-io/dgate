@@ -69,11 +69,9 @@ func ConfigureCollectionAPI(server chi.Router, logger *zap.Logger, cs changestat
 			return
 		}
 
-		if repl := cs.Raft(); repl != nil {
-			if err := cs.WaitForChanges(); err != nil {
-				util.JsonError(w, http.StatusInternalServerError, err.Error())
-				return
-			}
+		if err := cs.WaitForChanges(); err != nil {
+			util.JsonError(w, http.StatusInternalServerError, err.Error())
+			return
 		}
 
 		util.JsonResponse(w, http.StatusCreated, spec.TransformDGateCollections(
@@ -276,11 +274,9 @@ func ConfigureCollectionAPI(server chi.Router, logger *zap.Logger, cs changestat
 			return
 		}
 
-		if repl := cs.Raft(); repl != nil {
-			if err := cs.WaitForChanges(); err != nil {
-				util.JsonError(w, http.StatusInternalServerError, err.Error())
-				return
-			}
+		if err := cs.WaitForChanges(); err != nil {
+			util.JsonError(w, http.StatusInternalServerError, err.Error())
+			return
 		}
 
 		util.JsonResponse(w, http.StatusCreated, doc)

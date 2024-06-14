@@ -21,7 +21,7 @@ type mockRuntimeContext struct {
 	mock.Mock
 	smap  *sync.Map
 	ctx   context.Context
-	req     *require.Registry
+	req   *require.Registry
 	loop  *eventloop.EventLoop
 	data  any
 	state modules.StateManager

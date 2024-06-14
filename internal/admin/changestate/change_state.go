@@ -14,6 +14,7 @@ type ChangeState interface {
 	WaitForChanges() error
 	ReloadState(bool, ...*spec.ChangeLog) error
 	ChangeHash() uint32
+	ChangeLogs() []*spec.ChangeLog
 
 	// Readiness
 	Ready() bool

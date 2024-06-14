@@ -64,13 +64,12 @@ func ConfigureServiceAPI(server chi.Router, logger *zap.Logger, cs changestate.C
 			return
 		}
 
-		if repl := cs.Raft(); repl != nil {
-			logger.Debug("Waiting for raft barrier")
-			if err := cs.WaitForChanges(); err != nil {
-				util.JsonError(w, http.StatusInternalServerError, err.Error())
-				return
-			}
+		logger.Debug("Waiting for raft barrier")
+		if err := cs.WaitForChanges(); err != nil {
+			util.JsonError(w, http.StatusInternalServerError, err.Error())
+			return
 		}
+
 		svcs := rm.GetServicesByNamespace(svc.NamespaceName)
 		util.JsonResponse(w, http.StatusCreated,
 			spec.TransformDGateServices(svcs...))

@@ -60,7 +60,7 @@ func (c *CryptoModule) Exports() *modules.Exports {
 		},
 		"hexEncode": c.hexEncode,
 	}
-	
+
 	for k, v := range hashAlgos {
 		namedExports[k] = v
 	}

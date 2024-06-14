@@ -17,7 +17,7 @@ func TestDGClient_GetDocument(t *testing.T) {
 		w.WriteHeader(http.StatusOK)
 		json.NewEncoder(w).Encode(&dgclient.ResponseWrapper[*spec.Document]{
 			Data: &spec.Document{
-				ID: "test",
+				ID:             "test",
 				CollectionName: "test",
 			},
 		})

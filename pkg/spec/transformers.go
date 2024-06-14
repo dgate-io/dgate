@@ -145,8 +145,8 @@ func TransformDGateCollection(col *DGateCollection) *Collection {
 		NamespaceName: col.Namespace.Name,
 		Schema:        schema,
 		// Type:          col.Type,
-		Visibility:    col.Visibility,
-		Tags:          col.Tags,
+		Visibility: col.Visibility,
+		Tags:       col.Tags,
 	}
 }
 
@@ -235,11 +235,11 @@ func TransformModule(ns *DGateNamespace, m *Module) (*DGateModule, error) {
 		return nil, err
 	}
 	return &DGateModule{
-		Name:        m.Name,
-		Namespace:   ns,
-		Payload:     string(payload),
-		Tags:        m.Tags,
-		Type:        m.Type,	
+		Name:      m.Name,
+		Namespace: ns,
+		Payload:   string(payload),
+		Tags:      m.Tags,
+		Type:      m.Type,
 	}, nil
 }
 

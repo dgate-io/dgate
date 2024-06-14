@@ -80,6 +80,11 @@ func (m *MockChangeState) WaitForChanges() error {
 	return m.Called().Error(0)
 }
 
+// ChangeLogs implements changestate.ChangeState.
+func (m *MockChangeState) ChangeLogs() []*spec.ChangeLog {
+	return m.Called().Get(0).([]*spec.ChangeLog)
+}
+
 var _ changestate.ChangeState = &MockChangeState{}
 
 func NewMockChangeState() *MockChangeState {

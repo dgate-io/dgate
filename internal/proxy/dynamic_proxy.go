@@ -288,6 +288,8 @@ func (ps *ProxyState) Start() (err error) {
 	if !ps.replicationEnabled {
 		if err = ps.restoreFromChangeLogs(false); err != nil {
 			return err
+		} else {
+			ps.ready.Store(true)
 		}
 	}
 

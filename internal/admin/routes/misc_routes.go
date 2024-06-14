@@ -12,17 +12,28 @@ import (
 
 func ConfigureChangeLogAPI(server chi.Router, cs changestate.ChangeState, appConfig *config.DGateConfig) {
 	server.Get("/changelog/hash", func(w http.ResponseWriter, r *http.Request) {
-		if repl := cs.Raft(); repl != nil {
-			if err := cs.WaitForChanges(); err != nil {
-				util.JsonError(w, http.StatusInternalServerError, err.Error())
-				return
-			}
-			// TODO: find a way to get the raft log hash
-			//  perhaps generate based on current log commands and computed hash
+		if err := cs.WaitForChanges(); err != nil {
+			util.JsonError(w, http.StatusInternalServerError, err.Error())
+			return
 		}
 
 		if b, err := json.Marshal(map[string]any{
 			"hash": cs.ChangeHash(),
+		}); err != nil {
+			util.JsonError(w, http.StatusInternalServerError, err.Error())
+		} else {
+			w.Header().Set("Content-Type", "application/json")
+			w.Write([]byte(b))
+		}
+	})
+	server.Get("/changelog/count", func(w http.ResponseWriter, r *http.Request) {
+		if err := cs.WaitForChanges(); err != nil {
+			util.JsonError(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+
+		if b, err := json.Marshal(map[string]any{
+			"count": len(cs.ChangeLogs()),
 		}); err != nil {
 			util.JsonError(w, http.StatusInternalServerError, err.Error())
 		} else {

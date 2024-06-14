@@ -34,19 +34,18 @@ import (
 )
 
 type ProxyState struct {
-	version    string
-	debugMode  bool
-	startTime  time.Time
-	config     *config.DGateConfig
-	logger     *zap.Logger
-	printer    console.Printer
-	store      *proxystore.ProxyStore
-	proxyLock  *sync.RWMutex
-	changeHash uint32
-	changeLogs []*spec.ChangeLog
-
+	version     string
+	debugMode   bool
+	changeHash  uint32
+	startTime   time.Time
+	logger      *zap.Logger
+	printer     console.Printer
+	config      *config.DGateConfig
+	store       *proxystore.ProxyStore
+	changeLogs  []*spec.ChangeLog
 	metrics     *ProxyMetrics
 	sharedCache cache.TCache
+	proxyLock   *sync.RWMutex
 
 	rm   *resources.ResourceManager
 	skdr scheduler.Scheduler
@@ -54,11 +53,10 @@ type ProxyState struct {
 	providers   avl.Tree[string, *RequestContextProvider]
 	modPrograms avl.Tree[string, *goja.Program]
 
-	raftReady           atomic.Bool
+	ready               atomic.Bool
 	replicationSettings *ProxyReplication
 	replicationEnabled  bool
-
-	routers avl.Tree[string, *router.DynamicRouter]
+	routers             avl.Tree[string, *router.DynamicRouter]
 
 	ReverseProxyBuilder   reverse_proxy.Builder
 	ProxyTransportBuilder proxy_transport.Builder
@@ -106,7 +104,7 @@ func NewProxyState(logger *zap.Logger, conf *config.DGateConfig) *ProxyState {
 	}
 	state := &ProxyState{
 		startTime: time.Now(),
-		raftReady: atomic.Bool{},
+		ready:     atomic.Bool{},
 		logger:    logger,
 		debugMode: conf.Debug,
 		config:    conf,
@@ -168,9 +166,13 @@ func (ps *ProxyState) ChangeHash() uint32 {
 	return ps.changeHash
 }
 
+func (ps *ProxyState) ChangeLogs() []*spec.ChangeLog {
+	return ps.changeLogs
+}
+
 func (ps *ProxyState) Ready() bool {
 	if ps.replicationEnabled {
-		return ps.raftReady.Load()
+		return ps.ready.Load()
 	}
 	return true
 }

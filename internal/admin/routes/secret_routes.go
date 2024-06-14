@@ -47,11 +47,9 @@ func ConfigureSecretAPI(server chi.Router, logger *zap.Logger, cs changestate.Ch
 			util.JsonError(w, http.StatusBadRequest, err.Error())
 			return
 		}
-		if repl := cs.Raft(); repl != nil {
-			if err := cs.WaitForChanges(); err != nil {
-				util.JsonError(w, http.StatusInternalServerError, err.Error())
-				return
-			}
+		if err := cs.WaitForChanges(); err != nil {
+			util.JsonError(w, http.StatusInternalServerError, err.Error())
+			return
 		}
 		secrets := rm.GetSecretsByNamespace(sec.NamespaceName)
 		util.JsonResponse(w, http.StatusCreated,

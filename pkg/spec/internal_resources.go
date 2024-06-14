@@ -97,11 +97,11 @@ func (m ModuleType) String() string {
 }
 
 type DGateModule struct {
-	Name        string          `json:"name"`
-	Namespace   *DGateNamespace `json:"namespace"`
-	Payload     string          `json:"payload"`
-	Type        ModuleType      `json:"module_type"`
-	Tags        []string        `json:"tags,omitempty"`
+	Name      string          `json:"name"`
+	Namespace *DGateNamespace `json:"namespace"`
+	Payload   string          `json:"payload"`
+	Type      ModuleType      `json:"module_type"`
+	Tags      []string        `json:"tags,omitempty"`
 }
 
 func (m *DGateModule) GetName() string {

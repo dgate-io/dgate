@@ -22,9 +22,10 @@ func Run(client dgclient.DGateClient, version string) error {
 	}
 
 	app := &cli.App{
-		Name:    "dgate-cli",
-		Usage:   "a command line interface for DGate (API Gateway) Admin API",
-		Version: version,
+		Name:                   "dgate-cli",
+		Usage:                  "a command line interface for DGate (API Gateway) Admin API",
+		Version:                version,
+		UseShortOptionHandling: true,
 		Flags: []cli.Flag{
 			&cli.StringFlag{
 				Name:    "admin",

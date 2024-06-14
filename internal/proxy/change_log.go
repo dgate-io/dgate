@@ -17,7 +17,15 @@ import (
 // processChangeLog - processes a change log and applies the change to the proxy state
 func (ps *ProxyState) processChangeLog(cl *spec.ChangeLog, reload, store bool) (err error) {
 	defer func() {
-		ps.raftReady.Store(true)
+		if err != nil && !cl.Cmd.IsNoop() {
+			ps.ready.Store(true)
+			if changeHash, err := HashAny(ps.changeHash, cl); err != nil {
+				ps.logger.Error("error hashing change log", zap.Error(err))
+				return
+			} else {
+				ps.changeHash = changeHash
+			}
+		}
 	}()
 	if !cl.Cmd.IsNoop() {
 		if len(ps.changeLogs) > 0 {
@@ -100,17 +108,6 @@ func (ps *ProxyState) processChangeLog(cl *spec.ChangeLog, reload, store bool) (
 			if err = ps.reconfigureState(false); err != nil {
 				ps.logger.Error("Error registering change log", zap.Error(err))
 				return
-			}
-			// update change log hash only when the change is successfully applied
-			//   even if the change is a noop, we still need to update the hash
-			changeHash, err := HashAny(ps.changeHash, cl)
-			if err != nil {
-				if !ps.config.Debug {
-					return err
-				}
-				ps.logger.Error("error updating change log hash", zap.Error(err))
-			} else {
-				ps.changeHash = changeHash
 			}
 		}
 	}

@@ -27,7 +27,6 @@ func TestLinkerTests(t *testing.T) {
 	linker3.LinkOneMany("bottom", "l3bottom", linker2)
 	linker2.LinkOneMany("bottom", "l2bottom", linker1)
 
-
 	assert.True(t, linker1.Len("top") == 1)
 	assert.True(t, linker2.Len("top") == 1)
 	assert.True(t, linker3.Len("top") == 1)

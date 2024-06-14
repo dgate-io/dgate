@@ -143,4 +143,3 @@ func (g *ResponseWriterWrapper) GetCookie(name string) *http.Cookie {
 	}
 	return nil
 }
-

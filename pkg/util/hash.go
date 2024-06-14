@@ -8,6 +8,7 @@ import (
 	"hash"
 	"hash/crc32"
 )
+
 func jsonHash(objs ...any) (hash.Hash32, error) {
 	hash, err := crc32Hash(func(a any) []byte {
 		b, err := json.Marshal(a)
@@ -28,7 +29,6 @@ func JsonHash(objs ...any) (uint32, error) {
 	}
 	return hash.Sum32(), nil
 }
-
 
 func JsonHashBytes(objs ...any) ([]byte, error) {
 	hash, err := jsonHash(objs...)
