@@ -14,7 +14,7 @@ dgate-cli namespace create \
 
 dgate-cli domain create \
     name=test-dm \
-    patterns:='["test.com"]' \
+    patterns:='["test.example.com"]' \
     namespace=test-ns
 
 MOD_B64="$(base64 < $DIR/merge_responses.ts)"
@@ -32,6 +32,6 @@ dgate-cli route create \
     preserveHost:=true \
     namespace=test-ns
 
-curl -s --fail-with-body ${PROXY_URL}/hello -H Host:test.com
+curl -s --fail-with-body ${PROXY_URL}/hello -H Host:test.example.com
 
 echo "Merge Responses Test Passed"

@@ -36,6 +36,7 @@ type HTTPTransport struct {
 }
 
 var _ raft.Transport = (*HTTPTransport)(nil)
+var _ raft.WithPreVote = (*HTTPTransport)(nil)
 
 func NewHTTPTransport(addr raft.ServerAddress, client Doer, logger *zap.Logger, urlFmt string) *HTTPTransport {
 	if client == nil {
@@ -130,6 +131,11 @@ func (t *HTTPTransport) AppendEntries(_ raft.ServerID, target raft.ServerAddress
 // RequestVote implements the raft.Transport interface.
 func (t *HTTPTransport) RequestVote(_ raft.ServerID, target raft.ServerAddress, args *raft.RequestVoteRequest, resp *raft.RequestVoteResponse) error {
 	return t.send(t.generateUrl(target, "RequestVote"), args, resp)
+}
+
+// RequestPreVote implements the raft.Transport interface.
+func (t *HTTPTransport) RequestPreVote(_ raft.ServerID, target raft.ServerAddress, args *raft.RequestPreVoteRequest, resp *raft.RequestPreVoteResponse) error {
+	return t.send(t.generateUrl(target, "RequestPreVote"), args, resp)
 }
 
 // InstallSnapshot implements the raft.Transport interface.
@@ -280,6 +286,8 @@ func (t *HTTPTransport) ServeHTTP(res http.ResponseWriter, req *http.Request) {
 		return
 	case "RequestVote":
 		rpc.Command = &raft.RequestVoteRequest{}
+	case "RequestPreVote":
+		rpc.Command = &raft.RequestPreVoteRequest{}
 	case "AppendEntries":
 		rpc.Command = &raft.AppendEntriesRequest{}
 	case "TimeoutNow":

@@ -1,6 +1,7 @@
 package extractors_test
 
 import (
+	"context"
 	"testing"
 
 	"github.com/dgate-io/dgate/internal/config/configtest"
@@ -147,7 +148,7 @@ func BenchmarkNewModuleRuntime(b *testing.B) {
 	b.Run("Transpile-TS", func(b *testing.B) {
 		for i := 0; i < b.N; i++ {
 			b.StartTimer()
-			_, err := typescript.Transpile(TS_PAYLOAD_CUSTOMFUNC)
+			_, err := typescript.Transpile(context.Background(), TS_PAYLOAD_CUSTOMFUNC)
 			if err != nil {
 				b.Fatal(err)
 			}

@@ -2,125 +2,103 @@ package proxy
 
 import (
 	"fmt"
-	"strconv"
 	"time"
 
 	"errors"
 
 	"github.com/dgate-io/dgate/pkg/spec"
 	"github.com/dgate-io/dgate/pkg/util/sliceutil"
-	"github.com/dgraph-io/badger/v4"
+	"github.com/hashicorp/raft"
 	"github.com/mitchellh/mapstructure"
 	"go.uber.org/zap"
 )
 
 // processChangeLog - processes a change log and applies the change to the proxy state
 func (ps *ProxyState) processChangeLog(cl *spec.ChangeLog, reload, store bool) (err error) {
-	defer func() {
-		if err != nil && !cl.Cmd.IsNoop() {
-			ps.ready.Store(true)
-			if changeHash, err := HashAny(ps.changeHash, cl); err != nil {
-				ps.logger.Error("error hashing change log", zap.Error(err))
-				return
-			} else {
-				ps.changeHash = changeHash
+	if reload {
+		defer func(start time.Time) {
+			ps.logger.Debug("processing change log",
+				zap.String("id", cl.ID),
+				zap.Duration("duration", time.Since(start)),
+			)
+		}(time.Now())
+	}
+	ps.proxyLock.Lock()
+	defer ps.proxyLock.Unlock()
+
+	// store change log if there is no error
+	if store && !cl.Cmd.IsNoop() {
+		defer func() {
+			if err == nil {
+				if !ps.replicationEnabled {
+					// dont store change logs
+					if err = ps.store.StoreChangeLog(cl); err != nil {
+						ps.logger.Error("Error storing change log, restarting state", zap.Error(err))
+						return
+					}
+				}
+				// in memory storage for state restarts
+				ps.changeLogs = append(ps.changeLogs, cl)
 			}
-		}
-	}()
-	if !cl.Cmd.IsNoop() {
-		if len(ps.changeLogs) > 0 {
-			xcl := ps.changeLogs[len(ps.changeLogs)-1]
-			if xcl.ID == cl.ID {
-				ps.logger.Debug("duplicate change log", zap.String("id", cl.ID))
+		}()
+	}
+
+	if len(ps.changeLogs) > 0 {
+		xcl := ps.changeLogs[len(ps.changeLogs)-1]
+		if xcl.ID == cl.ID {
+			if r := ps.Raft(); r != nil && r.State() == raft.Leader {
+				// FYI: we still need to store the change log
 				return nil
 			}
+			ps.logger.Error("duplicate change log",
+				zap.String("id", cl.ID),
+				zap.Stringer("cmd", cl.Cmd),
+			)
+			return errors.New("duplicate change log")
 		}
-		strconv.FormatInt(time.Now().UnixNano(), 36)
-		ps.changeLogs = append(ps.changeLogs, cl)
-		switch cl.Cmd.Resource() {
-		case spec.Namespaces:
-			var item spec.Namespace
-			item, err = decode[spec.Namespace](cl.Item)
+	}
+
+	// apply change log to the state
+	if !cl.Cmd.IsNoop() {
+		defer func() {
 			if err == nil {
-				ps.logger.Debug("Processing namespace", zap.String("name", item.Name))
-				err = ps.processNamespace(&item, cl)
+			hash_retry:
+				oldHash := ps.changeHash.Load()
+				if newHash, err := HashAny(oldHash, cl.ID); err != nil {
+					ps.logger.Error("error hashing change log", zap.Error(err))
+				} else if !ps.changeHash.CompareAndSwap(oldHash, newHash) {
+					goto hash_retry
+				}
+			} else {
+				ps.restartState(func(err error) {
+					if err != nil {
+						go ps.Stop()
+					}
+				})
 			}
-		case spec.Services:
-			var item spec.Service
-			item, err = decode[spec.Service](cl.Item)
-			if err == nil {
-				ps.logger.Debug("Processing service", zap.String("name", item.Name))
-				err = ps.processService(&item, cl)
-			}
-		case spec.Routes:
-			var item spec.Route
-			item, err = decode[spec.Route](cl.Item)
-			if err == nil {
-				ps.logger.Debug("Processing route", zap.String("name", item.Name))
-				err = ps.processRoute(&item, cl)
-			}
-		case spec.Modules:
-			var item spec.Module
-			item, err = decode[spec.Module](cl.Item)
-			if err == nil {
-				ps.logger.Debug("Processing module", zap.String("name", item.Name))
-				err = ps.processModule(&item, cl)
-			}
-		case spec.Domains:
-			var item spec.Domain
-			item, err = decode[spec.Domain](cl.Item)
-			if err == nil {
-				ps.logger.Debug("Processing domain", zap.String("name", item.Name))
-				err = ps.processDomain(&item, cl)
-			}
-		case spec.Collections:
-			var item spec.Collection
-			item, err = decode[spec.Collection](cl.Item)
-			if err == nil {
-				ps.logger.Debug("Processing collection", zap.String("name", item.Name))
-				err = ps.processCollection(&item, cl)
-			}
-		case spec.Documents:
-			var item spec.Document
-			item, err = decode[spec.Document](cl.Item)
-			if err == nil {
-				ps.logger.Debug("Processing document", zap.String("id", item.ID))
-				err = ps.processDocument(&item, cl)
-			}
-		case spec.Secrets:
-			var item spec.Secret
-			item, err = decode[spec.Secret](cl.Item)
-			if err == nil {
-				ps.logger.Debug("Processing secret", zap.String("name", item.Name))
-				err = ps.processSecret(&item, cl)
-			}
-		default:
-			err = fmt.Errorf("unknown command: %s", cl.Cmd)
-		}
-		if err != nil {
+		}()
+		if cl.Cmd.Resource() == spec.Documents && !store {
+			return nil
+		} else if err = ps.processResource(cl); err != nil {
 			ps.logger.Error("decoding or processing change log", zap.Error(err))
 			return
 		}
 	}
+
+	// apply state changes to the proxy
 	if reload {
-		if cl.Cmd.IsNoop() || cl.Cmd.Resource().IsRelatedTo(spec.Routes) {
-			ps.logger.Debug("Registering change log", zap.Stringer("cmd", cl.Cmd))
-			if err = ps.reconfigureState(false); err != nil {
+		overrideReload := cl.Cmd.IsNoop() || ps.pendingChanges
+		if overrideReload || cl.Cmd.Resource().IsRelatedTo(spec.Routes) {
+			ps.logger.Debug("Reloading change log at...", zap.String("id", cl.ID))
+			if err = ps.reconfigureState(cl); err != nil {
 				ps.logger.Error("Error registering change log", zap.Error(err))
 				return
 			}
+			ps.ready.CompareAndSwap(false, true)
+			ps.pendingChanges = false
 		}
-	}
-	if store {
-		if err = ps.store.StoreChangeLog(cl); err != nil {
-			ps.logger.Error("Error storing change log, restarting state", zap.Error(err))
-			ps.restartState(func(err error) {
-				if err != nil {
-					go ps.Stop()
-				}
-			})
-			return
-		}
+	} else if !cl.Cmd.IsNoop() {
+		ps.pendingChanges = true
 	}
 
 	return nil
@@ -143,6 +121,54 @@ func decode[T any](input any) (T, error) {
 		return output, err
 	}
 	return output, nil
+}
+
+func (ps *ProxyState) processResource(cl *spec.ChangeLog) (err error) {
+	switch cl.Cmd.Resource() {
+	case spec.Namespaces:
+		var item spec.Namespace
+		if item, err = decode[spec.Namespace](cl.Item); err == nil {
+			err = ps.processNamespace(&item, cl)
+		}
+	case spec.Services:
+		var item spec.Service
+		if item, err = decode[spec.Service](cl.Item); err == nil {
+			err = ps.processService(&item, cl)
+		}
+	case spec.Routes:
+		var item spec.Route
+		if item, err = decode[spec.Route](cl.Item); err == nil {
+			err = ps.processRoute(&item, cl)
+		}
+	case spec.Modules:
+		var item spec.Module
+		if item, err = decode[spec.Module](cl.Item); err == nil {
+			err = ps.processModule(&item, cl)
+		}
+	case spec.Domains:
+		var item spec.Domain
+		if item, err = decode[spec.Domain](cl.Item); err == nil {
+			err = ps.processDomain(&item, cl)
+		}
+	case spec.Collections:
+		var item spec.Collection
+		if item, err = decode[spec.Collection](cl.Item); err == nil {
+			err = ps.processCollection(&item, cl)
+		}
+	case spec.Documents:
+		var item spec.Document
+		if item, err = decode[spec.Document](cl.Item); err == nil {
+			err = ps.processDocument(&item, cl)
+		}
+	case spec.Secrets:
+		var item spec.Secret
+		if item, err = decode[spec.Secret](cl.Item); err == nil {
+			err = ps.processSecret(&item, cl)
+		}
+	default:
+		err = fmt.Errorf("unknown command: %s", cl.Cmd)
+	}
+	return err
 }
 
 func (ps *ProxyState) processNamespace(ns *spec.Namespace, cl *spec.ChangeLog) error {
@@ -262,40 +288,30 @@ func (ps *ProxyState) processSecret(scrt *spec.Secret, cl *spec.ChangeLog) (err 
 	return err
 }
 
+// restoreFromChangeLogs - restores the proxy state from change logs; directApply is used to avoid locking the proxy state
 func (ps *ProxyState) restoreFromChangeLogs(directApply bool) error {
-	logs, err := ps.store.FetchChangeLogs()
-	if err != nil {
-		if err == badger.ErrKeyNotFound {
-			ps.logger.Debug("no state change logs found in storage")
-		} else {
-			return errors.New("failed to get state change logs from storage: " + err.Error())
-		}
+	if logs, err := ps.store.FetchChangeLogs(); err != nil {
+		return errors.New("failed to get state change logs from storage: " + err.Error())
 	} else {
 		ps.logger.Info("restoring state change logs from storage", zap.Int("count", len(logs)))
 		// we might need to sort the change logs by timestamp
-		for i, cl := range logs {
-			ps.logger.Debug("restoring change log",
-				zap.Int("index", i),
-				zap.Stringer("changeLog", cl.Cmd),
-			)
-			err = ps.processChangeLog(cl, false, false)
-			if err != nil {
-				if ps.config.Debug {
-					ps.logger.Error("error restorng from change logs", zap.Error(err))
-					continue
-				}
+		for _, cl := range logs {
+			// ps.logger.Debug("restoring change log",
+			// 	zap.Int("index", i),
+			// 	zap.Stringer("changeLog", cl.Cmd),
+			// )
+			if err = ps.processChangeLog(cl, false, false); err != nil {
 				return err
+			} else {
+				ps.changeLogs = append(ps.changeLogs, cl)
 			}
 		}
-		if !directApply {
-			cl := spec.NewNoopChangeLog()
-			if err = ps.processChangeLog(cl, true, false); err != nil {
+		if cl := spec.NewNoopChangeLog(); !directApply {
+			if err = ps.reconfigureState(cl); err != nil {
 				return err
 			}
-		} else {
-			if err = ps.reconfigureState(false); err != nil {
-				return nil
-			}
+		} else if err = ps.processChangeLog(cl, true, false); err != nil {
+			return err
 		}
 
 		// TODO: optionally compact change logs through a flag in config?

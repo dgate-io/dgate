@@ -14,14 +14,12 @@ dgate-cli namespace create \
 
 dgate-cli domain create \
     name=url_shortener-dm \
-    patterns:='["url_shortener.com"]' \
+    patterns:='["url_shortener.example.com"]' \
     namespace=url_shortener-ns
 
 dgate-cli collection create \
     schema:='{"type":"object","properties":{"url":{"type":"string"}}}' \
-    name=short_link \
-    type=document \
-    namespace=url_shortener-ns
+    name=short_link type=document namespace=url_shortener-ns
 
 dgate-cli module create name=url_shortener-mod \
     payload@=$DIR/url_shortener.ts \
@@ -36,11 +34,11 @@ dgate-cli route create \
     namespace=url_shortener-ns
 
 JSON_RESP=$(curl -sG -X POST \
-    -H Host:url_shortener.com ${PROXY_URL}/ \
-    --data-urlencode 'url=https://dgate.io')
+    -H Host:url_shortener.example.com ${PROXY_URL}/ \
+    --data-urlencode 'url=https://dgate.io/'$(uuid))
 
 URL_ID=$(echo $JSON_RESP | jq -r '.id')
 
 curl -s --fail-with-body \
     ${PROXY_URL}/$URL_ID \
-    -H Host:url_shortener.com
+    -H Host:url_shortener.example.com

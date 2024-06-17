@@ -7,14 +7,14 @@ import (
 	"encoding/json"
 	"errors"
 	"hash"
-	"hash/crc32"
+	"hash/crc64"
 	"net/http"
 	"slices"
 	"sort"
 )
 
-func saltHash[T any](salt uint32, objs ...T) (hash.Hash32, error) {
-	hash := crc32.NewIEEE()
+func saltHash[T any](salt uint64, objs ...T) (hash.Hash64, error) {
+	hash := crc64.New(crc64.MakeTable(crc64.ECMA))
 	if salt != 0 {
 		// uint32 to byte array
 		b := make([]byte, 4)
@@ -39,15 +39,15 @@ func saltHash[T any](salt uint32, objs ...T) (hash.Hash32, error) {
 	return hash, nil
 }
 
-func HashAny[T any](salt uint32, objs ...T) (uint32, error) {
+func HashAny[T any](salt uint64, objs ...T) (uint64, error) {
 	h, err := saltHash(salt, objs...)
 	if err != nil {
 		return 0, err
 	}
-	return h.Sum32(), nil
+	return h.Sum64(), nil
 }
 
-func HashString[T any](salt uint32, objs ...T) (string, error) {
+func HashString[T any](salt uint64, objs ...T) (string, error) {
 	h, err := saltHash(salt, objs...)
 	if err != nil {
 		return "", err

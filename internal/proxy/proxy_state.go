@@ -34,18 +34,18 @@ import (
 )
 
 type ProxyState struct {
-	version     string
-	debugMode   bool
-	changeHash  uint32
-	startTime   time.Time
-	logger      *zap.Logger
-	printer     console.Printer
-	config      *config.DGateConfig
-	store       *proxystore.ProxyStore
-	changeLogs  []*spec.ChangeLog
-	metrics     *ProxyMetrics
-	sharedCache cache.TCache
-	proxyLock   *sync.RWMutex
+	debugMode      bool
+	changeHash     *atomic.Uint64
+	startTime      time.Time
+	logger         *zap.Logger
+	printer        console.Printer
+	config         *config.DGateConfig
+	store          *proxystore.ProxyStore
+	changeLogs     []*spec.ChangeLog
+	metrics        *ProxyMetrics
+	sharedCache    cache.TCache
+	proxyLock      *sync.RWMutex
+	pendingChanges bool
 
 	rm   *resources.ResourceManager
 	skdr scheduler.Scheduler
@@ -53,7 +53,7 @@ type ProxyState struct {
 	providers   avl.Tree[string, *RequestContextProvider]
 	modPrograms avl.Tree[string, *goja.Program]
 
-	ready               atomic.Bool
+	ready               *atomic.Bool
 	replicationSettings *ProxyReplication
 	replicationEnabled  bool
 	routers             avl.Tree[string, *router.DynamicRouter]
@@ -66,20 +66,21 @@ type ProxyState struct {
 func NewProxyState(logger *zap.Logger, conf *config.DGateConfig) *ProxyState {
 	var dataStore storage.Storage
 	switch conf.Storage.StorageType {
-	case config.StorageTypeDebug:
-		dataStore = storage.NewDebugStore(&storage.DebugStoreConfig{
-			Logger: logger,
-		})
 	case config.StorageTypeMemory:
-		dataStore = storage.NewMemoryStore(&storage.MemoryStoreConfig{
-			Logger: logger,
-		})
+		memConfig, err := config.StoreConfig[storage.MemStoreConfig](conf.Storage.Config)
+		if err != nil {
+			panic(fmt.Errorf("invalid config: %s", err))
+		} else {
+			memConfig.Logger = logger
+		}
+		dataStore = storage.NewMemStore(&memConfig)
 	case config.StorageTypeFile:
 		fileConfig, err := config.StoreConfig[storage.FileStoreConfig](conf.Storage.Config)
 		if err != nil {
 			panic(fmt.Errorf("invalid config: %s", err))
+		} else {
+			fileConfig.Logger = logger
 		}
-		fileConfig.Logger = logger
 		dataStore = storage.NewFileStore(&fileConfig)
 	default:
 		panic(fmt.Errorf("invalid storage type: %s", conf.Storage.StorageType))
@@ -91,9 +92,11 @@ func NewProxyState(logger *zap.Logger, conf *config.DGateConfig) *ProxyState {
 		opt = resources.WithDefaultNamespace(spec.DefaultNamespace)
 	}
 	var printer console.Printer = &extractors.NoopPrinter{}
-	if conf.ProxyConfig.EnableConsoleLogger {
-		printer = NewProxyPrinter(logger)
+	consoleLevel, err := zap.ParseAtomicLevel(conf.ProxyConfig.ConsoleLogLevel)
+	if err != nil {
+		panic(fmt.Errorf("invalid console log level: %s", err))
 	}
+	printer = NewProxyPrinter(logger, consoleLevel)
 	rpLogger := logger.Named("reverse-proxy")
 	storeLogger := logger.Named("store")
 	schedulerLogger := logger.Named("scheduler")
@@ -103,15 +106,16 @@ func NewProxyState(logger *zap.Logger, conf *config.DGateConfig) *ProxyState {
 		replicationEnabled = true
 	}
 	state := &ProxyState{
-		startTime: time.Now(),
-		ready:     atomic.Bool{},
-		logger:    logger,
-		debugMode: conf.Debug,
-		config:    conf,
-		metrics:   NewProxyMetrics(),
-		printer:   printer,
-		routers:   avl.NewTree[string, *router.DynamicRouter](),
-		rm:        resources.NewManager(opt),
+		startTime:  time.Now(),
+		ready:      new(atomic.Bool),
+		changeHash: new(atomic.Uint64),
+		logger:     logger,
+		debugMode:  conf.Debug,
+		config:     conf,
+		metrics:    NewProxyMetrics(),
+		printer:    printer,
+		routers:    avl.NewTree[string, *router.DynamicRouter](),
+		rm:         resources.NewManager(opt),
 		skdr: scheduler.New(scheduler.Options{
 			Logger: schedulerLogger,
 		}),
@@ -150,10 +154,6 @@ func NewProxyState(logger *zap.Logger, conf *config.DGateConfig) *ProxyState {
 	return state
 }
 
-func (ps *ProxyState) Version() string {
-	return ps.version
-}
-
 func (ps *ProxyState) Store() *proxystore.ProxyStore {
 	return ps.store
 }
@@ -162,19 +162,19 @@ func (ps *ProxyState) Logger() *zap.Logger {
 	return ps.logger
 }
 
-func (ps *ProxyState) ChangeHash() uint32 {
-	return ps.changeHash
+func (ps *ProxyState) ChangeHash() uint64 {
+	return ps.changeHash.Load()
 }
 
 func (ps *ProxyState) ChangeLogs() []*spec.ChangeLog {
-	return ps.changeLogs
+	// return a copy of the change logs
+	ps.proxyLock.RLock()
+	defer ps.proxyLock.RUnlock()
+	return append([]*spec.ChangeLog{}, ps.changeLogs...)
 }
 
 func (ps *ProxyState) Ready() bool {
-	if ps.replicationEnabled {
-		return ps.ready.Load()
-	}
-	return true
+	return ps.ready.Load()
 }
 
 func (ps *ProxyState) Raft() *raft.Raft {
@@ -184,76 +184,77 @@ func (ps *ProxyState) Raft() *raft.Raft {
 	return nil
 }
 
-func (ps *ProxyState) SetupRaft(r *raft.Raft, oc chan raft.Observation) {
+func (ps *ProxyState) SetupRaft(r *raft.Raft) {
 	ps.proxyLock.Lock()
 	defer ps.proxyLock.Unlock()
+
+	oc := make(chan raft.Observation, 32)
+	r.RegisterObserver(raft.NewObserver(oc, true, nil))
 	go func() {
+		logger := ps.logger.Named("raft-spy")
 		for obs := range oc {
-			switch raftObs := obs.Data.(type) {
+			switch ro := obs.Data.(type) {
 			case raft.PeerObservation:
-				ps.logger.Info("peer observation",
-					zap.Stringer("suffrage", raftObs.Peer.Suffrage),
-					zap.String("address", string(raftObs.Peer.Address)),
-					zap.String("id", string(raftObs.Peer.ID)),
+				logger.Info("peer observation",
+					zap.Stringer("suffrage", ro.Peer.Suffrage),
+					zap.String("address", string(ro.Peer.Address)),
+					zap.String("id", string(ro.Peer.ID)),
 				)
 			case raft.LeaderObservation:
-				ps.logger.Info("leader observation",
-					zap.String("leader_addr", string(raftObs.LeaderAddr)),
-					zap.String("leader_id", string(raftObs.LeaderID)),
+				logger.Info("leader observation",
+					zap.String("leader_addr", string(ro.LeaderAddr)),
+					zap.String("leader_id", string(ro.LeaderID)),
 				)
 			case raft.RequestVoteRequest:
-				ps.logger.Info("request vote request",
-					zap.String("candidate_id", string(raftObs.GetRPCHeader().ID)),
-					zap.String("candidate_addr", string(raftObs.GetRPCHeader().Addr)),
-					zap.Uint64("term", raftObs.Term),
-					zap.Uint64("last-log-index", raftObs.LastLogIndex),
-					zap.Uint64("last-log-term", raftObs.LastLogTerm),
+				logger.Info("request vote request",
+					zap.String("candidate_id", string(ro.GetRPCHeader().ID)),
+					zap.String("candidate_addr", string(ro.GetRPCHeader().Addr)),
+					zap.Uint64("term", ro.Term),
+					zap.Uint64("last-log-index", ro.LastLogIndex),
+					zap.Uint64("last-log-term", ro.LastLogTerm),
 				)
 			}
 		}
-
+		panic("raft observer channel closed")
 	}()
-
 	ps.replicationSettings = NewProxyReplication(r)
 }
 
 func (ps *ProxyState) WaitForChanges() error {
-	if rft := ps.Raft(); rft != nil {
-		return rft.Barrier(time.Second * 5).Error()
-	} else {
-		ps.proxyLock.RLock()
-		defer ps.proxyLock.RUnlock()
+	ps.proxyLock.RLock()
+	defer ps.proxyLock.RUnlock()
+	if r := ps.Raft(); r != nil && r.State() == raft.Leader {
+		return r.Barrier(time.Second * 5).Error()
 	}
 	return nil
 }
 
 func (ps *ProxyState) ApplyChangeLog(log *spec.ChangeLog) error {
-	if ps.replicationEnabled {
-		if log.Cmd.IsNoop() {
-			return ps.processChangeLog(log, true, false)
-		}
-		r := ps.replicationSettings.raft
+	if r := ps.Raft(); r != nil {
 		if r.State() != raft.Leader {
 			return raft.ErrNotLeader
+		}
+		if err := ps.processChangeLog(log, true, false); err != nil {
+			return err
 		}
 		encodedCL, err := json.Marshal(log)
 		if err != nil {
 			return err
 		}
-		raftLog := raft.Log{
-			Data: encodedCL,
-		}
-		err = ps.ProcessChangeLog(log, true)
-		if err != nil {
-			return err
-		}
+		raftLog := raft.Log{Data: encodedCL}
+		now := time.Now()
 		future := r.ApplyLog(raftLog, time.Second*15)
+		err = future.Error()
 		ps.logger.With().
 			Debug("waiting for reply from raft",
 				zap.String("id", log.ID),
 				zap.Stringer("command", log.Cmd),
+				zap.Stringer("command", time.Since(now)),
+				zap.Uint64("index", future.Index()),
+				zap.Any("response", future.Response()),
+				zap.Error(err),
 			)
-		return future.Error()
+		return err
 	} else {
 		return ps.processChangeLog(log, true, true)
 	}
@@ -296,10 +297,11 @@ func (ps *ProxyState) restartState(fn func(error)) {
 			fn(err)
 			return
 		}
-	}
-	if err := ps.restoreFromChangeLogs(true); err != nil {
-		fn(err)
-		return
+	} else {
+		if err := ps.restoreFromChangeLogs(true); err != nil {
+			fn(err)
+			return
+		}
 	}
 	ps.logger.Info("State successfully restarted")
 	fn(nil)
@@ -324,8 +326,7 @@ func (ps *ProxyState) ReloadState(check bool, logs ...*spec.ChangeLog) error {
 }
 
 func (ps *ProxyState) ProcessChangeLog(log *spec.ChangeLog, reload bool) error {
-	err := ps.processChangeLog(log, reload, !ps.replicationEnabled)
-	if err != nil {
+	if err := ps.processChangeLog(log, reload, true); err != nil {
 		ps.logger.Error("processing error", zap.Error(err))
 		return err
 	}
@@ -578,7 +579,7 @@ func (ps *ProxyState) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 				// if debug mode is enabled, return a 403
 				util.WriteStatusCodeError(w, http.StatusForbidden)
 				if ps.debugMode {
-					w.Write([]byte(" - Domain not allowed"))
+					w.Write([]byte("domain not allowed"))
 				}
 				return
 			}

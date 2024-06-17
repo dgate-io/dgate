@@ -3,6 +3,7 @@ package admin
 import (
 	"context"
 	"fmt"
+	"math"
 	"net"
 	"net/http"
 	"path"
@@ -13,12 +14,11 @@ import (
 	"github.com/dgate-io/dgate/internal/config"
 	"github.com/dgate-io/dgate/pkg/raftadmin"
 	"github.com/dgate-io/dgate/pkg/rafthttp"
-	"github.com/dgate-io/dgate/pkg/spec"
 	"github.com/dgate-io/dgate/pkg/storage"
+	"github.com/dgate-io/dgate/pkg/util"
 	"github.com/dgate-io/dgate/pkg/util/logadapter"
-	raftbadgerdb "github.com/dgate-io/raft-badger"
-	"github.com/dgraph-io/badger/v4"
 	"github.com/hashicorp/raft"
+	boltdb "github.com/hashicorp/raft-boltdb/v2"
 	"go.uber.org/zap"
 )
 
@@ -29,31 +29,44 @@ func setupRaft(
 	cs changestate.ChangeState,
 ) {
 	adminConfig := conf.AdminConfig
-	var sstore raft.StableStore
-	var lstore raft.LogStore
+	var logStore raft.LogStore
+	var configStore raft.StableStore
+	var snapStore raft.SnapshotStore
 	switch conf.Storage.StorageType {
 	case config.StorageTypeMemory:
-		sstore = raft.NewInmemStore()
-		lstore = raft.NewInmemStore()
+		logStore = raft.NewInmemStore()
+		configStore = raft.NewInmemStore()
 	case config.StorageTypeFile:
 		fileConfig, err := config.StoreConfig[storage.FileStoreConfig](conf.Storage.Config)
 		if err != nil {
 			panic(fmt.Errorf("invalid config: %s", err))
 		}
-		badgerLogger := logadapter.NewZap2BadgerAdapter(logger.Named("badger-file"))
-		raftDir := path.Join(fileConfig.Directory, "raft")
-		badgerStore, err := raftbadgerdb.New(
-			badger.DefaultOptions(raftDir).
-				WithLogger(badgerLogger),
+		raftDir := path.Join(fileConfig.Directory)
+
+		snapStore, err = raft.NewFileSnapshotStore(
+			path.Join(raftDir), 5,
+			zap.NewStdLog(logger.Named("snap-file")).Writer(),
 		)
 		if err != nil {
 			panic(err)
 		}
-		sstore = badgerStore
-		lstore = badgerStore
+		if boltStore, err := boltdb.NewBoltStore(
+			path.Join(raftDir, "raft.db"),
+		); err != nil {
+			panic(err)
+		} else {
+			configStore = boltStore
+			logStore = boltStore
+		}
 	default:
 		panic(fmt.Errorf("invalid storage type: %s", conf.Storage.StorageType))
 	}
+
+	logger.Info("raft store",
+		zap.Stringer("storage_type", conf.Storage.StorageType),
+		zap.Any("storage_config", conf.Storage.Config),
+	)
+
 	raftConfig := adminConfig.Replication.LoadRaftConfig(
 		&raft.Config{
 			ProtocolVersion:    raft.ProtocolVersionMax,
@@ -62,11 +75,12 @@ func setupRaft(
 			ElectionTimeout:    time.Second * 5,
 			CommitTimeout:      time.Second * 4,
 			BatchApplyCh:       false,
-			MaxAppendEntries:   512,
+			MaxAppendEntries:   1024,
 			LeaderLeaseTimeout: time.Second * 4,
+
 			// TODO: Support snapshots
-			SnapshotInterval:  time.Hour*2 ^ 32,
-			SnapshotThreshold: ^uint64(0),
+			SnapshotInterval:  time.Duration(9999 * time.Hour),
+			SnapshotThreshold: math.MaxUint64,
 			Logger:            logadapter.NewZap2HCLogAdapter(logger),
 		},
 	)
@@ -87,19 +101,16 @@ func setupRaft(
 		adminConfig.Replication.AdvertScheme+"://(address)/raft",
 	)
 	fsmLogger := logger.Named("fsm")
-	snapstore := raft.NewInmemSnapshotStore()
-	fsm := newDGateAdminFSM(fsmLogger, cs)
+	adminFSM := newDGateAdminFSM(fsmLogger, cs)
 	raftNode, err := raft.NewRaft(
-		raftConfig, fsm, lstore,
-		sstore, snapstore, transport,
+		raftConfig, adminFSM, logStore,
+		configStore, snapStore, transport,
 	)
 	if err != nil {
 		panic(err)
 	}
 
-	observerChan := make(chan raft.Observation, 10)
-	raftNode.RegisterObserver(raft.NewObserver(observerChan, false, nil))
-	cs.SetupRaft(raftNode, observerChan)
+	cs.SetupRaft(raftNode)
 
 	// Setup raft handler
 	server.Handle("/raft/*", transport)
@@ -109,7 +120,7 @@ func setupRaft(
 		raftNode, raftAdminLogger, []raft.ServerAddress{address},
 	)
 
-	// Setup handler raft
+	// Setup handler for raft admin
 	server.HandleFunc("/raftadmin/*", func(w http.ResponseWriter, r *http.Request) {
 		if adminConfig.Replication.SharedKey != "" {
 			sharedKey := r.Header.Get("X-DGate-Shared-Key")
@@ -120,6 +131,12 @@ func setupRaft(
 		}
 		raftAdmin.ServeHTTP(w, r)
 	})
+
+	// Setup handler for stats
+	server.Handle("/raftadmin/stats", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("X-Raft-State", raftNode.State().String())
+		util.JsonResponse(w, http.StatusOK, raftNode.Stats())
+	}))
 
 	configFuture := raftNode.GetConfiguration()
 	if err = configFuture.Error(); err != nil {
@@ -135,8 +152,6 @@ func setupRaft(
 		zap.Duration("commit_timeout", raftConfig.CommitTimeout),
 		zap.Int("config_proto", int(raftConfig.ProtocolVersion)),
 	)
-
-	defer cs.ProcessChangeLog(spec.NewNoopChangeLog(), false)
 
 	if adminConfig.Replication.BootstrapCluster && len(serverConfig.Servers) == 0 {
 		logger.Info("bootstrapping cluster",

@@ -14,7 +14,7 @@ dgate-cli namespace create \
 
 dgate-cli domain create \
     name=test-dm \
-    patterns:='["test.com"]' \
+    patterns:='["test.example.com"]' \
     namespace=test-ns
 
 MOD_B64="$(base64 < $DIR/modify_response.ts)"
@@ -37,6 +37,6 @@ dgate-cli route create \
     namespace=test-ns \
     service='base_svc'
 
-curl -s ${PROXY_URL}/test -H Host:test.com
+curl -s ${PROXY_URL}/test -H Host:test.example.com
 
 echo "Modify Response Test Passed"

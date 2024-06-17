@@ -1,7 +1,9 @@
 package typescript
 
 import (
+	"context"
 	_ "embed"
+	"strings"
 
 	"github.com/clarkmcc/go-typescript"
 	"github.com/dop251/goja"
@@ -12,9 +14,11 @@ import (
 //go:embed typescript.min.js
 var tscSource string
 
-func Transpile(src string) (string, error) {
+func Transpile(ctx context.Context, src string) (string, error) {
+	srcReader := strings.NewReader(src)
 	// transpiles TS into JS with commonjs module and targets es5
-	return typescript.TranspileString(src,
+	return typescript.TranspileCtx(
+		ctx, srcReader,
 		WithCachedTypescriptSource(),
 		typescript.WithPreventCancellation(),
 		typescript.WithCompileOptions(map[string]any{

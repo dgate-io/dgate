@@ -14,7 +14,7 @@ dgate-cli namespace create \
 
 dgate-cli domain create \
     name=multimod-test-dm \
-    patterns:='["multimod-test.com"]' \
+    patterns:='["multimod-test.example.com"]' \
     namespace=multimod-test-ns
 
 MOD_B64=$(base64 <<-END
@@ -71,7 +71,7 @@ dgate-cli route create name=base_rt \
     namespace=multimod-test-ns
 
 
-curl -s --fail-with-body ${PROXY_URL}/ -H Host:multimod-test.com
-curl -s --fail-with-body ${PROXY_URL}/multimod-test -H Host:multimod-test.com
+curl -s --fail-with-body ${PROXY_URL}/ -H Host:multimod-test.example.com
+curl -s --fail-with-body ${PROXY_URL}/multimod-test -H Host:multimod-test.example.com
 
 echo "Multi Module Test Passed"

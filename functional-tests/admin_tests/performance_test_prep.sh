@@ -14,7 +14,7 @@ dgate-cli -V -f namespace create \
     name=test-ns1
 
 dgate-cli domain create \
-    name=test-dm patterns:='["dgate.dev"]' \
+    name=test-dm patterns:='["performance.example.com"]' \
     namespace=test-ns1 priority:=100
 
 dgate-cli service create \
@@ -53,10 +53,10 @@ dgate-cli route create \
     namespace=test-ns1
 
 
-curl -s --fail-with-body ${PROXY_URL}/svctest -H Host:dgate.dev
+curl -s --fail-with-body ${PROXY_URL}/svctest -H Host:performance.example.com
 
-curl -s --fail-with-body ${PROXY_URL}/modtest -H Host:dgate.dev
+curl -s --fail-with-body ${PROXY_URL}/modtest -H Host:performance.example.com
 
-curl -s ${PROXY_URL}/blank -H Host:dgate.dev
+curl -s ${PROXY_URL}/blank -H Host:performance.example.com
 
 echo "Performance Test Prep Done"

@@ -32,6 +32,14 @@ func (store *ProxyStore) InitStore() error {
 	return nil
 }
 
+func (store *ProxyStore) CloseStore() error {
+	err := store.storage.Close()
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
 func (store *ProxyStore) FetchChangeLogs() ([]*spec.ChangeLog, error) {
 	clBytes, err := store.storage.GetPrefix("changelog/", 0, -1)
 	if err != nil {
@@ -144,7 +152,6 @@ func (store *ProxyStore) StoreDocument(doc *spec.Document) error {
 	if err != nil {
 		return err
 	}
-	store.logger.Debug("storing document")
 	err = store.storage.Set(createDocumentKey(doc.ID, doc.CollectionName, doc.NamespaceName), docBytes)
 	if err != nil {
 		return err
@@ -164,7 +171,11 @@ func (store *ProxyStore) DeleteDocument(id, colName, nsName string) error {
 }
 
 func (store *ProxyStore) DeleteDocuments(doc *spec.Document) error {
-	err := store.storage.IterateTxnPrefix(createDocumentKey("", doc.CollectionName, doc.NamespaceName),
+	docKey := createDocumentKey(
+		"", doc.CollectionName,
+		doc.NamespaceName,
+	)
+	err := store.storage.IterateTxnPrefix(docKey,
 		func(txn storage.StorageTxn, key string) error {
 			return txn.Delete(key)
 		})

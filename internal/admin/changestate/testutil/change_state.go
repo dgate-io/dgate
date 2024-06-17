@@ -22,8 +22,8 @@ func (m *MockChangeState) ApplyChangeLog(cl *spec.ChangeLog) error {
 }
 
 // ChangeHash implements changestate.ChangeState.
-func (m *MockChangeState) ChangeHash() uint32 {
-	return m.Called().Get(0).(uint32)
+func (m *MockChangeState) ChangeHash() uint64 {
+	return m.Called().Get(0).(uint64)
 }
 
 // DocumentManager implements changestate.ChangeState.
@@ -66,7 +66,7 @@ func (m *MockChangeState) ReloadState(a bool, cls ...*spec.ChangeLog) error {
 }
 
 // SetupRaft implements changestate.ChangeState.
-func (m *MockChangeState) SetupRaft(*raft.Raft, chan raft.Observation) {
+func (m *MockChangeState) SetupRaft(*raft.Raft) {
 	m.Called().Error(0)
 }
 

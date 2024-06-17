@@ -1,13 +1,13 @@
 package storage
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
-	"os"
+	"path"
 	"strings"
 
-	"github.com/dgraph-io/badger/v4"
-	"github.com/dgraph-io/badger/v4/options"
+	bolt "go.etcd.io/bbolt"
 	"go.uber.org/zap"
 )
 
@@ -17,19 +17,20 @@ type FileStoreConfig struct {
 }
 
 type FileStore struct {
-	directory string
-	logger    badger.Logger
-	inMemory  bool
-	db        *badger.DB
+	logger     *zap.Logger
+	bucketName []byte
+	directory  string
+	db         *bolt.DB
 }
 
 type FileStoreTxn struct {
-	txn *badger.Txn
-	ro  bool
+	txn    *bolt.Tx
+	ro     bool
+	bucket *bolt.Bucket
 }
 
-var _ Storage = &FileStore{}
-var _ StorageTxn = &FileStoreTxn{}
+var _ Storage = (*FileStore)(nil)
+var _ StorageTxn = (*FileStoreTxn)(nil)
 
 var (
 	// ErrStoreLocked is returned when the storage is locked.
@@ -51,115 +52,88 @@ func NewFileStore(fsConfig *FileStoreConfig) *FileStore {
 		fsConfig.Directory = strings.TrimSuffix(fsConfig.Directory, "/")
 	}
 
+	if fsConfig.Logger == nil {
+		fsConfig.Logger = zap.NewNop()
+	}
+
 	return &FileStore{
-		directory: fsConfig.Directory,
-		logger: newBadgerLoggerAdapter(
-			"filestore::badger", fsConfig.Logger,
-		),
-		inMemory: false,
+		directory:  fsConfig.Directory,
+		logger:     fsConfig.Logger.Named("boltstore::bolt"),
+		bucketName: []byte("dgate"),
 	}
 }
 
-func newFileStoreTxn(txn *badger.Txn) *FileStoreTxn {
-	return &FileStoreTxn{
-		txn: txn,
-	}
-}
-
-func (s *FileStore) Connect() error {
-	var opts badger.Options
-	var err error
-	if s.inMemory {
-		opts = badger.DefaultOptions("").
-			WithCompression(options.Snappy).
-			WithInMemory(true).
-			WithLogger(s.logger)
-	} else {
-		// Create the directory if it does not exist.
-		if _, err := os.Stat(s.directory); os.IsNotExist(err) {
-			err := os.MkdirAll(s.directory, 0755)
-			if err != nil {
-				return errors.New("failed to create directory - " + s.directory + ":  " + err.Error())
-			}
-		}
-
-		opts = badger.DefaultOptions(s.directory).
-			WithReadOnly(false).
-			WithInMemory(s.inMemory).
-			WithCompression(options.Snappy).
-			WithLogger(s.logger)
-	}
-	s.db, err = badger.Open(opts)
-	if err != nil {
+func (s *FileStore) Connect() (err error) {
+	filePath := path.Join(s.directory, "dgate.db")
+	if s.db, err = bolt.Open(filePath,
+		0755, bolt.DefaultOptions,
+	); err != nil {
 		return err
 	}
-	return nil
+	if tx, err := s.db.Begin(true); err != nil {
+		return err
+	} else {
+		_, err = tx.CreateBucketIfNotExists(s.bucketName)
+		if err != nil {
+			return err
+		}
+		return tx.Commit()
+	}
+}
+
+func (s *FileStore) newTxn(txn *bolt.Tx) *FileStoreTxn {
+	if bucket := txn.Bucket(s.bucketName); bucket != nil {
+		return &FileStoreTxn{
+			txn:    txn,
+			bucket: bucket,
+		}
+	}
+	panic("bucket not found")
 }
 
 func (s *FileStore) Get(key string) ([]byte, error) {
 	var value []byte
-	err := s.db.View(func(txn *badger.Txn) error {
-		val, err := newFileStoreTxn(txn).Get(key)
-		if err != nil {
-			if err == badger.ErrKeyNotFound {
-				return ErrKeyNotFound
-			}
-			return err
-		}
-		value = val
-		return nil
+	return value, s.db.View(func(txn *bolt.Tx) (err error) {
+		value, err = s.newTxn(txn).Get(key)
+		return err
 	})
-	return value, err
 }
 
 func (s *FileStore) Set(key string, value []byte) error {
-	return s.db.Update(func(txn *badger.Txn) error {
-		return newFileStoreTxn(txn).Set(key, value)
+	return s.db.Update(func(txn *bolt.Tx) error {
+		return s.newTxn(txn).Set(key, value)
+	})
+}
+
+func (s *FileStore) Delete(key string) error {
+	return s.db.Update(func(txn *bolt.Tx) error {
+		return s.newTxn(txn).Delete(key)
 	})
 }
 
 func (s *FileStore) IterateValuesPrefix(prefix string, fn func(string, []byte) error) error {
-	return s.db.View(func(txn *badger.Txn) error {
-		return newFileStoreTxn(txn).IterateValuesPrefix(prefix, fn)
+	return s.db.View(func(txn *bolt.Tx) error {
+		return s.newTxn(txn).IterateValuesPrefix(prefix, fn)
 	})
 }
 
 func (s *FileStore) IterateTxnPrefix(prefix string, fn func(StorageTxn, string) error) error {
-	return s.db.View(func(txn *badger.Txn) error {
-		return newFileStoreTxn(txn).IterateTxnPrefix(prefix, fn)
+	return s.db.Update(func(txn *bolt.Tx) error {
+		return s.newTxn(txn).IterateTxnPrefix(prefix, fn)
 	})
 }
 
 func (s *FileStore) GetPrefix(prefix string, offset, limit int) ([]*KeyValue, error) {
-	var return_list []*KeyValue
-	err := s.db.View(func(txn *badger.Txn) error {
-		val, err := newFileStoreTxn(txn).GetPrefix(prefix, offset, limit)
+	var list []*KeyValue
+	err := s.db.View(func(txn *bolt.Tx) error {
+		val, err := s.newTxn(txn).GetPrefix(prefix, offset, limit)
 		if err != nil {
 			return fmt.Errorf("failed to get prefix: %w", err)
 		}
-		return_list = val
+		list = val
 		return nil
 	})
-	return return_list, err
-}
-
-func (s *FileStore) Delete(key string) error {
-	return s.db.Update(func(txn *badger.Txn) error {
-		return txn.Delete([]byte(key))
-	})
-}
-
-func (s *FileStore) Txn(readOnly bool, fn func(StorageTxn) error) error {
-	txFunc := s.db.View
-	if !readOnly {
-		txFunc = s.db.Update
-	}
-	return txFunc(func(txn *badger.Txn) error {
-		return fn(&FileStoreTxn{
-			txn: txn,
-			ro:  readOnly,
-		})
-	})
+	return list, err
 }
 
 func (s *FileStore) Close() error {
@@ -167,43 +141,28 @@ func (s *FileStore) Close() error {
 }
 
 func (tx *FileStoreTxn) Get(key string) ([]byte, error) {
-	item, err := tx.txn.Get([]byte(key))
-	if err != nil {
-		return nil, err
-	}
-	val, err := item.ValueCopy(nil)
-	if err != nil {
-		return nil, err
-	}
-	return val, nil
+	return tx.bucket.Get([]byte(key)), nil
 }
 
 func (tx *FileStoreTxn) Set(key string, value []byte) error {
 	if tx.ro {
 		return ErrTxnReadOnly
 	}
-	return tx.txn.Set([]byte(key), value)
+	return tx.bucket.Put([]byte(key), value)
 }
 
 func (tx *FileStoreTxn) Delete(key string) error {
 	if tx.ro {
 		return ErrTxnReadOnly
 	}
-	return tx.txn.Delete([]byte(key))
+	return tx.bucket.Delete([]byte(key))
 }
 
 func (tx *FileStoreTxn) IterateValuesPrefix(prefix string, fn func(string, []byte) error) error {
-	iter := tx.txn.NewIterator(badger.IteratorOptions{
-		Prefix: []byte(prefix),
-	})
-	defer iter.Close()
-	for iter.Rewind(); iter.Valid(); iter.Next() {
-		item := iter.Item()
-		val, err := item.ValueCopy(nil)
-		if err != nil {
-			return err
-		}
-		if err := fn(string(item.Key()), val); err != nil {
+	c := tx.bucket.Cursor()
+	pre := []byte(prefix)
+	for k, v := c.Seek(pre); bytes.HasPrefix(k, pre); k, v = c.Next() {
+		if err := fn(string(k), v); err != nil {
 			return err
 		}
 	}
@@ -211,13 +170,10 @@ func (tx *FileStoreTxn) IterateValuesPrefix(prefix string, fn func(string, []byt
 }
 
 func (tx *FileStoreTxn) IterateTxnPrefix(prefix string, fn func(StorageTxn, string) error) error {
-	iter := tx.txn.NewIterator(badger.IteratorOptions{
-		Prefix: []byte(prefix),
-	})
-	defer iter.Close()
-	for iter.Rewind(); iter.Valid(); iter.Next() {
-		item := iter.Item()
-		if err := fn(tx, string(item.Key())); err != nil {
+	c := tx.bucket.Cursor()
+	pre := []byte(prefix)
+	for k, _ := c.Seek(pre); bytes.HasPrefix(k, pre); k, _ = c.Next() {
+		if err := fn(tx, string(k)); err != nil {
 			return err
 		}
 	}
@@ -225,29 +181,19 @@ func (tx *FileStoreTxn) IterateTxnPrefix(prefix string, fn func(StorageTxn, stri
 }
 
 func (s *FileStoreTxn) GetPrefix(prefix string, offset, limit int) ([]*KeyValue, error) {
-	return_list := make([]*KeyValue, 0)
-	iter := s.txn.NewIterator(badger.IteratorOptions{
-		Prefix: []byte(prefix),
-	})
-	defer iter.Close()
-	for iter.Rewind(); iter.Valid(); iter.Next() {
+	list := make([]*KeyValue, 0)
+	c := s.bucket.Cursor()
+	pre := []byte(prefix)
+	for k, v := c.Seek(pre); bytes.HasPrefix(k, pre); k, v = c.Next() {
 		if offset > 0 {
-			offset -= 1
+			offset--
 			continue
 		}
-		item := iter.Item()
-		val, err := item.ValueCopy(nil)
-		if err != nil {
-			return nil, fmt.Errorf("error copying value: %v", err)
-		}
-		return_list = append(return_list, &KeyValue{
-			Key:   string(item.Key()),
-			Value: val,
-		})
-		if limit -= 1; limit == 0 {
+		if limit == 0 {
 			break
 		}
+		list = append(list, &KeyValue{Key: string(k), Value: v})
+		limit--
 	}
-
-	return return_list, nil
+	return list, nil
 }

@@ -14,7 +14,7 @@ dgate-cli namespace create \
 
 dgate-cli domain create \
     name=change_checker-dm \
-    patterns:='["change_checker.com"]' \
+    patterns:='["change_checker.example.com"]' \
     namespace=change_checker-ns
 
 dgate-cli module create name=change_checker-mod \
@@ -29,7 +29,7 @@ dgate-cli route create \
     preserveHost:=true \
     namespace=change_checker-ns
 
-MODID1=$(curl -sG -H Host:change_checker.com ${PROXY_URL}/ | jq -r '.mod')
+MODID1=$(curl -sG -H Host:change_checker.example.com ${PROXY_URL}/ | jq -r '.mod')
 
 if [ "$MODID1" != "module1" ]; then
     echo "Initial assert failed"
@@ -43,7 +43,7 @@ dgate-cli module create name=change_checker-mod \
 
 # dgate-cli r.ker-ns
 
-MODID2=$(curl -sG -H Host:change_checker.com ${PROXY_URL}/ | jq -r '.mod')
+MODID2=$(curl -sG -H Host:change_checker.example.com ${PROXY_URL}/ | jq -r '.mod')
 
 if [ "$MODID2" != "module2" ]; then
     echo "module update failed"

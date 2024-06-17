@@ -14,7 +14,7 @@ dgate-cli namespace create \
 
 dgate-cli domain create \
     name=modify_request_test-dm \
-    patterns:='["modify_request_test.com"]' \
+    patterns:='["modify_request_test.example.com"]' \
     namespace=modify_request_test-ns
 
 MOD_B64="$(base64 < $DIR/modify_request.ts)"
@@ -38,7 +38,7 @@ dgate-cli route create \
     service='base_svc'
 
 curl -s --fail-with-body ${PROXY_URL}/modify_request_test \
-    -H Host:modify_request_test.com \
+    -H Host:modify_request_test.example.com \
     -H X-Forwarded-For:1.1.1.1
 
 echo "Modify Request Test Passed"

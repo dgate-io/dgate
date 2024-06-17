@@ -18,7 +18,7 @@ func NewTestDGateConfig() *config.DGateConfig {
 		Version:                 "v1",
 		Tags:                    []string{"test"},
 		Storage: config.DGateStorageConfig{
-			StorageType: config.StorageTypeDebug,
+			StorageType: config.StorageTypeMemory,
 		},
 		ProxyConfig: config.DGateProxyConfig{
 			AllowedDomains: []string{"*test.com", "localhost"},

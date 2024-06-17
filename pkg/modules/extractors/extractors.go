@@ -45,28 +45,20 @@ func RunAndWaitForResult(
 	fn goja.Callable,
 	args ...goja.Value,
 ) (res goja.Value, err error) {
-	tracker := newAsyncTracker()
-	rt.SetAsyncContextTracker(tracker)
-	defer func() {
-		rt.SetAsyncContextTracker(nil)
-		if err != nil {
-			rt.Interrupt(err.Error())
-		}
-	}()
-
 	if res, err = fn(nil, args...); err != nil {
 		return nil, err
 	} else if prom, ok := res.Export().(*goja.Promise); ok {
 		ctx, cancel := context.WithTimeout(
-			context.TODO(), 30*time.Second,
-		)
+			context.TODO(), 30*time.Second)
 		defer cancel()
-		if err := tracker.waitTimeout(ctx, func() bool {
+		if err = waitTimeout(ctx, func() bool {
 			return prom.State() != goja.PromiseStatePending
 		}); err != nil {
+			rt.Interrupt(err.Error())
 			return nil, errors.New("promise timed out: " + err.Error())
 		}
 		if prom.State() == goja.PromiseStateRejected {
+			// no need to interrupt the runtime here
 			return nil, errors.New(prom.Result().String())
 		}
 		results := prom.Result()
@@ -83,6 +75,29 @@ func RunAndWaitForResult(
 
 func nully(val goja.Value) bool {
 	return val == nil || goja.IsUndefined(val) || goja.IsNull(val)
+}
+
+func waitTimeout(ctx context.Context, doneFn func() bool) error {
+	if doneFn() {
+		return nil
+	}
+	maxTimeout := 100 * time.Millisecond
+	multiplier := 1.75
+	backoffTimeout := 2 * time.Millisecond
+	for {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(backoffTimeout):
+			if !doneFn() {
+				backoffTimeout = min(time.Duration(
+					float64(backoffTimeout)*multiplier,
+				), maxTimeout)
+				continue
+			}
+			return nil
+		}
+	}
 }
 
 func DefaultFetchUpstreamFunction() FetchUpstreamUrlFunc {
