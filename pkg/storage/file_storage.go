@@ -65,12 +65,9 @@ func NewFileStore(fsConfig *FileStoreConfig) *FileStore {
 
 func (s *FileStore) Connect() (err error) {
 	filePath := path.Join(s.directory, "dgate.db")
-	if s.db, err = bolt.Open(filePath,
-		0755, bolt.DefaultOptions,
-	); err != nil {
+	if s.db, err = bolt.Open(filePath, 0755, nil); err != nil {
 		return err
-	}
-	if tx, err := s.db.Begin(true); err != nil {
+	} else if tx, err := s.db.Begin(true); err != nil {
 		return err
 	} else {
 		_, err = tx.CreateBucketIfNotExists(s.bucketName)

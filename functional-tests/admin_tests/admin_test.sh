@@ -8,8 +8,12 @@ PROXY_URL=${PROXY_URL:-"http://localhost"}
 DIR="$( cd "$( dirname "$0" )" && pwd )"
 
 # domain setup
-
-id=$(uuid)
+# check if uuid is available
+if ! command -v uuid > /dev/null; then
+    id=x-$RANDOM-$RANDOM-$RANDOM
+else
+    id=$(uuid)
+fi
 
 dgate-cli namespace create name=ns-$id
 
