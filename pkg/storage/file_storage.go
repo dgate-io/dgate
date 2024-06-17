@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"os"
 	"path"
 	"strings"
 
@@ -64,6 +65,9 @@ func NewFileStore(fsConfig *FileStoreConfig) *FileStore {
 }
 
 func (s *FileStore) Connect() (err error) {
+	if err = os.MkdirAll(s.directory, 0755); err != nil {
+		return err
+	}
 	filePath := path.Join(s.directory, "dgate.db")
 	if s.db, err = bolt.Open(filePath, 0755, nil); err != nil {
 		return err
