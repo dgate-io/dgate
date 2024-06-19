@@ -45,7 +45,7 @@ func ConfigureHealthAPI(server chi.Router, version string, cs changestate.Change
 		w.Header().Set("Content-Type", "application/json")
 		if cs.Ready() {
 			if r := cs.Raft(); r != nil {
-				if err := cs.WaitForChanges(); err != nil {
+				if err := cs.WaitForChanges(nil); err != nil {
 					w.WriteHeader(http.StatusServiceUnavailable)
 					w.Write([]byte(`{"status":"not ready"}`))
 					return

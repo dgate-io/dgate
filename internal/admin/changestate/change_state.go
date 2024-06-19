@@ -11,13 +11,14 @@ type ChangeState interface {
 	// Change state
 	ApplyChangeLog(cl *spec.ChangeLog) error
 	ProcessChangeLog(cl *spec.ChangeLog, reload bool) error
-	WaitForChanges() error
+	WaitForChanges(cl *spec.ChangeLog) error
 	ReloadState(bool, ...*spec.ChangeLog) error
 	ChangeHash() uint64
 	ChangeLogs() []*spec.ChangeLog
 
 	// Readiness
 	Ready() bool
+	SetReady(bool)
 
 	// Replication
 	SetupRaft(*raft.Raft)

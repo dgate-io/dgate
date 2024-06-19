@@ -65,7 +65,7 @@ func ConfigureServiceAPI(server chi.Router, logger *zap.Logger, cs changestate.C
 		}
 
 		logger.Debug("Waiting for raft barrier")
-		if err := cs.WaitForChanges(); err != nil {
+		if err := cs.WaitForChanges(cl); err != nil {
 			util.JsonError(w, http.StatusInternalServerError, err.Error())
 			return
 		}

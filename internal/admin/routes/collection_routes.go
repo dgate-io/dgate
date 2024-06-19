@@ -69,7 +69,7 @@ func ConfigureCollectionAPI(server chi.Router, logger *zap.Logger, cs changestat
 			return
 		}
 
-		if err := cs.WaitForChanges(); err != nil {
+		if err := cs.WaitForChanges(cl); err != nil {
 			util.JsonError(w, http.StatusInternalServerError, err.Error())
 			return
 		}
@@ -274,7 +274,7 @@ func ConfigureCollectionAPI(server chi.Router, logger *zap.Logger, cs changestat
 			return
 		}
 
-		if err := cs.WaitForChanges(); err != nil {
+		if err := cs.WaitForChanges(cl); err != nil {
 			util.JsonError(w, http.StatusInternalServerError, err.Error())
 			return
 		}

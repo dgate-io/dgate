@@ -49,7 +49,7 @@ func ConfigureRouteAPI(server chi.Router, logger *zap.Logger, cs changestate.Cha
 			return
 		}
 
-		if err := cs.WaitForChanges(); err != nil {
+		if err := cs.WaitForChanges(cl); err != nil {
 			util.JsonError(w, http.StatusInternalServerError, err.Error())
 			return
 		}

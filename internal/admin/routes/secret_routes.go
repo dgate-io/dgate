@@ -47,7 +47,7 @@ func ConfigureSecretAPI(server chi.Router, logger *zap.Logger, cs changestate.Ch
 			util.JsonError(w, http.StatusBadRequest, err.Error())
 			return
 		}
-		if err := cs.WaitForChanges(); err != nil {
+		if err := cs.WaitForChanges(cl); err != nil {
 			util.JsonError(w, http.StatusInternalServerError, err.Error())
 			return
 		}
