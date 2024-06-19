@@ -9,27 +9,27 @@ DIR="$( cd "$( dirname "$0" )" && pwd )"
 
 export DGATE_ADMIN_API=$ADMIN_URL
 
-dgate-cli namespace create \
+dgate-cli -Vf namespace create \
     name=test-lb-ns
 
-dgate-cli domain create \
+dgate-cli -Vf domain create \
     name=test-lb-dm \
     patterns:='["test-lb.example.com"]' \
     namespace=test-lb-ns
 
 MOD_B64="$(base64 < $DIR/iphash_load_balancer.ts)"
-dgate-cli module create \
+dgate-cli -Vf module create \
     name=printer \
     payload="$MOD_B64" \
     namespace=test-lb-ns
 
 
-dgate-cli service create \
+dgate-cli -Vf service create \
     name=base_svc \
     urls:='["http://localhost:8888/a","http://localhost:8888/b","http://localhost:8888/c"]' \
     namespace=test-lb-ns
 
-dgate-cli route create \
+dgate-cli -Vf route create \
     name=base_rt \
     paths:='["/test-lb","/hello"]' \
     methods:='["GET"]' \

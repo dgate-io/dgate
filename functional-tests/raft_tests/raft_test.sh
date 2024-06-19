@@ -27,16 +27,16 @@ export DGATE_ADMIN_API=$ADMIN_URL1
 
 id=$(uuid)
 
-dgate-cli -f namespace create name=ns-$id
+dgate-cli -Vf namespace create name=ns-$id
 
-dgate-cli -f domain create name=dm-$id \
+dgate-cli -Vf domain create name=dm-$id \
     namespace=ns-$id priority:=$RANDOM patterns="$id.example.com"
 
-dgate-cli -f service create \
+dgate-cli -Vf service create \
     name=svc-$id namespace=ns-$id \
     urls="http://localhost:8081/$RANDOM"
 
-dgate-cli -f route create \
+dgate-cli -Vf route create \
     name=rt-$id \
     service=svc-$id \
     namespace=ns-$id \

@@ -9,19 +9,19 @@ DIR="$( cd "$( dirname "$0" )" && pwd )"
 
 export DGATE_ADMIN_API=$ADMIN_URL
 
-dgate-cli namespace create \
+dgate-cli -Vf namespace create \
     name=change_checker-ns
 
-dgate-cli domain create \
+dgate-cli -Vf domain create \
     name=change_checker-dm \
     patterns:='["change_checker.example.com"]' \
     namespace=change_checker-ns
 
-dgate-cli module create name=change_checker-mod \
+dgate-cli -Vf module create name=change_checker-mod \
     payload@=$DIR/change_checker_1.ts \
     namespace=change_checker-ns
 
-dgate-cli route create \
+dgate-cli -Vf route create \
     name=base_rt paths:='["/", "/{id}"]' \
     modules:='["change_checker-mod"]' \
     methods:='["GET","POST"]' \
@@ -37,7 +37,7 @@ if [ "$MODID1" != "module1" ]; then
 fi
 
 
-dgate-cli module create name=change_checker-mod \
+dgate-cli -Vf module create name=change_checker-mod \
     payload@=$DIR/change_checker_2.ts \
     namespace=change_checker-ns
 

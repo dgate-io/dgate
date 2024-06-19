@@ -9,25 +9,25 @@ DIR="$( cd "$( dirname "$0" )" && pwd )"
 
 export DGATE_ADMIN_API=$ADMIN_URL
 
-dgate-cli namespace create \
+dgate-cli -Vf namespace create \
     name=modify_request_test-ns
 
-dgate-cli domain create \
+dgate-cli -Vf domain create \
     name=modify_request_test-dm \
     patterns:='["modify_request_test.example.com"]' \
     namespace=modify_request_test-ns
 
 MOD_B64="$(base64 < $DIR/modify_request.ts)"
-dgate-cli module create \
+dgate-cli -Vf module create \
     name=printer payload="$MOD_B64" \
     namespace=modify_request_test-ns
 
-dgate-cli service create \
+dgate-cli -Vf service create \
     name=base_svc \
     urls:='["http://localhost:8888"]' \
     namespace=modify_request_test-ns
 
-dgate-cli route create \
+dgate-cli -Vf route create \
     name=base_rt \
     paths:='["/modify_request_test"]' \
     methods:='["GET"]' \

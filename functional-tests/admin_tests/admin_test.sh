@@ -15,20 +15,20 @@ else
     id=$(uuid)
 fi
 
-dgate-cli namespace create name=ns-$id
+dgate-cli -Vf namespace create name=ns-$id
 
-dgate-cli domain create name=dm-$id \
+dgate-cli -Vf domain create name=dm-$id \
     namespace=ns-$id priority:=$RANDOM patterns="$id.example.com"
 
-dgate-cli service create \
+dgate-cli -Vf service create \
     name=svc-$id namespace=ns-$id \
     urls="http://localhost:8888/$RANDOM"
 
-dgate-cli module create name=module1 \
+dgate-cli -Vf module create name=module1 \
     payload@=$DIR/admin_test.ts \
     namespace=ns-$id
 
-dgate-cli route create \
+dgate-cli -Vf route create \
     name=rt-$id \
     service=svc-$id \
     namespace=ns-$id \

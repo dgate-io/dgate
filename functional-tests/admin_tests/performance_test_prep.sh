@@ -10,23 +10,23 @@ DIR="$( cd "$( dirname "$0" )" && pwd )"
 
 export DGATE_ADMIN_API=$ADMIN_URL
 
-dgate-cli -V -f namespace create \
+dgate-cli -Vf namespace create \
     name=test-ns1
 
-dgate-cli domain create \
+dgate-cli -Vf domain create \
     name=test-dm patterns:='["performance.example.com"]' \
     namespace=test-ns1 priority:=100
 
-dgate-cli service create \
+dgate-cli -Vf service create \
     name=test-svc urls:='["http://localhost:8888"]' \
     namespace=test-ns1 retries:=3 retryTimeout=50ms
     
 MOD_B64="$(base64 < $DIR/performance_test_prep.ts)"
-dgate-cli module create \
+dgate-cli -Vf module create \
     name=test-mod payload="$MOD_B64" \
     namespace=test-ns1
 
-dgate-cli route create \
+dgate-cli -Vf route create \
     name=base-rt1 \
     service=test-svc \
     methods:='["GET"]' \
@@ -35,7 +35,7 @@ dgate-cli route create \
     stripPath:=true \
     namespace=test-ns1
 
-dgate-cli route create \
+dgate-cli -Vf route create \
     name=test-rt2 \
     paths:='["/modtest","/modview"]' \
     methods:='["GET"]' \
@@ -44,7 +44,7 @@ dgate-cli route create \
     preserveHost:=false \
     namespace=test-ns1
 
-dgate-cli route create \
+dgate-cli -Vf route create \
     name=test-rt3 \
     paths:='["/blank"]' \
     methods:='["GET"]' \

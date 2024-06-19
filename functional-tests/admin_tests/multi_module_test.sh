@@ -9,10 +9,10 @@ DIR="$( cd "$( dirname "$0" )" && pwd )"
 
 export DGATE_ADMIN_API=$ADMIN_URL
 
-dgate-cli namespace create \
+dgate-cli -Vf namespace create \
     name=multimod-test-ns
 
-dgate-cli domain create \
+dgate-cli -Vf domain create \
     name=multimod-test-dm \
     patterns:='["multimod-test.example.com"]' \
     namespace=multimod-test-ns
@@ -32,7 +32,7 @@ END
 
 )
 
-dgate-cli module create \
+dgate-cli -Vf module create \
     name=multimod1 \
     payload="$MOD_B64" \
     namespace=multimod-test-ns
@@ -53,15 +53,15 @@ END
 
 )
 
-dgate-cli module create name=multimod2 \
+dgate-cli -Vf module create name=multimod2 \
     payload="$MOD_B64" namespace=multimod-test-ns
 
 URL='http://localhost:8888'
-dgate-cli service create name=base_svc \
+dgate-cli -Vf service create name=base_svc \
     urls="$URL/a","$URL/b","$URL/c" \
     namespace=multimod-test-ns
 
-dgate-cli route create name=base_rt \
+dgate-cli -Vf route create name=base_rt \
     paths=/,/multimod-test \
     methods:='["GET"]' \
     modules=multimod1,multimod2 \
