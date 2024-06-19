@@ -4,6 +4,7 @@ set -eo xtrace
 
 ADMIN_URL=${ADMIN_URL:-"http://localhost:9080"}
 PROXY_URL=${PROXY_URL:-"http://localhost"}
+TEST_URL=${TEST_URL:-"http://localhost:8888"}
 
 DIR="$( cd "$( dirname "$0" )" && pwd )"
 
@@ -22,7 +23,7 @@ dgate-cli -Vf domain create name=dm-$id \
 
 dgate-cli -Vf service create \
     name=svc-$id namespace=ns-$id \
-    urls="http://localhost:8888/$RANDOM"
+    urls="$TEST/$RANDOM"
 
 dgate-cli -Vf module create name=module1 \
     payload@=$DIR/admin_test.ts \

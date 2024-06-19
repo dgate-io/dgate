@@ -4,6 +4,7 @@ set -eo xtrace
 
 ADMIN_URL=${ADMIN_URL:-"http://localhost:9080"}
 PROXY_URL=${PROXY_URL:-"http://localhost"}
+TEST_URL=${TEST_URL:-"http://localhost:8888"}
 
 DIR="$( cd "$( dirname "$0" )" && pwd )"
 
@@ -24,7 +25,7 @@ dgate-cli -Vf module create \
 
 dgate-cli -Vf service create \
     name=base_svc \
-    urls:='["http://localhost:8888"]' \
+    urls:="$TEST"\
     namespace=test-ns
 
 dgate-cli -Vf route create \

@@ -4,6 +4,7 @@ set -eo xtrace
 
 ADMIN_URL=${ADMIN_URL:-"http://localhost:9080"}
 PROXY_URL=${PROXY_URL:-"http://localhost"}
+TEST_URL=${TEST_URL:-"http://localhost:8888"}
 
 DIR="$( cd "$( dirname "$0" )" && pwd )"
 
@@ -56,9 +57,8 @@ END
 dgate-cli -Vf module create name=multimod2 \
     payload="$MOD_B64" namespace=multimod-test-ns
 
-URL='http://localhost:8888'
 dgate-cli -Vf service create name=base_svc \
-    urls="$URL/a","$URL/b","$URL/c" \
+    urls="$TEST/a","$TEST/b","$TEST/c" \
     namespace=multimod-test-ns
 
 dgate-cli -Vf route create name=base_rt \
