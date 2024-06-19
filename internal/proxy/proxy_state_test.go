@@ -38,7 +38,14 @@ func TestDynamicTLSConfig_DomainCert(t *testing.T) {
 func TestDynamicTLSConfig_DomainCertCache(t *testing.T) {
 	conf := configtest.NewTestDGateConfig_DomainAndNamespaces()
 	ps := proxy.NewProxyState(zap.NewNop(), conf)
-	d := ps.ResourceManager().GetDomainsByPriority()[0]
+	if err := ps.Start(); err != nil {
+		t.Fatal(err)
+	}
+	domains := ps.ResourceManager().GetDomainsByPriority()
+	if !assert.NotEqual(t, len(domains), 0) {
+		return
+	}
+	d := domains[0]
 	key := fmt.Sprintf("cert:%s:%s:%d", d.Namespace.Name,
 		d.Name, d.CreatedAt.UnixMilli())
 	tlsConfig := ps.DynamicTLSConfig("", "")
