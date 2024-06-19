@@ -27,7 +27,7 @@ dgate-cli -Vf module create \
 
 dgate-cli -Vf service create \
     name=base_svc \
-    urls:="$TEST_URL/a","$TEST_URL/b","$TEST_URL/c" \
+    urls="$TEST_URL/a","$TEST_URL/b","$TEST_URL/c" \
     namespace=test-lb-ns
 
 dgate-cli -Vf route create \

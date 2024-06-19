@@ -44,14 +44,12 @@ jobs:
       
       - name: Install goreman
         run: |
-          go get go install github.com/mattn/goreman@latest
+          go install github.com/mattn/goreman@latest
           goreman version
 
       - run: go run cmd/dgate-server/main.go &
 
-      - run: |
-          cd functional-tests/raft_tests
-          goreman start &
+      - run: cd functional-tests/raft_tests && goreman start &
 
       - name: Wait for server to start
         run: sleep 5

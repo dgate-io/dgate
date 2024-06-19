@@ -18,7 +18,7 @@ dgate-cli -Vf domain create \
     namespace=test-ns1 priority:=100
 
 dgate-cli -Vf service create \
-    name=test-svc urls:="$TEST_URL" \
+    name=test-svc urls="$TEST_URL" \
     namespace=test-ns1 retries:=3 retryTimeout=50ms
     
 MOD_B64="$(base64 < $DIR/performance_test_prep.ts)"
