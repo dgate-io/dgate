@@ -11,18 +11,40 @@ import (
 	"go.uber.org/zap"
 )
 
-type dgateAdminFSM struct {
-	cs     changestate.ChangeState
-	logger *zap.Logger
+type AdminFSM struct {
+	cs      changestate.ChangeState
+	storage raft.StableStore
+	logger  *zap.Logger
+
+	localState *saveState
 }
 
-var _ raft.BatchingFSM = (*dgateAdminFSM)(nil)
+var _ raft.BatchingFSM = (*AdminFSM)(nil)
 
-func newDGateAdminFSM(logger *zap.Logger, cs changestate.ChangeState) *dgateAdminFSM {
-	return &dgateAdminFSM{cs, logger}
+type saveState struct {
+	AppliedIndex uint64 `json:"aindex"`
 }
 
-func (fsm *dgateAdminFSM) applyLog(log *raft.Log, reload bool) (*spec.ChangeLog, error) {
+func newAdminFSM(
+	logger *zap.Logger,
+	storage raft.StableStore,
+	cs changestate.ChangeState,
+) raft.FSM {
+	fsm := &AdminFSM{cs, storage, logger, &saveState{}}
+	stateBytes, err := storage.Get([]byte("prev_state"))
+	if err != nil {
+		logger.Error("error getting prev_state", zap.Error(err))
+	} else if len(stateBytes) != 0 {
+		if err = json.Unmarshal(stateBytes, &fsm.localState); err != nil {
+			logger.Warn("corrupted state detected", zap.ByteString("prev_state", stateBytes))
+		} else {
+			logger.Info("found state in store", zap.Any("prev_state", fsm.localState))
+		}
+	}
+	return fsm
+}
+
+func (fsm *AdminFSM) applyLog(log *raft.Log, reload bool) (*spec.ChangeLog, error) {
 	switch log.Type {
 	case raft.LogCommand:
 		var cl spec.ChangeLog
@@ -53,48 +75,77 @@ func (fsm *dgateAdminFSM) applyLog(log *raft.Log, reload bool) (*spec.ChangeLog,
 	return nil, nil
 }
 
-func (fsm *dgateAdminFSM) Apply(log *raft.Log) any {
-	rft := fsm.cs.Raft()
-	fsm.logger.Debug("apply single log",
-		zap.Uint64("applied", rft.AppliedIndex()),
-		zap.Uint64("commit", rft.CommitIndex()),
-		zap.Uint64("last", rft.LastIndex()),
-		zap.Uint64("logIndex", log.Index),
-	)
-	_, err := fsm.applyLog(log, true)
-	return err
+func (fsm *AdminFSM) Apply(log *raft.Log) any {
+	resps := fsm.ApplyBatch([]*raft.Log{log})
+	if len(resps) != 1 {
+		panic("apply batch not returning the correct number of responses")
+	}
+	return resps[0]
 }
 
-func (fsm *dgateAdminFSM) ApplyBatch(logs []*raft.Log) []any {
+func (fsm *AdminFSM) ApplyBatch(logs []*raft.Log) []any {
 	rft := fsm.cs.Raft()
-	lastIndex := len(logs) - 1
+	appliedIndex := rft.AppliedIndex()
+	lastLogIndex := logs[len(logs)-1].Index
 	fsm.logger.Debug("apply log batch",
-		zap.Uint64("applied", rft.AppliedIndex()),
+		zap.Uint64("applied", appliedIndex),
 		zap.Uint64("commit", rft.CommitIndex()),
 		zap.Uint64("last", rft.LastIndex()),
 		zap.Uint64("log[0]", logs[0].Index),
-		zap.Uint64("log[-1]", logs[lastIndex].Index),
+		zap.Uint64("log[-1]", lastLogIndex),
 		zap.Int("logs", len(logs)),
 	)
+
+	var err error
 	results := make([]any, len(logs))
+
 	for i, log := range logs {
-		// TODO: check to see if this can be optimized channels raft node provides
-		_, err := fsm.applyLog(log, lastIndex == i)
-		if err != nil {
+		isLast := len(logs)-1 == i
+		reload := fsm.shouldReload(log, isLast)
+		if _, err = fsm.applyLog(log, reload); err != nil {
 			fsm.logger.Error("Error applying log", zap.Error(err))
 			results[i] = err
 		}
 	}
+
+	if appliedIndex != 0 && lastLogIndex >= appliedIndex {
+		fsm.localState.AppliedIndex = lastLogIndex
+		if err = fsm.saveFSMState(); err != nil {
+			fsm.logger.Warn("failed to save applied index state",
+				zap.Uint64("applied_index", lastLogIndex),
+			)
+		}
+		fsm.cs.SetReady(true)
+	}
+
 	return results
 }
 
-func (fsm *dgateAdminFSM) Snapshot() (raft.FSMSnapshot, error) {
+func (fsm *AdminFSM) saveFSMState() error {
+	fsm.logger.Debug("saving localState",
+		zap.Any("data", fsm.localState),
+	)
+	stateBytes, err := json.Marshal(fsm.localState)
+	if err != nil {
+		return err
+	}
+	return fsm.storage.Set([]byte("prev_state"), stateBytes)
+}
+
+func (fsm *AdminFSM) shouldReload(log *raft.Log, reload bool) bool {
+	if reload {
+		return log.Index >= fsm.localState.AppliedIndex
+	}
+	return false
+}
+
+func (fsm *AdminFSM) Snapshot() (raft.FSMSnapshot, error) {
 	fsm.cs = nil
 	fsm.logger.Warn("snapshots not supported")
 	return nil, errors.New("snapshots not supported")
 }
 
-func (fsm *dgateAdminFSM) Restore(rc io.ReadCloser) error {
+func (fsm *AdminFSM) Restore(rc io.ReadCloser) error {
 	fsm.logger.Warn("snapshots not supported, cannot restore")
 	return nil
 }

@@ -22,15 +22,16 @@ import (
 func StartAdminAPI(
 	version string, conf *config.DGateConfig,
 	logger *zap.Logger, cs changestate.ChangeState,
-) {
+) error {
 	if conf.AdminConfig == nil {
 		logger.Warn("Admin API is disabled")
-		return
+		return nil
 	}
 
 	mux := chi.NewRouter()
-	configureRoutes(mux, version,
-		logger.Named("routes"), cs, conf)
+	if err := configureRoutes(mux, version, logger.Named("routes"), cs, conf); err != nil {
+		return err
+	}
 
 	// Start HTTP Server
 	go func() {
@@ -44,6 +45,7 @@ func StartAdminAPI(
 			ErrorLog: zap.NewStdLog(adminHttpLogger),
 		}
 		if err := server.ListenAndServe(); err != nil {
+			logger.Error("Error starting admin api", zap.Error(err))
 			panic(err)
 		}
 	}()
@@ -143,4 +145,5 @@ func StartAdminAPI(
 			}()
 		}
 	}
+	return nil
 }

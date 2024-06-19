@@ -88,50 +88,56 @@ RETRY:
 	return nil
 }
 
-func (store *ProxyStore) DeleteChangeLogs(logs []*spec.ChangeLog) (int, error) {
-	removed := 0
-	for _, cl := range logs {
-		err := store.storage.Delete("changelog/" + cl.ID)
-		if err != nil {
-			return removed, err
+func (store *ProxyStore) DeleteChangeLogs(logs []*spec.ChangeLog) error {
+	err := store.storage.Txn(true, func(txn storage.StorageTxn) error {
+		for _, cl := range logs {
+			if err := txn.Delete("changelog/" + cl.ID); err != nil {
+				return err
+			}
 		}
-		removed++
+		return nil
+	})
+	if err != nil {
+		return err
 	}
-	return removed, nil
+	return nil
 }
 
-func createDocumentKey(docId, colName, nsName string) string {
+func docKey(docId, colName, nsName string) string {
 	return "doc/" + nsName + "/" + colName + "/" + docId
 }
 
 func (store *ProxyStore) FetchDocument(docId, colName, nsName string) (*spec.Document, error) {
-	docBytes, err := store.storage.Get(createDocumentKey(docId, colName, nsName))
+	docBytes, err := store.storage.Get(docKey(docId, colName, nsName))
 	if err != nil {
-		if err == storage.ErrStoreLocked {
-			return nil, err
-		}
 		return nil, errors.New("failed to fetch document: " + err.Error())
+	} else if docBytes == nil {
+		return nil, nil
 	}
 	doc := &spec.Document{}
 	err = json.Unmarshal(docBytes, doc)
 	if err != nil {
-		store.logger.Debug("failed to unmarshal document entry: %s, skipping %s",
-			zap.Error(err), zap.String("document_id", docId))
-		return nil, errors.New("failed to unmarshal document entry" + err.Error())
+		return nil, errors.New("failed to unmarshal document entry: " + err.Error())
 	}
 	return doc, nil
 }
 
 func (store *ProxyStore) FetchDocuments(
-	namespaceName, collectionName string,
+	collectionName string,
+	namespaceName string,
 	limit, offset int,
 ) ([]*spec.Document, error) {
+	if limit == 0 {
+		return nil, nil
+	}
 	docs := make([]*spec.Document, 0)
-	docPrefix := createDocumentKey("", collectionName, namespaceName)
+	docPrefix := docKey("", collectionName, namespaceName)
 	err := store.storage.IterateValuesPrefix(docPrefix, func(key string, val []byte) error {
-		if offset -= 1; offset > 0 {
+		if offset > 0 {
+			offset -= 1
 			return nil
-		} else if limit -= 1; limit != 0 {
+		}
+		if limit -= 1; limit != 0 {
 			var newDoc spec.Document
 			err := json.Unmarshal(val, &newDoc)
 			if err != nil {
@@ -152,7 +158,8 @@ func (store *ProxyStore) StoreDocument(doc *spec.Document) error {
 	if err != nil {
 		return err
 	}
-	err = store.storage.Set(createDocumentKey(doc.ID, doc.CollectionName, doc.NamespaceName), docBytes)
+	key := docKey(doc.ID, doc.CollectionName, doc.NamespaceName)
+	err = store.storage.Set(key, docBytes)
 	if err != nil {
 		return err
 	}
@@ -160,27 +167,5 @@ func (store *ProxyStore) StoreDocument(doc *spec.Document) error {
 }
 
 func (store *ProxyStore) DeleteDocument(id, colName, nsName string) error {
-	err := store.storage.Delete(createDocumentKey(id, colName, nsName))
-	if err != nil {
-		if err == badger.ErrKeyNotFound {
-			return nil
-		}
-		return err
-	}
-	return nil
-}
-
-func (store *ProxyStore) DeleteDocuments(doc *spec.Document) error {
-	docKey := createDocumentKey(
-		"", doc.CollectionName,
-		doc.NamespaceName,
-	)
-	err := store.storage.IterateTxnPrefix(docKey,
-		func(txn storage.StorageTxn, key string) error {
-			return txn.Delete(key)
-		})
-	if err != nil {
-		return err
-	}
-	return nil
+	return store.storage.Delete(docKey(id, colName, nsName))
 }

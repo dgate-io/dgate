@@ -101,7 +101,7 @@ func setupRaft(
 		adminConfig.Replication.AdvertScheme+"://(address)/raft",
 	)
 	fsmLogger := logger.Named("fsm")
-	adminFSM := newDGateAdminFSM(fsmLogger, cs)
+	adminFSM := newAdminFSM(fsmLogger, configStore, cs)
 	raftNode, err := raft.NewRaft(
 		raftConfig, adminFSM, logStore,
 		configStore, snapStore, transport,

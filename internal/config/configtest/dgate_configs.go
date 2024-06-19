@@ -168,3 +168,15 @@ func NewTestDGateConfig_DomainAndNamespaces2() *config.DGateConfig {
 	conf.DisableDefaultNamespace = false
 	return conf
 }
+
+func NewTestAdminConfig() *config.DGateConfig {
+	conf := NewTestDGateConfig()
+	conf.AdminConfig = &config.DGateAdminConfig{
+		Host: "localhost",
+		Port: 0,
+		TLS: &config.DGateTLSConfig{
+			Port: 0,
+		},
+	}
+	return conf
+}

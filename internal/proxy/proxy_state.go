@@ -158,10 +158,6 @@ func (ps *ProxyState) Store() *proxystore.ProxyStore {
 	return ps.store
 }
 
-func (ps *ProxyState) Logger() *zap.Logger {
-	return ps.logger
-}
-
 func (ps *ProxyState) ChangeHash() uint64 {
 	return ps.changeHash.Load()
 }
@@ -177,6 +173,10 @@ func (ps *ProxyState) Ready() bool {
 	return ps.ready.Load()
 }
 
+func (ps *ProxyState) SetReady(ready bool) {
+	ps.ready.CompareAndSwap(false, true)
+}
+
 func (ps *ProxyState) Raft() *raft.Raft {
 	if ps.replicationEnabled {
 		return ps.replicationSettings.raft
@@ -189,29 +189,38 @@ func (ps *ProxyState) SetupRaft(r *raft.Raft) {
 	defer ps.proxyLock.Unlock()
 
 	oc := make(chan raft.Observation, 32)
-	r.RegisterObserver(raft.NewObserver(oc, true, nil))
+	r.RegisterObserver(raft.NewObserver(oc, false, func(o *raft.Observation) bool {
+		switch o.Data.(type) {
+		case
+			raft.FailedHeartbeatObservation,
+			raft.LeaderObservation,
+			raft.PeerObservation:
+			return true
+		}
+		return false
+	}))
 	go func() {
-		logger := ps.logger.Named("raft-spy")
+		logger := ps.logger.Named("raft-observer")
 		for obs := range oc {
 			switch ro := obs.Data.(type) {
 			case raft.PeerObservation:
-				logger.Info("peer observation",
-					zap.Stringer("suffrage", ro.Peer.Suffrage),
-					zap.String("address", string(ro.Peer.Address)),
-					zap.String("id", string(ro.Peer.ID)),
-				)
+				if ro.Removed {
+					logger.Info("peer removed",
+						zap.Stringer("suffrage", ro.Peer.Suffrage),
+						zap.String("address", string(ro.Peer.Address)),
+						zap.String("id", string(ro.Peer.ID)),
+					)
+				} else {
+					logger.Info("peer added",
+						zap.Stringer("suffrage", ro.Peer.Suffrage),
+						zap.String("address", string(ro.Peer.Address)),
+						zap.String("id", string(ro.Peer.ID)),
+					)
+				}
 			case raft.LeaderObservation:
 				logger.Info("leader observation",
 					zap.String("leader_addr", string(ro.LeaderAddr)),
 					zap.String("leader_id", string(ro.LeaderID)),
-				)
-			case raft.RequestVoteRequest:
-				logger.Info("request vote request",
-					zap.String("candidate_id", string(ro.GetRPCHeader().ID)),
-					zap.String("candidate_addr", string(ro.GetRPCHeader().Addr)),
-					zap.Uint64("term", ro.Term),
-					zap.Uint64("last-log-index", ro.LastLogIndex),
-					zap.Uint64("last-log-term", ro.LastLogTerm),
 				)
 			}
 		}
@@ -220,11 +229,44 @@ func (ps *ProxyState) SetupRaft(r *raft.Raft) {
 	ps.replicationSettings = NewProxyReplication(r)
 }
 
-func (ps *ProxyState) WaitForChanges() error {
-	ps.proxyLock.RLock()
-	defer ps.proxyLock.RUnlock()
-	if r := ps.Raft(); r != nil && r.State() == raft.Leader {
-		return r.Barrier(time.Second * 5).Error()
+func (ps *ProxyState) WaitForChanges(log *spec.ChangeLog) error {
+	if r := ps.Raft(); r != nil && log != nil {
+		waitTime := time.Second * 5
+		if r.State() != raft.Leader {
+			return r.Barrier(waitTime).Error()
+		} else {
+			hasChanges := func() bool {
+				ps.proxyLock.RLock()
+				defer ps.proxyLock.RUnlock()
+				if ps.changeLogs != nil {
+					lastLog := ps.changeLogs[len(ps.changeLogs)-1]
+					if lastLog.ID >= log.ID {
+						return true
+					}
+				}
+				return false
+			}
+			timeout := time.After(waitTime)
+			backoff := time.Millisecond * 10
+			multiplier := 1.8
+			for {
+				select {
+				case <-timeout:
+					if hasChanges() {
+						return nil
+					}
+					return errors.New("timeout waiting for changes")
+				case <-time.After(backoff):
+					if hasChanges() {
+						return nil
+					}
+					backoff = min(time.Duration(float64(backoff)*multiplier), time.Millisecond*500)
+				}
+			}
+		}
+	} else {
+		ps.proxyLock.RLock()
+		defer ps.proxyLock.RUnlock()
 	}
 	return nil
 }

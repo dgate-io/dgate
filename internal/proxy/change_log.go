@@ -37,25 +37,22 @@ func (ps *ProxyState) processChangeLog(cl *spec.ChangeLog, reload, store bool) (
 						return
 					}
 				}
-				// in memory storage for state restarts
+				if len(ps.changeLogs) > 0 {
+					xcl := ps.changeLogs[len(ps.changeLogs)-1]
+					if xcl.ID == cl.ID {
+						if r := ps.Raft(); r != nil && r.State() == raft.Leader {
+							return
+						}
+						ps.logger.Error("duplicate change log",
+							zap.String("id", cl.ID),
+							zap.Stringer("cmd", cl.Cmd),
+						)
+						return
+					}
+				}
 				ps.changeLogs = append(ps.changeLogs, cl)
 			}
 		}()
-	}
-
-	if len(ps.changeLogs) > 0 {
-		xcl := ps.changeLogs[len(ps.changeLogs)-1]
-		if xcl.ID == cl.ID {
-			if r := ps.Raft(); r != nil && r.State() == raft.Leader {
-				// FYI: we still need to store the change log
-				return nil
-			}
-			ps.logger.Error("duplicate change log",
-				zap.String("id", cl.ID),
-				zap.Stringer("cmd", cl.Cmd),
-			)
-			return errors.New("duplicate change log")
-		}
 	}
 
 	// apply change log to the state
@@ -77,9 +74,7 @@ func (ps *ProxyState) processChangeLog(cl *spec.ChangeLog, reload, store bool) (
 				})
 			}
 		}()
-		if cl.Cmd.Resource() == spec.Documents && !store {
-			return nil
-		} else if err = ps.processResource(cl); err != nil {
+		if err = ps.processResource(cl); err != nil {
 			ps.logger.Error("decoding or processing change log", zap.Error(err))
 			return
 		}
@@ -334,11 +329,11 @@ func (ps *ProxyState) restoreFromChangeLogs(directApply bool) error {
 
 func (ps *ProxyState) compactChangeLogs(logs []*spec.ChangeLog) (int, error) {
 	removeList := compactChangeLogsRemoveList(ps.logger, sliceutil.SliceCopy(logs))
-	removed, err := ps.store.DeleteChangeLogs(removeList)
+	err := ps.store.DeleteChangeLogs(removeList)
 	if err != nil {
-		return removed, err
+		return 0, err
 	}
-	return removed, nil
+	return len(logs), nil
 }
 
 /*

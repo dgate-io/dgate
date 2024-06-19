@@ -2,6 +2,7 @@ package storage
 
 type Storage interface {
 	StorageTxn
+	Txn(write bool, fn func(txn StorageTxn) error) error
 	Connect() error
 	Close() error
 }

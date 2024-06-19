@@ -227,7 +227,7 @@ func (ps *ProxyState) startProxyServer() {
 	cfg := ps.config.ProxyConfig
 	hostPort := fmt.Sprintf("%s:%d", cfg.Host, cfg.Port)
 	ps.logger.Info("Starting proxy server on " + hostPort)
-	proxyHttpLogger := ps.Logger()
+	proxyHttpLogger := ps.logger.Named("http")
 	server := &http.Server{
 		Addr:     hostPort,
 		Handler:  ps,
@@ -324,7 +324,7 @@ func (ps *ProxyState) Stop() {
 
 	ps.logger.Info("Stopping proxy server")
 	defer os.Exit(0)
-	defer ps.Logger().Sync()
+	defer ps.logger.Sync()
 
 	ps.proxyLock.Lock()
 	defer ps.proxyLock.Unlock()

@@ -1,6 +1,7 @@
 package admin
 
 import (
+	"errors"
 	"fmt"
 	"log"
 	"net/http"
@@ -28,50 +29,51 @@ func configureRoutes(
 	logger *zap.Logger,
 	cs changestate.ChangeState,
 	conf *config.DGateConfig,
-) {
+) error {
 	adminConfig := conf.AdminConfig
-	server.Use(func(next http.Handler) http.Handler {
-		ipList := iplist.NewIPList()
-		for _, address := range adminConfig.AllowList {
-			if strings.Contains(address, "/") {
-				if err := ipList.AddCIDRString(address); err != nil {
-					panic(fmt.Sprintf("invalid cidr address in admin.allow_list: %s", address))
-				}
-			} else {
-				if err := ipList.AddIPString(address); err != nil {
-					panic(fmt.Sprintf("invalid ip address in admin.allow_list: %s", address))
-				}
+	ipList := iplist.NewIPList()
+	for _, address := range adminConfig.AllowList {
+		if strings.Contains(address, "/") {
+			if err := ipList.AddCIDRString(address); err != nil {
+				return fmt.Errorf("invalid cidr address in admin.allow_list: %s", address)
+			}
+		} else {
+			if err := ipList.AddIPString(address); err != nil {
+				return fmt.Errorf("invalid ip address in admin.allow_list: %s", address)
 			}
 		}
-		// basic auth
-		var userMap map[string]string
-		// key auth
-		var keyMap map[string]struct{}
+	}
+	// basic auth
+	var userMap map[string]string
+	// key auth
+	var keyMap map[string]struct{}
 
-		switch adminConfig.AuthMethod {
-		case config.AuthMethodBasicAuth:
-			userMap = make(map[string]string)
-			if len(adminConfig.BasicAuth.Users) > 0 {
-				for i, user := range adminConfig.BasicAuth.Users {
-					if user.Username == "" || user.Password == "" {
-						panic(fmt.Sprintf("both username and password are required: admin.basic_auth.users[%d]", i))
-					}
-					userMap[user.Username] = user.Password
+	switch adminConfig.AuthMethod {
+	case config.AuthMethodBasicAuth:
+		userMap = make(map[string]string)
+		if len(adminConfig.BasicAuth.Users) > 0 {
+			for i, user := range adminConfig.BasicAuth.Users {
+				if user.Username == "" || user.Password == "" {
+					return errors.New(fmt.Sprintf("both username and password are required: admin.basic_auth.users[%d]", i))
 				}
+				userMap[user.Username] = user.Password
 			}
-		case config.AuthMethodKeyAuth:
-			keyMap = make(map[string]struct{})
-			if adminConfig.KeyAuth != nil && len(adminConfig.KeyAuth.Keys) > 0 {
-				if adminConfig.KeyAuth.QueryParamName != "" && adminConfig.KeyAuth.HeaderName != "" {
-					panic("only one of admin.key_auth.query_param_name or admin.key_auth.header_name can be set")
-				}
-				for _, key := range adminConfig.KeyAuth.Keys {
-					keyMap[key] = struct{}{}
-				}
-			}
-		case config.AuthMethodJWTAuth:
-			panic("JWT Auth is not supported yet")
 		}
+	case config.AuthMethodKeyAuth:
+		keyMap = make(map[string]struct{})
+		if adminConfig.KeyAuth != nil && len(adminConfig.KeyAuth.Keys) > 0 {
+			if adminConfig.KeyAuth.QueryParamName != "" && adminConfig.KeyAuth.HeaderName != "" {
+				return errors.New("only one of admin.key_auth.query_param_name or admin.key_auth.header_name can be set")
+			}
+			for _, key := range adminConfig.KeyAuth.Keys {
+				keyMap[key] = struct{}{}
+			}
+		}
+	case config.AuthMethodJWTAuth:
+		return errors.New("JWT Auth is not supported yet")
+	}
+
+	server.Use(func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			if ipList.Len() > 0 {
 				remoteIp := util.GetTrustedIP(r,
@@ -178,6 +180,7 @@ func configureRoutes(
 			misc.Handle("/metrics", promhttp.Handler())
 		}
 	})
+	return nil
 }
 
 func setupMetricProvider(

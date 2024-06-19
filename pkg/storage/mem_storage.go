@@ -45,6 +45,14 @@ func (m *MemStore) Set(key string, value []byte) error {
 	return nil
 }
 
+func (m *MemStore) Txn(write bool, fn func(StorageTxn) error) error {
+	txn := &MemStoreTxn{store: m}
+	if err := fn(txn); err != nil {
+		return err
+	}
+	return nil
+}
+
 func (m *MemStore) IterateValuesPrefix(prefix string, fn func(string, []byte) error) error {
 	check := true
 	m.tree.Each(func(k string, v []byte) bool {

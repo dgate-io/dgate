@@ -34,10 +34,6 @@ var _ Storage = (*FileStore)(nil)
 var _ StorageTxn = (*FileStoreTxn)(nil)
 
 var (
-	// ErrStoreLocked is returned when the storage is locked.
-	ErrStoreLocked error = errors.New("storage is locked")
-	// ErrKeyNotFound is returned when the key is not found.
-	ErrKeyNotFound error = errors.New("key not found")
 	// ErrTxnReadOnly is returned when the transaction is read only.
 	ErrTxnReadOnly error = errors.New("transaction is read only")
 )
@@ -80,6 +76,16 @@ func (s *FileStore) Connect() (err error) {
 		}
 		return tx.Commit()
 	}
+}
+
+func (s *FileStore) Txn(write bool, fn func(StorageTxn) error) error {
+	txFn := func(txn *bolt.Tx) (err error) {
+		return fn(s.newTxn(txn))
+	}
+	if write {
+		return s.db.Update(txFn)
+	}
+	return s.db.View(txFn)
 }
 
 func (s *FileStore) newTxn(txn *bolt.Tx) *FileStoreTxn {
