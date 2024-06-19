@@ -12,6 +12,7 @@ import (
 	"github.com/dgate-io/dgate/pkg/modules/extractors"
 	"github.com/dgate-io/dgate/pkg/spec"
 	"github.com/dgate-io/dgate/pkg/typescript"
+	"github.com/dgate-io/dgate/pkg/util/tree/avl"
 	"github.com/dop251/goja"
 	"go.uber.org/zap"
 	"golang.org/x/net/http2"
@@ -54,7 +55,7 @@ func (ps *ProxyState) setupModules(log *spec.ChangeLog) error {
 	} else {
 		routes = ps.rm.GetRoutesByNamespace(log.Namespace)
 	}
-	programMap := make(map[string]*goja.Program)
+	programs := avl.NewTree[string, *goja.Program]()
 	grp, ctx := errgroup.WithContext(context.TODO())
 	grp.SetLimit(16)
 	for _, rt := range routes {
@@ -90,7 +91,7 @@ func (ps *ProxyState) setupModules(log *spec.ChangeLog) error {
 					)
 					return err
 				}
-				programMap[mod.Name+"/"+route.Namespace.Name] = program
+				programs.Insert(mod.Name+"/"+route.Namespace.Name, program)
 				return nil
 			})
 		}
@@ -99,10 +100,10 @@ func (ps *ProxyState) setupModules(log *spec.ChangeLog) error {
 	if err := grp.Wait(); err != nil {
 		return err
 	}
-
-	for k, v := range programMap {
-		ps.modPrograms.Insert(k, v)
-	}
+	programs.Each(func(s string, p *goja.Program) bool {
+		ps.modPrograms.Insert(s, p)
+		return true
+	})
 
 	return nil
 }

@@ -67,3 +67,21 @@ func SliceCopy[T any](arr []T) []T {
 	}
 	return append([]T(nil), arr...)
 }
+
+
+// BinarySearch searches for a value in a sorted slice and returns the index of the value.
+// If the value is not found, it returns -1
+func BinarySearch[T any](slice []T, val T, less func(T, T) bool) int {
+	low, high := 0, len(slice)-1
+	for low <= high {
+		mid := low + (high-low)/2
+		if less(slice[mid], val) {
+			low = mid + 1
+		} else if less(val, slice[mid]) {
+			high = mid - 1
+		} else {
+			return mid
+		}
+	}
+	return -1
+}

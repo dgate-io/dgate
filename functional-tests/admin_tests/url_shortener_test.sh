@@ -39,6 +39,6 @@ JSON_RESP=$(curl -fsG -X POST \
 
 URL_ID=$(echo $JSON_RESP | jq -r '.id')
 
-curl -s --fail-with-body \
+curl -sf \
     ${PROXY_URL}/$URL_ID \
     -H Host:url_shortener.example.com

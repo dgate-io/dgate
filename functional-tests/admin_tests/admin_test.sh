@@ -11,7 +11,7 @@ DIR="$( cd "$( dirname "$0" )" && pwd )"
 # domain setup
 # check if uuid is available
 if ! command -v uuid > /dev/null; then
-    id=x-$RANDOM-$RANDOM-$RANDOM
+    id=X$RANDOM-$RANDOM-$RANDOM
 else
     id=$(uuid)
 fi
@@ -23,7 +23,7 @@ dgate-cli -Vf domain create name=dm-$id \
 
 dgate-cli -Vf service create \
     name=svc-$id namespace=ns-$id \
-    urls="$TEST/$RANDOM"
+    urls="$TEST_URL/$RANDOM"
 
 dgate-cli -Vf module create name=module1 \
     payload@=$DIR/admin_test.ts \
@@ -33,14 +33,14 @@ dgate-cli -Vf route create \
     name=rt-$id \
     service=svc-$id \
     namespace=ns-$id \
-    paths="/,/{},/$id,/$id/{id}" \
+    paths="/,/{id},/$id,/$id/{id}" \
     methods=GET,POST,PUT \
     modules=module1 \
     preserveHost:=false \
     stripPath:=false
 
-curl -f $ADMIN_URL/readyz
+curl -sf $ADMIN_URL/readyz > /dev/null
 
-curl -f ${PROXY_URL}/$id/$RANDOM-$j -H Host:$id.example.com
+curl -f ${PROXY_URL}/$id/$RANDOM -H Host:$id.example.com
 
 echo "Admin Test Succeeded"

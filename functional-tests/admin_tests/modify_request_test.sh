@@ -25,7 +25,7 @@ dgate-cli -Vf module create \
 
 dgate-cli -Vf service create \
     name=base_svc \
-    urls:="$TEST" \
+    urls:="$TEST_URL" \
     namespace=modify_request_test-ns
 
 dgate-cli -Vf route create \
@@ -38,7 +38,7 @@ dgate-cli -Vf route create \
     namespace=modify_request_test-ns \
     service='base_svc'
 
-curl -s --fail-with-body ${PROXY_URL}/modify_request_test \
+curl -sf ${PROXY_URL}/modify_request_test \
     -H Host:modify_request_test.example.com \
     -H X-Forwarded-For:1.1.1.1
 

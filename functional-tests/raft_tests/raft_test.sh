@@ -4,6 +4,7 @@ set -eo xtrace
 
 ADMIN_URL1=${ADMIN_URL1:-"http://localhost:9081"}
 PROXY_URL1=${PROXY_URL1:-"http://localhost:81"}
+TEST_URL1=${TEST_URL1:-"http://localhost:8081"}
 
 ADMIN_URL2=${ADMIN_URL2:-"http://localhost:9082"}
 PROXY_URL2=${PROXY_URL2:-"http://localhost:82"}
@@ -24,8 +25,11 @@ DIR="$( cd "$( dirname "$0" )" && pwd )"
 
 export DGATE_ADMIN_API=$ADMIN_URL1
 
-
-id=$(uuid)
+if ! command -v uuid > /dev/null; then
+    id=X$RANDOM-$RANDOM-$RANDOM
+else
+    id=$(uuid)
+fi
 
 dgate-cli -Vf namespace create name=ns-$id
 
@@ -34,7 +38,7 @@ dgate-cli -Vf domain create name=dm-$id \
 
 dgate-cli -Vf service create \
     name=svc-$id namespace=ns-$id \
-    urls="http://localhost:8081/$RANDOM"
+    urls="$TEST_URL1/$RANDOM"
 
 dgate-cli -Vf route create \
     name=rt-$id \
@@ -45,12 +49,12 @@ dgate-cli -Vf route create \
     preserveHost:=false \
     stripPath:=false
 
-curl -f $ADMIN_URL1/readyz
+curl -sf $ADMIN_URL1/readyz
 
 for i in {1..1}; do
     for j in {1..3}; do
         proxy_url=PROXY_URL$i
-        curl -f ${!proxy_url}/$id/$RANDOM-$j -H Host:$id.example.com
+        curl -sf ${!proxy_url}/$id/$RANDOM-$j -H Host:$id.example.com
     done
 done
 

@@ -103,9 +103,9 @@ func (hp *ResourcesModule) getDocuments(payload FetchDocumentsPayload) (*goja.Pr
 	}
 	namespace := namespaceVal.(string)
 
-	docPromise, resolve, reject := rt.NewPromise()
+	prom, resolve, reject := rt.NewPromise()
 	loop.RunOnLoop(func(rt *goja.Runtime) {
-		doc, err := state.DocumentManager().
+		docs, err := state.DocumentManager().
 			GetDocuments(
 				payload.Collection,
 				namespace,
@@ -116,9 +116,9 @@ func (hp *ResourcesModule) getDocuments(payload FetchDocumentsPayload) (*goja.Pr
 			reject(rt.NewGoError(err))
 			return
 		}
-		resolve(rt.ToValue(doc))
+		resolve(rt.ToValue(docs))
 	})
-	return docPromise, nil
+	return prom, nil
 }
 
 func writeFunc[T spec.Named](hp *ResourcesModule, cmd spec.Command) func(map[string]any) (*goja.Promise, error) {

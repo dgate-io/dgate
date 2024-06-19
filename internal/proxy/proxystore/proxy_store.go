@@ -166,6 +166,23 @@ func (store *ProxyStore) StoreDocument(doc *spec.Document) error {
 	return nil
 }
 
+func (store *ProxyStore) StoreDocuments(docs []*spec.Document) error {
+	for _, doc := range docs {
+		docBytes, err := json.Marshal(doc)
+		if err != nil {
+			return err
+		}
+		key := docKey(doc.ID, doc.CollectionName, doc.NamespaceName)
+		err = store.storage.Txn(true, func(txn storage.StorageTxn) error {
+			return txn.Set(key, docBytes)
+		})
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 func (store *ProxyStore) DeleteDocument(id, colName, nsName string) error {
 	return store.storage.Delete(docKey(id, colName, nsName))
 }

@@ -58,7 +58,7 @@ dgate-cli -Vf module create name=multimod2 \
     payload="$MOD_B64" namespace=multimod-test-ns
 
 dgate-cli -Vf service create name=base_svc \
-    urls="$TEST/a","$TEST/b","$TEST/c" \
+    urls="$TEST_URL/a","$TEST_URL/b","$TEST_URL/c" \
     namespace=multimod-test-ns
 
 dgate-cli -Vf route create name=base_rt \
@@ -71,7 +71,7 @@ dgate-cli -Vf route create name=base_rt \
     namespace=multimod-test-ns
 
 
-curl -s --fail-with-body ${PROXY_URL}/ -H Host:multimod-test.example.com
-curl -s --fail-with-body ${PROXY_URL}/multimod-test -H Host:multimod-test.example.com
+curl -sf ${PROXY_URL}/ -H Host:multimod-test.example.com
+curl -sf ${PROXY_URL}/multimod-test -H Host:multimod-test.example.com
 
 echo "Multi Module Test Passed"

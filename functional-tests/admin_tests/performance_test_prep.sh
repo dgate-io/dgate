@@ -18,7 +18,7 @@ dgate-cli -Vf domain create \
     namespace=test-ns1 priority:=100
 
 dgate-cli -Vf service create \
-    name=test-svc urls:="$TEST" \
+    name=test-svc urls:="$TEST_URL" \
     namespace=test-ns1 retries:=3 retryTimeout=50ms
     
 MOD_B64="$(base64 < $DIR/performance_test_prep.ts)"
@@ -53,9 +53,9 @@ dgate-cli -Vf route create \
     namespace=test-ns1
 
 
-curl -s --fail-with-body ${PROXY_URL}/svctest -H Host:performance.example.com
+curl -sf ${PROXY_URL}/svctest -H Host:performance.example.com
 
-curl -s --fail-with-body ${PROXY_URL}/modtest -H Host:performance.example.com
+curl -sf ${PROXY_URL}/modtest -H Host:performance.example.com
 
 curl -s ${PROXY_URL}/blank -H Host:performance.example.com
 
