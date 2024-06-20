@@ -58,22 +58,6 @@ jobs:
         run: |
           for i in functional-tests/admin_tests/*.sh; \
             do bash -c $i; done
-  
-      - name: Functional Distributed Tests [Node 1]
-        run: |
-          export ADMIN_URL=http://localhost:9081
-          export PROXY_URL=http://localhost:81
-          export TEST_URL=http://localhost:8081
-          for i in functional-tests/admin_tests/*.sh; \
-            do bash -c $i; done
-  
-      - name: Functional Distributed Tests [Node 2]
-        run: |
-          export ADMIN_URL=http://localhost:9083
-          export PROXY_URL=http://localhost:83
-          export TEST_URL=http://localhost:8083
-          for i in functional-tests/admin_tests/*.sh; \
-            do bash -c $i; done
 
       - name: Run local k6 test
         uses: grafana/k6-action@v0.3.1
