@@ -7,6 +7,7 @@ import (
 	"github.com/dgate-io/dgate/internal/admin/changestate"
 	"github.com/dgate-io/dgate/pkg/resources"
 	"github.com/dgate-io/dgate/pkg/spec"
+	"github.com/dgate-io/dgate/pkg/raftadmin"
 	"github.com/hashicorp/raft"
 	"github.com/stretchr/testify/mock"
 )
@@ -71,7 +72,7 @@ func (m *MockChangeState) ReloadState(a bool, cls ...*spec.ChangeLog) error {
 }
 
 // SetupRaft implements changestate.ChangeState.
-func (m *MockChangeState) SetupRaft(*raft.Raft) {
+func (m *MockChangeState) SetupRaft(*raft.Raft, *raftadmin.Client) {
 	m.Called().Error(0)
 }
 

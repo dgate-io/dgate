@@ -35,8 +35,7 @@ func ConfigureNamespaceAPI(server chi.Router, logger *zap.Logger, cs changestate
 		}
 
 		cl := spec.NewChangeLog(&namespace, namespace.Name, spec.AddNamespaceCommand)
-		err = cs.ApplyChangeLog(cl)
-		if err != nil {
+		if err = cs.ApplyChangeLog(cl); err != nil {
 			util.JsonError(w, http.StatusBadRequest, err.Error())
 			return
 		}
@@ -69,8 +68,7 @@ func ConfigureNamespaceAPI(server chi.Router, logger *zap.Logger, cs changestate
 		}
 
 		cl := spec.NewChangeLog(&namespace, namespace.Name, spec.DeleteNamespaceCommand)
-		err = cs.ApplyChangeLog(cl)
-		if err != nil {
+		if err = cs.ApplyChangeLog(cl); err != nil {
 			util.JsonError(w, http.StatusBadRequest, err.Error())
 			return
 		}

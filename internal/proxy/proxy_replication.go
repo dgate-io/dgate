@@ -1,13 +1,18 @@
 package proxy
 
-import "github.com/hashicorp/raft"
+import (
+	"github.com/dgate-io/dgate/pkg/raftadmin"
+	"github.com/hashicorp/raft"
+)
 
 type ProxyReplication struct {
-	raft *raft.Raft
+	raft   *raft.Raft
+	client *raftadmin.Client
 }
 
-func NewProxyReplication(raft *raft.Raft) *ProxyReplication {
+func NewProxyReplication(raft *raft.Raft, client *raftadmin.Client) *ProxyReplication {
 	return &ProxyReplication{
-		raft: raft,
+		raft:   raft,
+		client: client,
 	}
 }

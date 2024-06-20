@@ -39,6 +39,7 @@ func newAdminFSM(
 			logger.Warn("corrupted state detected", zap.ByteString("prev_state", stateBytes))
 		} else {
 			logger.Info("found state in store", zap.Any("prev_state", fsm.localState))
+			return fsm
 		}
 	}
 	return fsm
@@ -76,11 +77,10 @@ func (fsm *AdminFSM) applyLog(log *raft.Log, reload bool) (*spec.ChangeLog, erro
 }
 
 func (fsm *AdminFSM) Apply(log *raft.Log) any {
-	resps := fsm.ApplyBatch([]*raft.Log{log})
-	if len(resps) != 1 {
-		panic("apply batch not returning the correct number of responses")
+	if resps := fsm.ApplyBatch([]*raft.Log{log}); len(resps) == 1 {
+		return resps[0]
 	}
-	return resps[0]
+	panic("apply batch not returning the correct number of responses")
 }
 
 func (fsm *AdminFSM) ApplyBatch(logs []*raft.Log) []any {
@@ -115,7 +115,7 @@ func (fsm *AdminFSM) ApplyBatch(logs []*raft.Log) []any {
 				zap.Uint64("applied_index", lastLogIndex),
 			)
 		}
-		fsm.cs.SetReady(true)
+		// defer fsm.cs.SetReady(true)
 	}
 
 	return results

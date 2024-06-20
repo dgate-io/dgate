@@ -17,7 +17,9 @@ func TestAdminRoutes_configureRoutes(t *testing.T) {
 	cs.On("DocumentManager").Return(nil)
 	conf := configtest.NewTestAdminConfig()
 	if err := configureRoutes(
-		mux, "test", zap.NewNop(), cs, conf,
+		mux, "test",
+		zap.NewNop(),
+		cs, conf,
 	); err != nil {
 		t.Fatal(err)
 	}

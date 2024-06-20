@@ -78,8 +78,7 @@ func ConfigureModuleAPI(server chi.Router, logger *zap.Logger, cs changestate.Ch
 			mod.NamespaceName = spec.DefaultNamespace.Name
 		}
 		cl := spec.NewChangeLog(&mod, mod.NamespaceName, spec.DeleteModuleCommand)
-		err = cs.ApplyChangeLog(cl)
-		if err != nil {
+		if err = cs.ApplyChangeLog(cl); err != nil {
 			util.JsonError(w, http.StatusBadRequest, err.Error())
 			return
 		}

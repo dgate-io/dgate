@@ -1,6 +1,7 @@
 package proxy
 
 import (
+	"context"
 	"crypto/tls"
 	"encoding/base64"
 	"encoding/json"
@@ -21,6 +22,7 @@ import (
 	"github.com/dgate-io/dgate/internal/router"
 	"github.com/dgate-io/dgate/pkg/cache"
 	"github.com/dgate-io/dgate/pkg/modules/extractors"
+	"github.com/dgate-io/dgate/pkg/raftadmin"
 	"github.com/dgate-io/dgate/pkg/resources"
 	"github.com/dgate-io/dgate/pkg/scheduler"
 	"github.com/dgate-io/dgate/pkg/spec"
@@ -41,22 +43,22 @@ type ProxyState struct {
 	printer        console.Printer
 	config         *config.DGateConfig
 	store          *proxystore.ProxyStore
-	changeLogs     []*spec.ChangeLog
-	metrics        *ProxyMetrics
 	sharedCache    cache.TCache
 	proxyLock      *sync.RWMutex
+	ready          *atomic.Bool
 	pendingChanges bool
+	metrics        *ProxyMetrics
 
-	rm   *resources.ResourceManager
-	skdr scheduler.Scheduler
-
+	rm          *resources.ResourceManager
+	skdr        scheduler.Scheduler
+	changeLogs  []*spec.ChangeLog
 	providers   avl.Tree[string, *RequestContextProvider]
 	modPrograms avl.Tree[string, *goja.Program]
+	routers     avl.Tree[string, *router.DynamicRouter]
 
-	ready               *atomic.Bool
-	replicationSettings *ProxyReplication
-	replicationEnabled  bool
-	routers             avl.Tree[string, *router.DynamicRouter]
+	raft        *raft.Raft
+	raftClient  *raftadmin.Client
+	raftEnabled bool
 
 	ReverseProxyBuilder   reverse_proxy.Builder
 	ProxyTransportBuilder proxy_transport.Builder
@@ -101,9 +103,9 @@ func NewProxyState(logger *zap.Logger, conf *config.DGateConfig) *ProxyState {
 	storeLogger := logger.Named("store")
 	schedulerLogger := logger.Named("scheduler")
 
-	replicationEnabled := false
+	raftEnabled := false
 	if conf.AdminConfig != nil && conf.AdminConfig.Replication != nil {
-		replicationEnabled = true
+		raftEnabled = true
 	}
 	state := &ProxyState{
 		startTime:  time.Now(),
@@ -119,12 +121,12 @@ func NewProxyState(logger *zap.Logger, conf *config.DGateConfig) *ProxyState {
 		skdr: scheduler.New(scheduler.Options{
 			Logger: schedulerLogger,
 		}),
-		providers:          avl.NewTree[string, *RequestContextProvider](),
-		modPrograms:        avl.NewTree[string, *goja.Program](),
-		proxyLock:          new(sync.RWMutex),
-		sharedCache:        cache.New(),
-		store:              proxystore.New(dataStore, storeLogger),
-		replicationEnabled: replicationEnabled,
+		providers:   avl.NewTree[string, *RequestContextProvider](),
+		modPrograms: avl.NewTree[string, *goja.Program](),
+		proxyLock:   new(sync.RWMutex),
+		sharedCache: cache.New(),
+		store:       proxystore.New(dataStore, storeLogger),
+		raftEnabled: raftEnabled,
 		ReverseProxyBuilder: reverse_proxy.NewBuilder().
 			FlushInterval(-1).
 			ErrorLogger(zap.NewStdLog(rpLogger)).
@@ -174,27 +176,32 @@ func (ps *ProxyState) Ready() bool {
 }
 
 func (ps *ProxyState) SetReady(ready bool) {
-	ps.ready.CompareAndSwap(false, true)
+	if !ps.Ready() && ready {
+		ps.logger.Info("Proxy state is ready",
+			zap.Duration("uptime", time.Since(ps.startTime)),
+		)
+	}
+	ps.ready.Store(ready)
 }
 
 func (ps *ProxyState) Raft() *raft.Raft {
-	if ps.replicationEnabled {
-		return ps.replicationSettings.raft
+	if ps.raftEnabled {
+		return ps.raft
 	}
 	return nil
 }
 
-func (ps *ProxyState) SetupRaft(r *raft.Raft) {
+func (ps *ProxyState) SetupRaft(r *raft.Raft, client *raftadmin.Client) {
 	ps.proxyLock.Lock()
 	defer ps.proxyLock.Unlock()
+
+	ps.raft = r
+	ps.raftClient = client
 
 	oc := make(chan raft.Observation, 32)
 	r.RegisterObserver(raft.NewObserver(oc, false, func(o *raft.Observation) bool {
 		switch o.Data.(type) {
-		case
-			raft.FailedHeartbeatObservation,
-			raft.LeaderObservation,
-			raft.PeerObservation:
+		case raft.LeaderObservation, raft.PeerObservation:
 			return true
 		}
 		return false
@@ -218,6 +225,7 @@ func (ps *ProxyState) SetupRaft(r *raft.Raft) {
 					)
 				}
 			case raft.LeaderObservation:
+				ps.SetReady(true)
 				logger.Info("leader observation",
 					zap.String("leader_addr", string(ro.LeaderAddr)),
 					zap.String("leader_id", string(ro.LeaderID)),
@@ -226,52 +234,60 @@ func (ps *ProxyState) SetupRaft(r *raft.Raft) {
 		}
 		panic("raft observer channel closed")
 	}()
-	ps.replicationSettings = NewProxyReplication(r)
 }
 
 func (ps *ProxyState) WaitForChanges(log *spec.ChangeLog) error {
-	if r := ps.Raft(); r != nil && log != nil {
-		waitTime := time.Second * 5
-		if r.State() != raft.Leader {
-			return r.Barrier(waitTime).Error()
-		} else {
-			hasChanges := func() bool {
-				ps.proxyLock.RLock()
-				defer ps.proxyLock.RUnlock()
-				if ps.changeLogs != nil {
-					lastLog := ps.changeLogs[len(ps.changeLogs)-1]
-					if lastLog.ID >= log.ID {
-						return true
-					}
-				}
-				return false
+	if r := ps.Raft(); r != nil {
+		waitTime := time.Second * 10
+		if r.State() == raft.Leader {
+			err := r.Barrier(waitTime).Error()
+			if err != nil && log != nil {
+				ps.logger.Error("error waiting for changes",
+					zap.String("id", log.ID),
+					zap.Stringer("command", log.Cmd),
+					zap.Error(err),
+				)
 			}
-			timeout := time.After(waitTime)
-			backoff := time.Millisecond * 10
-			multiplier := 1.8
-			for {
-				select {
-				case <-timeout:
-					if hasChanges() {
-						return nil
-					}
-					return errors.New("timeout waiting for changes")
-				case <-time.After(backoff):
-					if hasChanges() {
-						return nil
-					}
-					backoff = min(time.Duration(float64(backoff)*multiplier), time.Millisecond*500)
+			return err
+		} else {
+			if leaderAddr := r.Leader(); leaderAddr != "" {
+				ctx, cancel := context.WithTimeout(
+					context.Background(), waitTime)
+				defer cancel()
+				retries := 0
+			RETRY:
+				await, err := ps.raftClient.Barrier(ctx, r.Leader())
+				if err == nil && await.Error != "" {
+					err = errors.New(await.Error)
 				}
+				if err != nil && log != nil {
+					ps.logger.Error("error waiting for changes",
+						zap.String("id", log.ID),
+						zap.Stringer("command", log.Cmd),
+						zap.Error(err),
+					)
+				}
+				if len(ps.changeLogs) > 0 && retries < 5 {
+					if log.ID >= ps.changeLogs[len(ps.changeLogs)-1].ID {
+						return nil
+					}
+					retries++
+					goto RETRY
+				}
+				return err
+			} else {
+				return errors.New("no leader found")
 			}
 		}
-	} else {
-		ps.proxyLock.RLock()
-		defer ps.proxyLock.RUnlock()
 	}
 	return nil
 }
 
+// ApplyChangeLog - apply change log to the proxy state
 func (ps *ProxyState) ApplyChangeLog(log *spec.ChangeLog) error {
+	if !ps.Ready() {
+		return errors.New("proxy state not ready")
+	}
 	if r := ps.Raft(); r != nil {
 		if r.State() != raft.Leader {
 			return raft.ErrNotLeader
@@ -287,15 +303,17 @@ func (ps *ProxyState) ApplyChangeLog(log *spec.ChangeLog) error {
 		now := time.Now()
 		future := r.ApplyLog(raftLog, time.Second*15)
 		err = future.Error()
-		ps.logger.With().
-			Debug("waiting for reply from raft",
-				zap.String("id", log.ID),
-				zap.Stringer("command", log.Cmd),
-				zap.Stringer("command", time.Since(now)),
-				zap.Uint64("index", future.Index()),
-				zap.Any("response", future.Response()),
-				zap.Error(err),
-			)
+		if err != nil {
+			ps.logger.With().
+				Error("error at ApplyLog",
+					zap.String("id", log.ID),
+					zap.Stringer("command", log.Cmd),
+					zap.Stringer("command", time.Since(now)),
+					zap.Uint64("index", future.Index()),
+					zap.Any("response", future.Response()),
+					zap.Error(err),
+				)
+		}
 		return err
 	} else {
 		return ps.processChangeLog(log, true, true)
@@ -317,36 +335,27 @@ func (ps *ProxyState) SharedCache() cache.TCache {
 // restartState - restart state clears the state and reloads the configuration
 // this is useful for rollbacks when broken changes are made.
 func (ps *ProxyState) restartState(fn func(error)) {
+	ps.logger.Info("Attempting to restart state...")
 	ps.proxyLock.Lock()
 	defer ps.proxyLock.Unlock()
-
-	ps.logger.Info("Attempting to restart state...")
-
+	ps.changeHash.Store(0)
+	ps.pendingChanges = false
 	ps.rm.Empty()
 	ps.modPrograms.Clear()
 	ps.providers.Clear()
 	ps.routers.Clear()
 	ps.sharedCache.Clear()
-	ps.Scheduler().Stop()
+	ps.skdr.Stop()
 	if err := ps.initConfigResources(ps.config.ProxyConfig.InitResources); err != nil {
-		fn(err)
+		go fn(err)
 		return
 	}
-	if ps.replicationEnabled {
-		raft := ps.Raft()
-		err := raft.ReloadConfig(raft.ReloadableConfig())
-		if err != nil {
-			fn(err)
-			return
-		}
-	} else {
-		if err := ps.restoreFromChangeLogs(true); err != nil {
-			fn(err)
-			return
-		}
+	if err := ps.restoreFromChangeLogs(true); err != nil {
+		go fn(err)
+		return
 	}
 	ps.logger.Info("State successfully restarted")
-	fn(nil)
+	go fn(nil)
 }
 
 // ReloadState - reload state checks the change logs to see if a reload is required,
@@ -464,6 +473,9 @@ func (ps *ProxyState) getDomainCertificate(domain string) (*tls.Certificate, err
 }
 
 func (ps *ProxyState) initConfigResources(resources *config.DGateResources) error {
+	processCL := func(cl *spec.ChangeLog) error {
+		return ps.processChangeLog(cl, false, false)
+	}
 	if resources != nil {
 		numChanges, err := resources.Validate()
 		if err != nil {
@@ -472,15 +484,14 @@ func (ps *ProxyState) initConfigResources(resources *config.DGateResources) erro
 		if numChanges > 0 {
 			defer func() {
 				if err != nil {
-					err = ps.processChangeLog(nil, false, false)
+					err = processCL(nil)
 				}
 			}()
 		}
 		ps.logger.Info("Initializing resources")
 		for _, ns := range resources.Namespaces {
 			cl := spec.NewChangeLog(&ns, ns.Name, spec.AddNamespaceCommand)
-			err := ps.processChangeLog(cl, false, false)
-			if err != nil {
+			if err := processCL(cl); err != nil {
 				return err
 			}
 		}
@@ -498,22 +509,19 @@ func (ps *ProxyState) initConfigResources(resources *config.DGateResources) erro
 				)
 			}
 			cl := spec.NewChangeLog(&mod.Module, mod.NamespaceName, spec.AddModuleCommand)
-			err := ps.processChangeLog(cl, false, false)
-			if err != nil {
+			if err := processCL(cl); err != nil {
 				return err
 			}
 		}
 		for _, svc := range resources.Services {
 			cl := spec.NewChangeLog(&svc, svc.NamespaceName, spec.AddServiceCommand)
-			err := ps.processChangeLog(cl, false, false)
-			if err != nil {
+			if err := processCL(cl); err != nil {
 				return err
 			}
 		}
 		for _, rt := range resources.Routes {
 			cl := spec.NewChangeLog(&rt, rt.NamespaceName, spec.AddRouteCommand)
-			err := ps.processChangeLog(cl, false, false)
-			if err != nil {
+			if err := processCL(cl); err != nil {
 				return err
 			}
 		}
@@ -533,22 +541,19 @@ func (ps *ProxyState) initConfigResources(resources *config.DGateResources) erro
 				dom.Key = string(key)
 			}
 			cl := spec.NewChangeLog(&dom.Domain, dom.NamespaceName, spec.AddDomainCommand)
-			err := ps.processChangeLog(cl, false, false)
-			if err != nil {
+			if err := processCL(cl); err != nil {
 				return err
 			}
 		}
 		for _, col := range resources.Collections {
 			cl := spec.NewChangeLog(&col, col.NamespaceName, spec.AddCollectionCommand)
-			err := ps.processChangeLog(cl, false, false)
-			if err != nil {
+			if err := processCL(cl); err != nil {
 				return err
 			}
 		}
 		for _, doc := range resources.Documents {
 			cl := spec.NewChangeLog(&doc, doc.NamespaceName, spec.AddDocumentCommand)
-			err := ps.processChangeLog(cl, false, false)
-			if err != nil {
+			if err := processCL(cl); err != nil {
 				return err
 			}
 		}

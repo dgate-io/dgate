@@ -44,8 +44,8 @@ func TestExample(t *testing.T) {
 	log.Printf("Listening on %s", ln.Addr().String())
 	srvAddr := raft.ServerAddress(ln.Addr().String())
 	transport := rafthttp.NewHTTPTransport(
-		srvAddr, http.DefaultClient, zap.NewNop(),
-		"http://(address)/raft",
+		srvAddr, http.DefaultClient,
+		zap.NewNop(), "http",
 	)
 	srv := &http.Server{
 		Handler: transport,

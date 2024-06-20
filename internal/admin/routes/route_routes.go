@@ -43,8 +43,7 @@ func ConfigureRouteAPI(server chi.Router, logger *zap.Logger, cs changestate.Cha
 		}
 
 		cl := spec.NewChangeLog(&route, route.NamespaceName, spec.AddRouteCommand)
-		err = cs.ApplyChangeLog(cl)
-		if err != nil {
+		if err = cs.ApplyChangeLog(cl); err != nil {
 			util.JsonError(w, http.StatusBadRequest, err.Error())
 			return
 		}
@@ -86,8 +85,7 @@ func ConfigureRouteAPI(server chi.Router, logger *zap.Logger, cs changestate.Cha
 		}
 
 		cl := spec.NewChangeLog(&route, route.NamespaceName, spec.DeleteRouteCommand)
-		err = cs.ApplyChangeLog(cl)
-		if err != nil {
+		if err = cs.ApplyChangeLog(cl); err != nil {
 			util.JsonError(w, http.StatusBadRequest, err.Error())
 			return
 		}

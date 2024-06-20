@@ -80,13 +80,11 @@ func ConfigureServiceAPI(server chi.Router, logger *zap.Logger, cs changestate.C
 		}
 
 		cl := spec.NewChangeLog(&svc, svc.NamespaceName, spec.AddServiceCommand)
-		err = cs.ApplyChangeLog(cl)
-		if err != nil {
+		if err = cs.ApplyChangeLog(cl); err != nil {
 			util.JsonError(w, http.StatusBadRequest, err.Error())
 			return
 		}
 
-		logger.Debug("Waiting for raft barrier")
 		if err := cs.WaitForChanges(cl); err != nil {
 			util.JsonError(w, http.StatusInternalServerError, err.Error())
 			return
@@ -118,8 +116,7 @@ func ConfigureServiceAPI(server chi.Router, logger *zap.Logger, cs changestate.C
 			svc.NamespaceName = spec.DefaultNamespace.Name
 		}
 		cl := spec.NewChangeLog(&svc, svc.NamespaceName, spec.DeleteServiceCommand)
-		err = cs.ApplyChangeLog(cl)
-		if err != nil {
+		if err = cs.ApplyChangeLog(cl); err != nil {
 			util.JsonError(w, http.StatusBadRequest, err.Error())
 			return
 		}

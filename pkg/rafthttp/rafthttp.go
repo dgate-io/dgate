@@ -32,28 +32,25 @@ type HTTPTransport struct {
 	consumer chan raft.RPC
 	addr     raft.ServerAddress
 	client   Doer
-	urlFmt   string
+	scheme   string
 }
 
 var _ raft.Transport = (*HTTPTransport)(nil)
 var _ raft.WithPreVote = (*HTTPTransport)(nil)
 
-func NewHTTPTransport(addr raft.ServerAddress, client Doer, logger *zap.Logger, urlFmt string) *HTTPTransport {
+func NewHTTPTransport(addr raft.ServerAddress, client Doer, logger *zap.Logger, scheme string) *HTTPTransport {
 	if client == nil {
 		client = http.DefaultClient
 	}
-	if !strings.Contains(urlFmt, "(address)") {
-		panic("urlFmt must contain the string '(address)'")
-	}
-	if !strings.HasSuffix(urlFmt, "/") {
-		urlFmt += "/"
+	if scheme == "" {
+		scheme = "http"
 	}
 	return &HTTPTransport{
 		logger:   logger,
 		consumer: make(chan raft.RPC),
 		addr:     addr,
 		client:   client,
-		urlFmt:   urlFmt,
+		scheme:   scheme,
 	}
 }
 
@@ -100,8 +97,9 @@ RETRY:
 }
 
 func (t *HTTPTransport) generateUrl(target raft.ServerAddress, action string) string {
-	return strings.ReplaceAll(t.urlFmt+action,
-		"(address)", string(target))
+	uri := fmt.Sprintf("%s://%s/raft/%s", t.scheme, target, action)
+	// t.logger.Debug("rafthttp: generated url", zap.String("url", uri))
+	return uri
 }
 
 // Consumer implements the raft.Transport interface.

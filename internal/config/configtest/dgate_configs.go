@@ -23,7 +23,7 @@ func NewTestDGateConfig() *config.DGateConfig {
 		ProxyConfig: config.DGateProxyConfig{
 			AllowedDomains: []string{"*test.com", "localhost"},
 			Host:           "localhost",
-			Port:           8080,
+			Port:           0,
 			InitResources: &config.DGateResources{
 				Namespaces: []spec.Namespace{
 					{
@@ -69,7 +69,7 @@ func NewTest2DGateConfig() *config.DGateConfig {
 	conf := NewTestDGateConfig()
 	conf.ProxyConfig = config.DGateProxyConfig{
 		Host: "localhost",
-		Port: 16436,
+		Port: 0,
 		InitResources: &config.DGateResources{
 			Namespaces: []spec.Namespace{
 				{
@@ -112,7 +112,7 @@ func NewTest4DGateConfig() *config.DGateConfig {
 	conf.DisableDefaultNamespace = false
 	conf.ProxyConfig = config.DGateProxyConfig{
 		Host: "localhost",
-		Port: 16436,
+		Port: 0,
 		InitResources: &config.DGateResources{
 			Namespaces: []spec.Namespace{
 				{

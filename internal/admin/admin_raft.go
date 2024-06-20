@@ -92,13 +92,9 @@ func setupRaft(
 	address := raft.ServerAddress(advertAddr)
 
 	raftHttpLogger := logger.Named("http")
-	if adminConfig.Replication.AdvertScheme != "http" && adminConfig.Replication.AdvertScheme != "https" {
-		panic(fmt.Errorf("invalid scheme: %s", adminConfig.Replication.AdvertScheme))
-	}
-
 	transport := rafthttp.NewHTTPTransport(
 		address, http.DefaultClient, raftHttpLogger,
-		adminConfig.Replication.AdvertScheme+"://(address)/raft",
+		adminConfig.Replication.AdvertScheme,
 	)
 	fsmLogger := logger.Named("fsm")
 	adminFSM := newAdminFSM(fsmLogger, configStore, cs)
@@ -110,14 +106,13 @@ func setupRaft(
 		panic(err)
 	}
 
-	cs.SetupRaft(raftNode)
-
 	// Setup raft handler
 	server.Handle("/raft/*", transport)
 
 	raftAdminLogger := logger.Named("admin")
-	raftAdmin := raftadmin.NewRaftAdminHTTPServer(
-		raftNode, raftAdminLogger, []raft.ServerAddress{address},
+	raftAdmin := raftadmin.NewServer(
+		raftNode, raftAdminLogger,
+		[]raft.ServerAddress{address},
 	)
 
 	// Setup handler for raft admin
@@ -137,6 +132,39 @@ func setupRaft(
 		w.Header().Set("X-Raft-State", raftNode.State().String())
 		util.JsonResponse(w, http.StatusOK, raftNode.Stats())
 	}))
+
+	// Setup handler for readys
+	server.Handle("/raftadmin/readyz", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("X-Raft-State", raftNode.State().String())
+		if err := cs.WaitForChanges(nil); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		leaderId, leaderAddr := raftNode.LeaderWithID()
+		util.JsonResponse(w, http.StatusOK, map[string]any{
+			"status":      "ok",
+			"proxy_ready": cs.Ready(),
+			"state":       raftNode.State().String(),
+			"leader":      leaderId,
+			"leader_addr": leaderAddr,
+		})
+	}))
+
+	doer := func(req *http.Request) (*http.Response, error) {
+		req.Header.Set("User-Agent", "dgate")
+		if adminConfig.Replication.SharedKey != "" {
+			req.Header.Set("X-DGate-Shared-Key", adminConfig.Replication.SharedKey)
+		}
+		client := *http.DefaultClient
+		client.Timeout = time.Second * 10
+		return client.Do(req)
+	}
+	adminClient := raftadmin.NewClient(
+		doer, logger.Named("raft-admin-client"),
+		adminConfig.Replication.AdvertScheme,
+	)
+
+	cs.SetupRaft(raftNode, adminClient)
 
 	configFuture := raftNode.GetConfiguration()
 	if err = configFuture.Error(); err != nil {
@@ -203,33 +231,25 @@ func setupRaft(
 			if len(addresses) > 0 {
 				addresses = append(addresses, adminConfig.Replication.ClusterAddrs...)
 				retries := 0
-				doer := func(req *http.Request) (*http.Response, error) {
-					req.Header.Set("User-Agent", "dgate")
-					if adminConfig.Replication.SharedKey != "" {
-						req.Header.Set("X-DGate-Shared-Key", adminConfig.Replication.SharedKey)
-					}
-					return http.DefaultClient.Do(req)
-				}
-				adminClient := raftadmin.NewHTTPAdminClient(doer,
-					adminConfig.Replication.AdvertScheme+"://(address)/raftadmin",
-					logger.Named("raft-admin-client"),
-				)
 			RETRY:
-				for _, url := range addresses {
-					err = adminClient.VerifyLeader(context.Background(), raft.ServerAddress(url))
+				for _, addr := range addresses {
+					err = adminClient.VerifyLeader(
+						context.Background(),
+						raft.ServerAddress(addr),
+					)
 					if err != nil {
 						if err == raftadmin.ErrNotLeader {
 							continue
 						}
 						if retries > 15 {
 							logger.Error("Skipping verifying leader",
-								zap.String("url", url), zap.Error(err),
+								zap.String("url", addr), zap.Error(err),
 							)
 							continue
 						}
 						retries += 1
 						logger.Debug("Retrying verifying leader",
-							zap.String("url", url), zap.Error(err))
+							zap.String("url", addr), zap.Error(err))
 						<-time.After(3 * time.Second)
 						goto RETRY
 					}
@@ -238,10 +258,10 @@ func setupRaft(
 						logger.Info("Adding non-voter",
 							zap.String("id", raftId),
 							zap.String("leader", adminConfig.Replication.AdvertAddr),
-							zap.String("url", url),
+							zap.String("url", addr),
 						)
 						resp, err := adminClient.AddNonvoter(
-							context.Background(), raft.ServerAddress(url),
+							context.Background(), raft.ServerAddress(addr),
 							&raftadmin.AddNonvoterRequest{
 								ID:      raftId,
 								Address: adminConfig.Replication.AdvertAddr,
@@ -257,9 +277,9 @@ func setupRaft(
 						logger.Info("Adding voter: %s - leader: %s",
 							zap.String("id", raftId),
 							zap.String("leader", adminConfig.Replication.AdvertAddr),
-							zap.String("url", url),
+							zap.String("url", addr),
 						)
-						resp, err := adminClient.AddVoter(context.Background(), raft.ServerAddress(url), &raftadmin.AddVoterRequest{
+						resp, err := adminClient.AddVoter(context.Background(), raft.ServerAddress(addr), &raftadmin.AddVoterRequest{
 							ID:      raftId,
 							Address: adminConfig.Replication.AdvertAddr,
 						})

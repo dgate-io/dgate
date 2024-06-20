@@ -63,8 +63,7 @@ func ConfigureCollectionAPI(server chi.Router, logger *zap.Logger, cs changestat
 		}
 
 		cl := spec.NewChangeLog(&collection, collection.NamespaceName, spec.AddCollectionCommand)
-		err = cs.ApplyChangeLog(cl)
-		if err != nil {
+		if err = cs.ApplyChangeLog(cl); err != nil {
 			util.JsonError(w, http.StatusInternalServerError, err.Error())
 			return
 		}
@@ -268,8 +267,7 @@ func ConfigureCollectionAPI(server chi.Router, logger *zap.Logger, cs changestat
 		}
 
 		cl := spec.NewChangeLog(&doc, doc.NamespaceName, spec.AddDocumentCommand)
-		err = cs.ApplyChangeLog(cl)
-		if err != nil {
+		if err = cs.ApplyChangeLog(cl); err != nil {
 			util.JsonError(w, http.StatusInternalServerError, err.Error())
 			return
 		}
@@ -350,8 +348,7 @@ func ConfigureCollectionAPI(server chi.Router, logger *zap.Logger, cs changestat
 			return
 		}
 		cl := spec.NewChangeLog(document, namespaceName, spec.DeleteDocumentCommand)
-		err = cs.ApplyChangeLog(cl)
-		if err != nil {
+		if err = cs.ApplyChangeLog(cl); err != nil {
 			util.JsonError(w, http.StatusInternalServerError, err.Error())
 			return
 		}

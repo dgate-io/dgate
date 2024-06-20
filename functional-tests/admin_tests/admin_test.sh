@@ -8,7 +8,8 @@ TEST_URL=${TEST_URL:-"http://localhost:8888"}
 
 DIR="$( cd "$( dirname "$0" )" && pwd )"
 
-# domain setup
+export DGATE_ADMIN_API=$ADMIN_URL
+
 # check if uuid is available
 if ! command -v uuid > /dev/null; then
     id=X$RANDOM-$RANDOM-$RANDOM

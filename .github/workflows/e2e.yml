@@ -52,7 +52,7 @@ jobs:
       - run: cd functional-tests/raft_tests && goreman start &
 
       - name: Wait for server to start
-        run: sleep 5
+        run: sleep 10
       
       - name: Functional Standalone Tests
         run: |

@@ -16,20 +16,19 @@ import (
 	"go.uber.org/zap"
 )
 
-// RaftAdminHTTPServer provides a HTTP-based transport that can be used to
+// Server provides a HTTP-based transport that can be used to
 // communicate with Raft on remote machines. It is convenient to use if your
 // application is an HTTP server already and you do not want to use multiple
 // different transports (if not, you can use raft.NetworkTransport).
-type RaftAdminHTTPServer struct {
+type Server struct {
 	logger *zap.Logger
 	r      *raft.Raft
-	// addrs     map[raft.ServerID]raft.ServerAddress
 	addrs []raft.ServerAddress
 }
 
-// NewRaftAdminHTTPServer creates a new HTTP transport on the given addr.
-func NewRaftAdminHTTPServer(r *raft.Raft, logger *zap.Logger, addrs []raft.ServerAddress) *RaftAdminHTTPServer {
-	return &RaftAdminHTTPServer{
+// NewServer creates a new HTTP transport on the given addr.
+func NewServer(r *raft.Raft, logger *zap.Logger, addrs []raft.ServerAddress) *Server {
+	return &Server{
 		logger: logger,
 		r:      r,
 		addrs:  addrs,
@@ -71,7 +70,7 @@ func toFuture(f raft.Future) (*Future, error) {
 	}, nil
 }
 
-func (a *RaftAdminHTTPServer) Await(ctx context.Context, req *Future) (*AwaitResponse, error) {
+func (a *Server) Await(ctx context.Context, req *Future) (*AwaitResponse, error) {
 	mtx.Lock()
 	f, ok := operations[req.OperationToken]
 	defer func() {
@@ -107,7 +106,7 @@ func (a *RaftAdminHTTPServer) Await(ctx context.Context, req *Future) (*AwaitRes
 	return r, nil
 }
 
-func (a *RaftAdminHTTPServer) Forget(ctx context.Context, req *Future) (*ForgetResponse, error) {
+func (a *Server) Forget(ctx context.Context, req *Future) (*ForgetResponse, error) {
 	mtx.Lock()
 	delete(operations, req.OperationToken)
 	mtx.Unlock()
@@ -116,29 +115,29 @@ func (a *RaftAdminHTTPServer) Forget(ctx context.Context, req *Future) (*ForgetR
 	}, nil
 }
 
-func (a *RaftAdminHTTPServer) AddNonvoter(ctx context.Context, req *AddNonvoterRequest) (*Future, error) {
+func (a *Server) AddNonvoter(ctx context.Context, req *AddNonvoterRequest) (*Future, error) {
 	return toFuture(a.r.AddNonvoter(raft.ServerID(req.ID), raft.ServerAddress(req.Address), uint64(req.PrevIndex), timeout(ctx)))
 }
 
-func (a *RaftAdminHTTPServer) AddVoter(ctx context.Context, req *AddVoterRequest) (*Future, error) {
+func (a *Server) AddVoter(ctx context.Context, req *AddVoterRequest) (*Future, error) {
 	return toFuture(a.r.AddVoter(raft.ServerID(req.ID), raft.ServerAddress(req.Address), uint64(req.PrevIndex), timeout(ctx)))
 }
 
-func (a *RaftAdminHTTPServer) AppliedIndex(ctx context.Context) (*AppliedIndexResponse, error) {
+func (a *Server) AppliedIndex(ctx context.Context) (*AppliedIndexResponse, error) {
 	return &AppliedIndexResponse{
 		Index: a.r.AppliedIndex(),
 	}, nil
 }
 
-func (a *RaftAdminHTTPServer) Barrier(ctx context.Context) (*Future, error) {
+func (a *Server) Barrier(ctx context.Context) (*Future, error) {
 	return toFuture(a.r.Barrier(timeout(ctx)))
 }
 
-func (a *RaftAdminHTTPServer) DemoteVoter(ctx context.Context, req *DemoteVoterRequest) (*Future, error) {
+func (a *Server) DemoteVoter(ctx context.Context, req *DemoteVoterRequest) (*Future, error) {
 	return toFuture(a.r.DemoteVoter(raft.ServerID(req.ID), req.PrevIndex, timeout(ctx)))
 }
 
-func (a *RaftAdminHTTPServer) GetConfiguration(ctx context.Context) (*GetConfigurationResponse, error) {
+func (a *Server) GetConfiguration(ctx context.Context) (*GetConfigurationResponse, error) {
 	f := a.r.GetConfiguration()
 	if err := f.Error(); err != nil {
 		return nil, err
@@ -162,24 +161,24 @@ func (a *RaftAdminHTTPServer) GetConfiguration(ctx context.Context) (*GetConfigu
 	return resp, nil
 }
 
-func (a *RaftAdminHTTPServer) LastContact(ctx context.Context) (*LastContactResponse, error) {
+func (a *Server) LastContact(ctx context.Context) (*LastContactResponse, error) {
 	t := a.r.LastContact()
 	return &LastContactResponse{
 		UnixNano: t.UnixNano(),
 	}, nil
 }
 
-func (a *RaftAdminHTTPServer) LastIndex(ctx context.Context) (*LastIndexResponse, error) {
+func (a *Server) LastIndex(ctx context.Context) (*LastIndexResponse, error) {
 	return &LastIndexResponse{
 		Index: a.r.LastIndex(),
 	}, nil
 }
 
-func (a *RaftAdminHTTPServer) CurrentNodeIsLeader(ctx context.Context) bool {
+func (a *Server) CurrentNodeIsLeader(ctx context.Context) bool {
 	return a.r.State() == raft.Leader
 }
 
-func (a *RaftAdminHTTPServer) Leader(ctx context.Context) (*LeaderResponse, error) {
+func (a *Server) Leader(ctx context.Context) (*LeaderResponse, error) {
 	for _, s := range a.r.GetConfiguration().Configuration().Servers {
 		if s.Suffrage == raft.Voter && s.Address == a.r.Leader() {
 			return &LeaderResponse{
@@ -193,27 +192,27 @@ func (a *RaftAdminHTTPServer) Leader(ctx context.Context) (*LeaderResponse, erro
 	}, nil
 }
 
-func (a *RaftAdminHTTPServer) LeadershipTransfer(ctx context.Context) (*Future, error) {
+func (a *Server) LeadershipTransfer(ctx context.Context) (*Future, error) {
 	return toFuture(a.r.LeadershipTransfer())
 }
 
-func (a *RaftAdminHTTPServer) LeadershipTransferToServer(ctx context.Context, req *LeadershipTransferToServerRequest) (*Future, error) {
+func (a *Server) LeadershipTransferToServer(ctx context.Context, req *LeadershipTransferToServerRequest) (*Future, error) {
 	return toFuture(a.r.LeadershipTransferToServer(raft.ServerID(req.ID), raft.ServerAddress(req.Address)))
 }
 
-func (a *RaftAdminHTTPServer) RemoveServer(ctx context.Context, req *RemoveServerRequest) (*Future, error) {
+func (a *Server) RemoveServer(ctx context.Context, req *RemoveServerRequest) (*Future, error) {
 	return toFuture(a.r.RemoveServer(raft.ServerID(req.ID), req.PrevIndex, timeout(ctx)))
 }
 
-func (a *RaftAdminHTTPServer) Shutdown(ctx context.Context) (*Future, error) {
+func (a *Server) Shutdown(ctx context.Context) (*Future, error) {
 	return toFuture(a.r.Shutdown())
 }
 
-func (a *RaftAdminHTTPServer) Snapshot(ctx context.Context) (*Future, error) {
+func (a *Server) Snapshot(ctx context.Context) (*Future, error) {
 	return toFuture(a.r.Snapshot())
 }
 
-func (a *RaftAdminHTTPServer) State(ctx context.Context) (*StateResponse, error) {
+func (a *Server) State(ctx context.Context) (*StateResponse, error) {
 	switch s := a.r.State(); s {
 	case raft.Follower:
 		return &StateResponse{State: RaftStateFollower}, nil
@@ -228,7 +227,7 @@ func (a *RaftAdminHTTPServer) State(ctx context.Context) (*StateResponse, error)
 	}
 }
 
-func (a *RaftAdminHTTPServer) Stats(ctx context.Context) (*StatsResponse, error) {
+func (a *Server) Stats(ctx context.Context) (*StatsResponse, error) {
 	ret := &StatsResponse{}
 	ret.Stats = map[string]string{}
 	for k, v := range a.r.Stats() {
@@ -237,12 +236,12 @@ func (a *RaftAdminHTTPServer) Stats(ctx context.Context) (*StatsResponse, error)
 	return ret, nil
 }
 
-func (a *RaftAdminHTTPServer) VerifyLeader(ctx context.Context) (*Future, error) {
+func (a *Server) VerifyLeader(ctx context.Context) (*Future, error) {
 	return toFuture(a.r.VerifyLeader())
 }
 
 // ServeHTTP implements the net/http.Handler interface, so that you can use
-func (t *RaftAdminHTTPServer) ServeHTTP(res http.ResponseWriter, req *http.Request) {
+func (t *Server) ServeHTTP(res http.ResponseWriter, req *http.Request) {
 	cmd := path.Base(req.URL.Path)
 
 	if cmdRequiresLeader(cmd) && t.r.State() != raft.Leader {
@@ -467,7 +466,7 @@ func cmdRequiresLeader(cmd string) bool {
 	}
 }
 
-func (t *RaftAdminHTTPServer) genericResponse(req *http.Request, res http.ResponseWriter, f *Future, cmd string) {
+func (t *Server) genericResponse(req *http.Request, res http.ResponseWriter, f *Future, cmd string) {
 	resp, err := t.Await(req.Context(), f)
 	if err != nil {
 		http.Error(res, err.Error(), http.StatusInternalServerError)

@@ -30,7 +30,7 @@ func (ps *ProxyState) processChangeLog(cl *spec.ChangeLog, reload, store bool) (
 	if store && !cl.Cmd.IsNoop() {
 		defer func() {
 			if err == nil {
-				if !ps.replicationEnabled {
+				if !ps.raftEnabled {
 					// dont store change logs
 					if err = ps.store.StoreChangeLog(cl); err != nil {
 						ps.logger.Error("Error storing change log, restarting state", zap.Error(err))
@@ -67,21 +67,29 @@ func (ps *ProxyState) processChangeLog(cl *spec.ChangeLog, reload, store bool) (
 					goto hash_retry
 				}
 			} else {
-				ps.restartState(func(err error) {
+				go ps.restartState(func(err error) {
 					if err != nil {
-						go ps.Stop()
+						ps.Stop()
 					}
 				})
 			}
 		}()
 		if cl.Cmd.Resource() == spec.Documents {
-			if err = ps.processDocument(cl.Item.(*spec.Document), cl, store); err != nil {
+			var item *spec.Document
+			if item, err = decode[*spec.Document](cl.Item); err != nil {
+				return
+			}
+			if err = ps.processDocument(item, cl, store); err != nil {
 				ps.logger.Error("error processing document change log", zap.Error(err))
 				return
 			}
 		} else {
 			if err = ps.processResource(cl); err != nil {
-				ps.logger.Error("error processing change log", zap.Error(err))
+				ps.logger.Error("error processing change log",
+					zap.String("id", cl.ID),
+					zap.Stringer("cmd", cl.Cmd),
+					zap.Error(err),
+				)
 				return
 			}
 		}
@@ -91,7 +99,6 @@ func (ps *ProxyState) processChangeLog(cl *spec.ChangeLog, reload, store bool) (
 	if reload {
 		overrideReload := cl.Cmd.IsNoop() || ps.pendingChanges
 		if overrideReload || cl.Cmd.Resource().IsRelatedTo(spec.Routes) {
-			ps.logger.Debug("Storing cached documents", zap.String("id", cl.ID))
 			if err := ps.storeCachedDocuments(); err != nil {
 				ps.logger.Error("error storing cached documents", zap.Error(err))
 				return err
@@ -101,7 +108,6 @@ func (ps *ProxyState) processChangeLog(cl *spec.ChangeLog, reload, store bool) (
 				ps.logger.Error("Error registering change log", zap.Error(err))
 				return
 			}
-			ps.ready.CompareAndSwap(false, true)
 			ps.pendingChanges = false
 		}
 	} else if !cl.Cmd.IsNoop() {
@@ -263,6 +269,10 @@ func (ps *ProxyState) processCollection(col *spec.Collection, cl *spec.ChangeLog
 var docCache = []*spec.Document{}
 
 func (ps *ProxyState) storeCachedDocuments() error {
+	if len(docCache) == 0 {
+		return nil
+	}
+	ps.logger.Debug("Storing cached documents", zap.Int("count", len(docCache)))
 	err := ps.store.StoreDocuments(docCache)
 	if err != nil {
 		return err
@@ -289,8 +299,14 @@ func (ps *ProxyState) processDocument(doc *spec.Document, cl *spec.ChangeLog, st
 		case spec.Add:
 			docCache = append(docCache, doc)
 		case spec.Delete:
-			deletedIndex := sliceutil.BinarySearch(docCache, doc, func(doc1 *spec.Document, doc2 *spec.Document) bool {
-				return doc1.ID < doc2.ID
+			deletedIndex := sliceutil.BinarySearch(docCache, doc, func(doc1 *spec.Document, doc2 *spec.Document) int {
+				if doc1.ID == doc2.ID {
+					return 0
+				}
+				if doc1.ID < doc2.ID {
+					return -1
+				}
+				return 1
 			})
 			if deletedIndex >= 0 {
 				docCache = append(docCache[:deletedIndex], docCache[deletedIndex+1:]...)
@@ -319,45 +335,51 @@ func (ps *ProxyState) processSecret(scrt *spec.Secret, cl *spec.ChangeLog) (err 
 
 // restoreFromChangeLogs - restores the proxy state from change logs; directApply is used to avoid locking the proxy state
 func (ps *ProxyState) restoreFromChangeLogs(directApply bool) error {
-	if logs, err := ps.store.FetchChangeLogs(); err != nil {
+	var logs []*spec.ChangeLog
+	var err error
+	if ps.raftEnabled {
+		if logs = ps.changeLogs; len(logs) == 0 {
+			return nil
+		}
+	} else if logs, err = ps.store.FetchChangeLogs(); err != nil {
 		return errors.New("failed to get state change logs from storage: " + err.Error())
-	} else {
-		ps.logger.Info("restoring state change logs from storage", zap.Int("count", len(logs)))
-		// we might need to sort the change logs by timestamp
-		for _, cl := range logs {
-			// skip documents as they are persisted in the store
-			if cl.Cmd.Resource() == spec.Documents {
-				continue
-			}
-			if err = ps.processChangeLog(cl, false, false); err != nil {
-				return err
-			} else {
-				ps.changeLogs = append(ps.changeLogs, cl)
-			}
+	}
+	ps.logger.Info("restoring state change logs from storage", zap.Int("count", len(logs)))
+	// we might need to sort the change logs by timestamp
+	for _, cl := range logs {
+		// skip documents as they are persisted in the store
+		if cl.Cmd.Resource() == spec.Documents {
+			continue
 		}
-		if cl := spec.NewNoopChangeLog(); !directApply {
-			if err = ps.reconfigureState(cl); err != nil {
-				return err
-			}
-		} else if err = ps.processChangeLog(cl, true, false); err != nil {
+		if err = ps.processChangeLog(cl, false, false); err != nil {
 			return err
-		}
-
-		// TODO: optionally compact change logs through a flag in config?
-		if len(logs) > 1 {
-			removed, err := ps.compactChangeLogs(logs)
-			if err != nil {
-				ps.logger.Error("failed to compact state change logs", zap.Error(err))
-				return err
-			}
-			if removed > 0 {
-				ps.logger.Info("compacted change logs",
-					zap.Int("removed", removed),
-					zap.Int("total", len(logs)),
-				)
-			}
+		} else {
+			ps.changeLogs = append(ps.changeLogs, cl)
 		}
 	}
+	if cl := spec.NewNoopChangeLog(); !directApply {
+		if err = ps.reconfigureState(cl); err != nil {
+			return err
+		}
+	} else if err = ps.processChangeLog(cl, true, false); err != nil {
+		return err
+	}
+
+	// DISABLED: compaction of change logs needs to have better testing
+	if len(logs) < 0 {
+		removed, err := ps.compactChangeLogs(logs)
+		if err != nil {
+			ps.logger.Error("failed to compact state change logs", zap.Error(err))
+			return err
+		}
+		if removed > 0 {
+			ps.logger.Info("compacted change logs",
+				zap.Int("removed", removed),
+				zap.Int("total", len(logs)),
+			)
+		}
+	}
+
 	return nil
 }
 

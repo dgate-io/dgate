@@ -2,6 +2,7 @@ package changestate
 
 import (
 	"github.com/dgate-io/dgate/internal/proxy"
+	"github.com/dgate-io/dgate/pkg/raftadmin"
 	"github.com/dgate-io/dgate/pkg/resources"
 	"github.com/dgate-io/dgate/pkg/spec"
 	"github.com/hashicorp/raft"
@@ -21,7 +22,7 @@ type ChangeState interface {
 	SetReady(bool)
 
 	// Replication
-	SetupRaft(*raft.Raft)
+	SetupRaft(*raft.Raft, *raftadmin.Client)
 	Raft() *raft.Raft
 
 	// Resources

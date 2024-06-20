@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"math"
 	"net/http"
 	"os"
 	"time"
@@ -23,21 +24,25 @@ import (
 func (ps *ProxyState) reconfigureState(log *spec.ChangeLog) (err error) {
 	defer func() {
 		if err != nil {
-			ps.restartState(func(err error) {
+			ps.logger.Error("error occurred reloading state, restarting...", zap.Error(err))
+			go ps.restartState(func(err error) {
 				if err != nil {
 					ps.logger.Error("Error restarting state", zap.Error(err))
-					go ps.Stop()
+					ps.Stop()
 				}
 			})
 		}
 	}()
 
+	ctx, cancel := context.WithTimeout(context.TODO(), 30*time.Second)
+	defer cancel()
+
 	start := time.Now()
-	if err = ps.setupModules(log); err != nil {
+	if err = ps.setupModules(ctx, log); err != nil {
 		ps.logger.Error("Error setting up modules", zap.Error(err))
 		return
 	}
-	if err = ps.setupRoutes(log); err != nil {
+	if err = ps.setupRoutes(ctx, log); err != nil {
 		ps.logger.Error("Error setting up routes", zap.Error(err))
 		return
 	}
@@ -48,7 +53,18 @@ func (ps *ProxyState) reconfigureState(log *spec.ChangeLog) (err error) {
 	return nil
 }
 
-func (ps *ProxyState) setupModules(log *spec.ChangeLog) error {
+func customErrGroup(ctx context.Context, count int) (*errgroup.Group, context.Context) {
+	grp, ctx := errgroup.WithContext(ctx)
+	limit := int(math.Log2(float64(count)))
+	limit = min(1, max(16, limit))
+	grp.SetLimit(limit)
+	return grp, ctx
+}
+
+func (ps *ProxyState) setupModules(
+	ctx context.Context,
+	log *spec.ChangeLog,
+) error {
 	var routes = []*spec.DGateRoute{}
 	if log.Namespace == "" || ps.pendingChanges {
 		routes = ps.rm.GetRoutes()
@@ -56,8 +72,8 @@ func (ps *ProxyState) setupModules(log *spec.ChangeLog) error {
 		routes = ps.rm.GetRoutesByNamespace(log.Namespace)
 	}
 	programs := avl.NewTree[string, *goja.Program]()
-	grp, ctx := errgroup.WithContext(context.TODO())
-	grp.SetLimit(16)
+	grp, ctx := customErrGroup(ctx, len(routes))
+	start := time.Now()
 	for _, rt := range routes {
 		if len(rt.Modules) > 0 {
 			route := rt
@@ -69,11 +85,24 @@ func (ps *ProxyState) setupModules(log *spec.ChangeLog) error {
 					modPayload string = mod.Payload
 				)
 				if mod.Type == spec.ModuleTypeTypescript {
+					tsBucket := ps.sharedCache.Bucket("typescript")
+					// hash the typescript module payload
+					tsHash, err := HashString(1337, modPayload)
+					if err != nil {
+						ps.logger.Error("Error hashing module: " + mod.Name)
+					} else if cacheData, ok := tsBucket.Get(tsHash); ok {
+						if modPayload, ok = cacheData.(string); ok {
+							goto compile
+						}
+					}
 					if modPayload, err = typescript.Transpile(ctx, modPayload); err != nil {
 						ps.logger.Error("Error transpiling module: " + mod.Name)
 						return err
+					} else {
+						tsBucket.SetWithTTL(tsHash, modPayload, 5*time.Minute)
 					}
 				}
+			compile:
 				if mod.Type == spec.ModuleTypeJavascript || mod.Type == spec.ModuleTypeTypescript {
 					if program, err = goja.Compile(mod.Name, modPayload, true); err != nil {
 						ps.logger.Error("Error compiling module: " + mod.Name)
@@ -104,40 +133,55 @@ func (ps *ProxyState) setupModules(log *spec.ChangeLog) error {
 		ps.modPrograms.Insert(s, p)
 		return true
 	})
-
+	ps.logger.Debug("Modules setup",
+		zap.Duration("elapsed", time.Since(start)),
+	)
 	return nil
 }
 
-func (ps *ProxyState) setupRoutes(log *spec.ChangeLog) (err error) {
+func (ps *ProxyState) setupRoutes(
+	ctx context.Context,
+	log *spec.ChangeLog,
+) error {
 	var rtMap map[string][]*spec.DGateRoute
 	if log.Namespace == "" || ps.pendingChanges {
 		rtMap = ps.rm.GetRouteNamespaceMap()
+		ps.providers.Clear()
 	} else {
 		rtMap = make(map[string][]*spec.DGateRoute)
-		rtMap[log.Namespace] = ps.rm.GetRoutesByNamespace(log.Namespace)
+		routes := ps.rm.GetRoutesByNamespace(log.Namespace)
+		if len(routes) > 0 {
+			rtMap[log.Namespace] = routes
+		} else {
+			// if namespace has no routes, delete the router
+			ps.routers.Delete(log.Namespace)
+		}
 	}
+	start := time.Now()
+	grp, _ := customErrGroup(ctx, len(rtMap))
 	for namespaceName, routes := range rtMap {
-		mux := router.NewMux()
-		for _, rt := range routes {
-			reqCtxProvider := NewRequestContextProvider(rt, ps)
-			if len(rt.Modules) > 0 {
-				modExtFunc := ps.createModuleExtractorFunc(rt)
-				if modPool, err := NewModulePool(
-					256, 1024, reqCtxProvider, modExtFunc,
-				); err != nil {
-					ps.logger.Error("Error creating module buffer", zap.Error(err))
-					return err
-				} else {
-					reqCtxProvider.SetModulePool(modPool)
+		namespaceName, routes := namespaceName, routes
+		grp.Go(func() (err error) {
+			defer func() {
+				if r := recover(); r != nil {
+					err = fmt.Errorf("%v", r)
 				}
-			}
-			ps.providers.Insert(rt.Namespace.Name+"/"+rt.Name, reqCtxProvider)
-			err = func(rt *spec.DGateRoute) (err error) {
-				defer func() {
-					if r := recover(); r != nil {
-						err = fmt.Errorf("%v", r)
+			}()
+			mux := router.NewMux()
+			for _, rt := range routes {
+				reqCtxProvider := NewRequestContextProvider(rt, ps)
+				if len(rt.Modules) > 0 {
+					modExtFunc := ps.createModuleExtractorFunc(rt)
+					if modPool, err := NewModulePool(
+						256, 1024, reqCtxProvider, modExtFunc,
+					); err != nil {
+						ps.logger.Error("Error creating module buffer", zap.Error(err))
+						return err
+					} else {
+						reqCtxProvider.SetModulePool(modPool)
 					}
-				}()
+				}
+				ps.providers.Insert(rt.Namespace.Name+"/"+rt.Name, reqCtxProvider)
 				for _, path := range rt.Paths {
 					if len(rt.Methods) > 0 && rt.Methods[0] == "*" {
 						if len(rt.Methods) > 1 {
@@ -155,18 +199,23 @@ func (ps *ProxyState) setupRoutes(log *spec.ChangeLog) (err error) {
 						}
 					}
 				}
-				return nil
-			}(rt)
-		}
-
-		if dr, ok := ps.routers.Find(namespaceName); ok {
-			dr.ReplaceMux(mux)
-		} else {
-			dr := router.NewRouterWithMux(mux)
-			ps.routers.Insert(namespaceName, dr)
-		}
+			}
+			if dr, ok := ps.routers.Find(namespaceName); ok {
+				dr.ReplaceMux(mux)
+			} else {
+				dr := router.NewRouterWithMux(mux)
+				ps.routers.Insert(namespaceName, dr)
+			}
+			return nil
+		})
 	}
-	return
+	if err := grp.Wait(); err != nil {
+		return err
+	}
+	ps.logger.Debug("Routes setup",
+		zap.Duration("elapsed", time.Since(start)),
+	)
+	return nil
 }
 
 func (ps *ProxyState) createModuleExtractorFunc(rt *spec.DGateRoute) ModuleExtractorFunc {
@@ -245,8 +294,8 @@ func (ps *ProxyState) startProxyServer() {
 		}
 	}
 	if err := server.ListenAndServe(); err != nil {
-		ps.logger.Error("Error starting proxy server", zap.Error(err))
-		os.Exit(1)
+		ps.logger.Error("error starting proxy server", zap.Error(err))
+		panic(err)
 	}
 }
 
@@ -285,14 +334,14 @@ func (ps *ProxyState) startProxyServerTLS() {
 	}
 	if err := secureServer.ListenAndServeTLS("", ""); err != nil {
 		ps.logger.Error("Error starting secure proxy server", zap.Error(err))
-		os.Exit(1)
+		panic(err)
 	}
 }
 
 func (ps *ProxyState) Start() (err error) {
 	defer func() {
 		if err != nil {
-			ps.logger.Error("Error starting proxy server", zap.Error(err))
+			ps.logger.Error("error starting proxy", zap.Error(err))
 			ps.Stop()
 		}
 	}()
@@ -305,21 +354,20 @@ func (ps *ProxyState) Start() (err error) {
 	go ps.startProxyServer()
 	go ps.startProxyServerTLS()
 
-	if !ps.replicationEnabled {
+	if !ps.raftEnabled {
 		if err = ps.restoreFromChangeLogs(false); err != nil {
 			return err
 		} else {
-			ps.ready.Store(true)
+			ps.SetReady(true)
 		}
 	}
-
 	return nil
 }
 
 func (ps *ProxyState) Stop() {
 	go func() {
 		defer os.Exit(3)
-		<-time.After(5 * time.Second)
+		<-time.After(7 * time.Second)
 		ps.logger.Error("Failed to stop proxy server")
 	}()
 
@@ -329,6 +377,7 @@ func (ps *ProxyState) Stop() {
 
 	ps.proxyLock.Lock()
 	defer ps.proxyLock.Unlock()
+	ps.logger.Info("Shutting down raft")
 
 	if raftNode := ps.Raft(); raftNode != nil {
 		ps.logger.Info("Stopping Raft node")
