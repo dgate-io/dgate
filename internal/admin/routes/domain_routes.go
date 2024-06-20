@@ -41,13 +41,12 @@ func ConfigureDomainAPI(server chi.Router, logger *zap.Logger, cs changestate.Ch
 			domain.NamespaceName = spec.DefaultNamespace.Name
 		}
 		cl := spec.NewChangeLog(&domain, domain.NamespaceName, spec.AddDomainCommand)
-		err = cs.ApplyChangeLog(cl)
-		if err != nil {
+		if err = cs.ApplyChangeLog(cl); err != nil {
 			util.JsonError(w, http.StatusBadRequest, err.Error())
 			return
 		}
 
-		if err := cs.WaitForChanges(); err != nil {
+		if err := cs.WaitForChanges(cl); err != nil {
 			util.JsonError(w, http.StatusInternalServerError, err.Error())
 			return
 

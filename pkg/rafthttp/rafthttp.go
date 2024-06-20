@@ -32,27 +32,25 @@ type HTTPTransport struct {
 	consumer chan raft.RPC
 	addr     raft.ServerAddress
 	client   Doer
-	urlFmt   string
+	scheme   string
 }
 
 var _ raft.Transport = (*HTTPTransport)(nil)
+var _ raft.WithPreVote = (*HTTPTransport)(nil)
 
-func NewHTTPTransport(addr raft.ServerAddress, client Doer, logger *zap.Logger, urlFmt string) *HTTPTransport {
+func NewHTTPTransport(addr raft.ServerAddress, client Doer, logger *zap.Logger, scheme string) *HTTPTransport {
 	if client == nil {
 		client = http.DefaultClient
 	}
-	if !strings.Contains(urlFmt, "(address)") {
-		panic("urlFmt must contain the string '(address)'")
-	}
-	if !strings.HasSuffix(urlFmt, "/") {
-		urlFmt += "/"
+	if scheme == "" {
+		scheme = "http"
 	}
 	return &HTTPTransport{
 		logger:   logger,
 		consumer: make(chan raft.RPC),
 		addr:     addr,
 		client:   client,
-		urlFmt:   urlFmt,
+		scheme:   scheme,
 	}
 }
 
@@ -99,8 +97,9 @@ RETRY:
 }
 
 func (t *HTTPTransport) generateUrl(target raft.ServerAddress, action string) string {
-	return strings.ReplaceAll(t.urlFmt+action,
-		"(address)", string(target))
+	uri := fmt.Sprintf("%s://%s/raft/%s", t.scheme, target, action)
+	// t.logger.Debug("rafthttp: generated url", zap.String("url", uri))
+	return uri
 }
 
 // Consumer implements the raft.Transport interface.
@@ -130,6 +129,11 @@ func (t *HTTPTransport) AppendEntries(_ raft.ServerID, target raft.ServerAddress
 // RequestVote implements the raft.Transport interface.
 func (t *HTTPTransport) RequestVote(_ raft.ServerID, target raft.ServerAddress, args *raft.RequestVoteRequest, resp *raft.RequestVoteResponse) error {
 	return t.send(t.generateUrl(target, "RequestVote"), args, resp)
+}
+
+// RequestPreVote implements the raft.Transport interface.
+func (t *HTTPTransport) RequestPreVote(_ raft.ServerID, target raft.ServerAddress, args *raft.RequestPreVoteRequest, resp *raft.RequestPreVoteResponse) error {
+	return t.send(t.generateUrl(target, "RequestPreVote"), args, resp)
 }
 
 // InstallSnapshot implements the raft.Transport interface.
@@ -280,6 +284,8 @@ func (t *HTTPTransport) ServeHTTP(res http.ResponseWriter, req *http.Request) {
 		return
 	case "RequestVote":
 		rpc.Command = &raft.RequestVoteRequest{}
+	case "RequestPreVote":
+		rpc.Command = &raft.RequestPreVoteRequest{}
 	case "AppendEntries":
 		rpc.Command = &raft.AppendEntriesRequest{}
 	case "TimeoutNow":

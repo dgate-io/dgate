@@ -129,7 +129,7 @@ func setupRaftAdmin(t *testing.T) *httptest.Server {
 	}
 	<-time.After(time.Second * 5)
 
-	raftAdmin := NewRaftAdminHTTPServer(
+	raftAdmin := NewServer(
 		raftNode, zap.NewNop(),
 		[]raft.ServerAddress{
 			"localhost:9090",
@@ -169,10 +169,9 @@ func TestRaft(t *testing.T) {
 		Return(mockClient.res, nil)
 
 	ctx := context.Background()
-	client := NewHTTPAdminClient(
+	client := NewClient(
 		server.Client().Do,
-		"http://(address)/raftadmin",
-		zap.NewNop(),
+		zap.NewNop(), "http",
 	)
 	serverAddr := raft.ServerAddress(server.Listener.Addr().String())
 	leader, err := client.Leader(ctx, serverAddr)

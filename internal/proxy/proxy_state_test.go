@@ -10,6 +10,7 @@ import (
 	"github.com/dgate-io/dgate/internal/proxy"
 	"github.com/dgate-io/dgate/pkg/spec"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
 )
 
@@ -38,7 +39,14 @@ func TestDynamicTLSConfig_DomainCert(t *testing.T) {
 func TestDynamicTLSConfig_DomainCertCache(t *testing.T) {
 	conf := configtest.NewTestDGateConfig_DomainAndNamespaces()
 	ps := proxy.NewProxyState(zap.NewNop(), conf)
-	d := ps.ResourceManager().GetDomainsByPriority()[0]
+	if err := ps.Start(); err != nil {
+		t.Fatal(err)
+	}
+	domains := ps.ResourceManager().GetDomainsByPriority()
+	if !assert.NotEqual(t, len(domains), 0) {
+		return
+	}
+	d := domains[0]
 	key := fmt.Sprintf("cert:%s:%s:%d", d.Namespace.Name,
 		d.Name, d.CreatedAt.UnixMilli())
 	tlsConfig := ps.DynamicTLSConfig("", "")
@@ -409,7 +417,6 @@ func TestProcessChangeLog_Document(t *testing.T) {
 	if err := ps.Store().InitStore(); err != nil {
 		t.Fatal(err)
 	}
-
 	c := &spec.Collection{
 		Name:          "test123",
 		NamespaceName: "test",
@@ -432,7 +439,7 @@ func TestProcessChangeLog_Document(t *testing.T) {
 	}
 
 	cl = spec.NewChangeLog(d, d.NamespaceName, spec.AddDocumentCommand)
-	err = ps.ProcessChangeLog(cl, false)
+	err = ps.ProcessChangeLog(cl, true)
 	if !assert.Nil(t, err, "error should be nil") {
 		return
 	}
@@ -442,7 +449,7 @@ func TestProcessChangeLog_Document(t *testing.T) {
 	if !assert.Nil(t, err, "error should be nil") {
 		return
 	}
-	assert.Equal(t, 1, len(documents), "should have 1 item")
+	require.Equal(t, 1, len(documents), "should have 1 item")
 	assert.Equal(t, d.ID, documents[0].ID, "should have the same id")
 	assert.Equal(t, d.NamespaceName, documents[0].NamespaceName, "should have the same namespace")
 	assert.Equal(t, d.CollectionName, documents[0].CollectionName, "should have the same collection")

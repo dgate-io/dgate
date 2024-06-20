@@ -127,7 +127,7 @@ type Crashable interface {
 }
 
 func CreateTSProgram(c Crashable, payload string) *goja.Program {
-	src, err := typescript.Transpile(payload)
+	src, err := typescript.Transpile(context.Background(), payload)
 	if err != nil {
 		c.Fatal(err)
 	}

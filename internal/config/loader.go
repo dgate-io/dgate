@@ -156,6 +156,7 @@ func LoadConfig(dgateConfigPath string) (*DGateConfig, error) {
 	kDefault(k, "proxy.port", 80)
 	kDefault(k, "proxy.enable_h2c", false)
 	kDefault(k, "proxy.enable_http2", false)
+	kDefault(k, "proxy.console_log_level", k.Get("log_level"))
 
 	if k.Get("proxy.enable_h2c") == true &&
 		k.Get("proxy.enable_http2") == false {

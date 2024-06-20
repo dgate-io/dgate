@@ -8,6 +8,12 @@
   - cluster management (raft commands, replica commands, etc.) (low priority)
   - other commands (backup, restore, etc.) (low priority)
 
+# Raft Snapshots
+
+- Add support for Raft snapshots to reduce the size of the Raft log. This can be used to reduce the size of the Raft log and improve the performance of the cluster.
+  - [ ] - Snapshot documents
+  - [ ] - Snapshot resources (with correlactions)
+
 ## Add Module Tests
 
 - Test multiple modules being used at the same time
@@ -138,13 +144,12 @@ Make it easier to debug modules by adding more logging and error handling. This 
 
 Add stack tracing for typescript modules.
 
-
-## Decouple Admin API from Raft Implementation
-
-Currently, Raft Implementation is tightly coupled with the Admin API. This makes it difficult to change the Raft Implementation without changing the Admin API. Decouple the Raft Implementation from the Admin API to make it easier to change the Raft Implementation.
-
 ## Add Telemetry (sentry, datadog, etc.)
 
 ## ResourceManager callback for resource changes
 
 Add a callback to the ResourceManager that is called when a resource is changed. This can be used to invalidate caches, update modules, and more.
+
+## Enable WAF
+
+https://github.com/corazawaf/coraza

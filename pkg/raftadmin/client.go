@@ -7,8 +7,6 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
-	"strings"
-	"time"
 
 	"github.com/hashicorp/raft"
 	"go.uber.org/zap"
@@ -16,39 +14,32 @@ import (
 
 type Doer func(*http.Request) (*http.Response, error)
 
-type HTTPAdminClient struct {
+type Client struct {
 	do     Doer
-	urlFmt string
+	scheme string
 	logger *zap.Logger
 }
 
-func NewHTTPAdminClient(doer Doer, urlFmt string, logger *zap.Logger) *HTTPAdminClient {
+func NewClient(doer Doer, logger *zap.Logger, scheme string) *Client {
 	if doer == nil {
 		doer = http.DefaultClient.Do
 	}
-	if urlFmt == "" {
-		urlFmt = "http://(address)/raftadmin/"
-	} else {
-		if !strings.Contains(urlFmt, "(address)") {
-			panic("urlFmt must contain the string '(address)'")
-		}
-		if !strings.HasSuffix(urlFmt, "/") {
-			urlFmt += "/"
-		}
+	if scheme == "" {
+		scheme = "http"
 	}
-	return &HTTPAdminClient{
+	return &Client{
 		do:     doer,
-		urlFmt: urlFmt,
+		scheme: scheme,
 		logger: logger,
 	}
 }
 
-func (c *HTTPAdminClient) generateUrl(target raft.ServerAddress, action string) string {
-	return strings.ReplaceAll(c.urlFmt+action,
-		"(address)", string(target))
+func (c *Client) generateUrl(target raft.ServerAddress, action string) string {
+	uri := fmt.Sprintf("%s://%s/raftadmin/%s", c.scheme, target, action)
+	// c.logger.Debug("raftadmin: generated url", zap.String("url", uri))
+	return uri
 }
-
-func (c *HTTPAdminClient) AddNonvoter(ctx context.Context, target raft.ServerAddress, req *AddNonvoterRequest) (*AwaitResponse, error) {
+func (c *Client) AddNonvoter(ctx context.Context, target raft.ServerAddress, req *AddNonvoterRequest) (*AwaitResponse, error) {
 	url := c.generateUrl(target, "AddNonvoter")
 	buf, err := json.Marshal(req)
 	if err != nil {
@@ -58,7 +49,7 @@ func (c *HTTPAdminClient) AddNonvoter(ctx context.Context, target raft.ServerAdd
 	if err != nil {
 		return nil, err
 	}
-	res, err := c.clientRetry(r)
+	res, err := c.clientRetry(ctx, r)
 	if err != nil {
 		return nil, err
 	}
@@ -74,7 +65,7 @@ func (c *HTTPAdminClient) AddNonvoter(ctx context.Context, target raft.ServerAdd
 	return &out, nil
 }
 
-func (c *HTTPAdminClient) AddVoter(ctx context.Context, target raft.ServerAddress, req *AddVoterRequest) (*AwaitResponse, error) {
+func (c *Client) AddVoter(ctx context.Context, target raft.ServerAddress, req *AddVoterRequest) (*AwaitResponse, error) {
 	url := c.generateUrl(target, "AddVoter")
 	buf, err := json.Marshal(req)
 	if err != nil {
@@ -84,7 +75,7 @@ func (c *HTTPAdminClient) AddVoter(ctx context.Context, target raft.ServerAddres
 	if err != nil {
 		return nil, err
 	}
-	res, err := c.clientRetry(r)
+	res, err := c.clientRetry(ctx, r)
 	if err != nil {
 		return nil, err
 	}
@@ -100,13 +91,13 @@ func (c *HTTPAdminClient) AddVoter(ctx context.Context, target raft.ServerAddres
 	return &out, nil
 }
 
-func (c *HTTPAdminClient) AppliedIndex(ctx context.Context, target raft.ServerAddress) (*AppliedIndexResponse, error) {
+func (c *Client) AppliedIndex(ctx context.Context, target raft.ServerAddress) (*AppliedIndexResponse, error) {
 	url := c.generateUrl(target, "AppliedIndex")
 	r, err := http.NewRequest("GET", url, nil)
 	if err != nil {
 		return nil, err
 	}
-	res, err := c.clientRetry(r)
+	res, err := c.clientRetry(ctx, r)
 	if err != nil {
 		return nil, err
 	}
@@ -122,7 +113,7 @@ func (c *HTTPAdminClient) AppliedIndex(ctx context.Context, target raft.ServerAd
 	return &out, nil
 }
 
-func (c *HTTPAdminClient) ApplyLog(ctx context.Context, target raft.ServerAddress, req *ApplyLogRequest) (*AwaitResponse, error) {
+func (c *Client) ApplyLog(ctx context.Context, target raft.ServerAddress, req *ApplyLogRequest) (*AwaitResponse, error) {
 	url := c.generateUrl(target, "ApplyLog")
 	buf, err := json.Marshal(req)
 	if err != nil {
@@ -132,7 +123,7 @@ func (c *HTTPAdminClient) ApplyLog(ctx context.Context, target raft.ServerAddres
 	if err != nil {
 		return nil, err
 	}
-	res, err := c.clientRetry(r)
+	res, err := c.clientRetry(ctx, r)
 	if err != nil {
 		return nil, err
 	}
@@ -148,13 +139,13 @@ func (c *HTTPAdminClient) ApplyLog(ctx context.Context, target raft.ServerAddres
 	return &out, nil
 }
 
-func (c *HTTPAdminClient) Barrier(ctx context.Context, target raft.ServerAddress) (*AwaitResponse, error) {
+func (c *Client) Barrier(ctx context.Context, target raft.ServerAddress) (*AwaitResponse, error) {
 	url := c.generateUrl(target, "Barrier")
 	r, err := http.NewRequest("POST", url, nil)
 	if err != nil {
 		return nil, err
 	}
-	res, err := c.clientRetry(r)
+	res, err := c.clientRetry(ctx, r)
 	if err != nil {
 		return nil, err
 	}
@@ -170,7 +161,7 @@ func (c *HTTPAdminClient) Barrier(ctx context.Context, target raft.ServerAddress
 	return &out, nil
 }
 
-func (c *HTTPAdminClient) DemoteVoter(ctx context.Context, target raft.ServerAddress, req *DemoteVoterRequest) (*AwaitResponse, error) {
+func (c *Client) DemoteVoter(ctx context.Context, target raft.ServerAddress, req *DemoteVoterRequest) (*AwaitResponse, error) {
 	url := c.generateUrl(target, "DemoteVoter")
 	buf, err := json.Marshal(req)
 	if err != nil {
@@ -180,7 +171,7 @@ func (c *HTTPAdminClient) DemoteVoter(ctx context.Context, target raft.ServerAdd
 	if err != nil {
 		return nil, err
 	}
-	res, err := c.clientRetry(r)
+	res, err := c.clientRetry(ctx, r)
 	if err != nil {
 		return nil, err
 	}
@@ -196,13 +187,13 @@ func (c *HTTPAdminClient) DemoteVoter(ctx context.Context, target raft.ServerAdd
 	return &out, nil
 }
 
-func (c *HTTPAdminClient) GetConfiguration(ctx context.Context, target raft.ServerAddress) (*GetConfigurationResponse, error) {
+func (c *Client) GetConfiguration(ctx context.Context, target raft.ServerAddress) (*GetConfigurationResponse, error) {
 	url := c.generateUrl(target, "GetConfiguration")
 	r, err := http.NewRequest("GET", url, nil)
 	if err != nil {
 		return nil, err
 	}
-	res, err := c.clientRetry(r)
+	res, err := c.clientRetry(ctx, r)
 	if err != nil {
 		return nil, err
 	}
@@ -218,13 +209,13 @@ func (c *HTTPAdminClient) GetConfiguration(ctx context.Context, target raft.Serv
 	return &out, nil
 }
 
-func (c *HTTPAdminClient) LastContact(ctx context.Context, target raft.ServerAddress) (*LastContactResponse, error) {
+func (c *Client) LastContact(ctx context.Context, target raft.ServerAddress) (*LastContactResponse, error) {
 	url := c.generateUrl(target, "LastContact")
 	r, err := http.NewRequest("GET", url, nil)
 	if err != nil {
 		return nil, err
 	}
-	res, err := c.clientRetry(r)
+	res, err := c.clientRetry(ctx, r)
 	if err != nil {
 		return nil, err
 	}
@@ -240,13 +231,13 @@ func (c *HTTPAdminClient) LastContact(ctx context.Context, target raft.ServerAdd
 	return &out, nil
 }
 
-func (c *HTTPAdminClient) LastIndex(ctx context.Context, target raft.ServerAddress) (*LastIndexResponse, error) {
+func (c *Client) LastIndex(ctx context.Context, target raft.ServerAddress) (*LastIndexResponse, error) {
 	url := c.generateUrl(target, "LastIndex")
 	r, err := http.NewRequest("GET", url, nil)
 	if err != nil {
 		return nil, err
 	}
-	res, err := c.clientRetry(r)
+	res, err := c.clientRetry(ctx, r)
 	if err != nil {
 		return nil, err
 	}
@@ -264,13 +255,13 @@ func (c *HTTPAdminClient) LastIndex(ctx context.Context, target raft.ServerAddre
 
 var ErrNotLeader = errors.New("not leader")
 
-func (c *HTTPAdminClient) Leader(ctx context.Context, target raft.ServerAddress) (*LeaderResponse, error) {
+func (c *Client) Leader(ctx context.Context, target raft.ServerAddress) (*LeaderResponse, error) {
 	url := c.generateUrl(target, "Leader")
 	r, err := http.NewRequest("GET", url, nil)
 	if err != nil {
 		return nil, err
 	}
-	res, err := c.clientRetry(r)
+	res, err := c.clientRetry(ctx, r)
 	if err != nil {
 		return nil, err
 	}
@@ -290,7 +281,7 @@ func (c *HTTPAdminClient) Leader(ctx context.Context, target raft.ServerAddress)
 	}
 }
 
-func (c *HTTPAdminClient) LeadershipTransfer(ctx context.Context, target raft.ServerAddress, req *LeadershipTransferToServerRequest) (*AwaitResponse, error) {
+func (c *Client) LeadershipTransfer(ctx context.Context, target raft.ServerAddress, req *LeadershipTransferToServerRequest) (*AwaitResponse, error) {
 	url := c.generateUrl(target, "LeadershipTransfer")
 	buf, err := json.Marshal(req)
 	if err != nil {
@@ -300,7 +291,7 @@ func (c *HTTPAdminClient) LeadershipTransfer(ctx context.Context, target raft.Se
 	if err != nil {
 		return nil, err
 	}
-	res, err := c.clientRetry(r)
+	res, err := c.clientRetry(ctx, r)
 	if err != nil {
 		return nil, err
 	}
@@ -320,7 +311,7 @@ func (c *HTTPAdminClient) LeadershipTransfer(ctx context.Context, target raft.Se
 	}
 }
 
-func (c *HTTPAdminClient) RemoveServer(ctx context.Context, target raft.ServerAddress, req *RemoveServerRequest) (*AwaitResponse, error) {
+func (c *Client) RemoveServer(ctx context.Context, target raft.ServerAddress, req *RemoveServerRequest) (*AwaitResponse, error) {
 	url := c.generateUrl(target, "RemoveServer")
 	buf, err := json.Marshal(req)
 	if err != nil {
@@ -330,7 +321,7 @@ func (c *HTTPAdminClient) RemoveServer(ctx context.Context, target raft.ServerAd
 	if err != nil {
 		return nil, err
 	}
-	res, err := c.clientRetry(r)
+	res, err := c.clientRetry(ctx, r)
 	if err != nil {
 		return nil, err
 	}
@@ -350,13 +341,13 @@ func (c *HTTPAdminClient) RemoveServer(ctx context.Context, target raft.ServerAd
 	}
 }
 
-func (c *HTTPAdminClient) Shutdown(ctx context.Context, target raft.ServerAddress) (*AwaitResponse, error) {
+func (c *Client) Shutdown(ctx context.Context, target raft.ServerAddress) (*AwaitResponse, error) {
 	url := c.generateUrl(target, "Shutdown")
 	r, err := http.NewRequest("POST", url, nil)
 	if err != nil {
 		return nil, err
 	}
-	res, err := c.clientRetry(r)
+	res, err := c.clientRetry(ctx, r)
 	if err != nil {
 		return nil, err
 	}
@@ -376,13 +367,13 @@ func (c *HTTPAdminClient) Shutdown(ctx context.Context, target raft.ServerAddres
 	}
 }
 
-func (c *HTTPAdminClient) State(ctx context.Context, target raft.ServerAddress) (*StateResponse, error) {
+func (c *Client) State(ctx context.Context, target raft.ServerAddress) (*StateResponse, error) {
 	url := c.generateUrl(target, "State")
 	r, err := http.NewRequest("GET", url, nil)
 	if err != nil {
 		return nil, err
 	}
-	res, err := c.clientRetry(r)
+	res, err := c.clientRetry(ctx, r)
 	if err != nil {
 		return nil, err
 	}
@@ -402,13 +393,13 @@ func (c *HTTPAdminClient) State(ctx context.Context, target raft.ServerAddress) 
 	}
 }
 
-func (c *HTTPAdminClient) Stats(ctx context.Context, target raft.ServerAddress) (*StatsResponse, error) {
+func (c *Client) Stats(ctx context.Context, target raft.ServerAddress) (*StatsResponse, error) {
 	url := c.generateUrl(target, "Stats")
 	r, err := http.NewRequest("POST", url, nil)
 	if err != nil {
 		return nil, err
 	}
-	res, err := c.clientRetry(r)
+	res, err := c.clientRetry(ctx, r)
 	if err != nil {
 		return nil, err
 	}
@@ -428,13 +419,13 @@ func (c *HTTPAdminClient) Stats(ctx context.Context, target raft.ServerAddress) 
 	}
 }
 
-func (c *HTTPAdminClient) VerifyLeader(ctx context.Context, target raft.ServerAddress) error {
+func (c *Client) VerifyLeader(ctx context.Context, target raft.ServerAddress) error {
 	url := c.generateUrl(target, "VerifyLeader")
 	r, err := http.NewRequest("POST", url, nil)
 	if err != nil {
 		return err
 	}
-	res, err := c.clientRetry(r)
+	res, err := c.clientRetry(ctx, r)
 	if err != nil {
 		return err
 	}
@@ -449,15 +440,17 @@ func (c *HTTPAdminClient) VerifyLeader(ctx context.Context, target raft.ServerAd
 	}
 }
 
-func (c *HTTPAdminClient) clientRetry(r *http.Request) (*http.Response, error) {
+func (c *Client) clientRetry(ctx context.Context, r *http.Request) (*http.Response, error) {
 	retries := 0
+	r = r.WithContext(ctx)
 RETRY:
 	res, err := c.do(r)
 	if err != nil {
-		if retries > 5 {
+		if retries > 3 {
 			return nil, err
+		} else if ctx.Err() != nil {
+			return nil, ctx.Err()
 		}
-		<-time.After(1 * time.Second)
 		retries++
 		goto RETRY
 	}

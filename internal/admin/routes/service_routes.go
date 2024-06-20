@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	urllib "net/url"
 
 	"github.com/dgate-io/chi-router"
 	"github.com/dgate-io/dgate/internal/admin/changestate"
@@ -50,6 +51,26 @@ func ConfigureServiceAPI(server chi.Router, logger *zap.Logger, cs changestate.C
 			util.JsonError(w, http.StatusBadRequest, "retry timeout must be greater than 0")
 			return
 		}
+		if len(svc.URLs) == 0 {
+			util.JsonError(w, http.StatusBadRequest, "urls are required")
+			return
+		} else {
+			for i, url := range svc.URLs {
+				errPrefix := fmt.Sprintf(`error on urls["%d"]: `, i)
+				if url, err := urllib.Parse(url); err != nil {
+					util.JsonError(w, http.StatusBadRequest, errPrefix+err.Error())
+				} else {
+					if url.Scheme == "" {
+						util.JsonError(w, http.StatusBadRequest, errPrefix+"url scheme cannot be empty")
+						return
+					}
+					if url.Host == "" {
+						util.JsonError(w, http.StatusBadRequest, errPrefix+"url host cannot be empty")
+						return
+					}
+				}
+			}
+		}
 		if svc.NamespaceName == "" {
 			if appConfig.DisableDefaultNamespace {
 				util.JsonError(w, http.StatusBadRequest, "namespace is required")
@@ -57,15 +78,14 @@ func ConfigureServiceAPI(server chi.Router, logger *zap.Logger, cs changestate.C
 			}
 			svc.NamespaceName = spec.DefaultNamespace.Name
 		}
+
 		cl := spec.NewChangeLog(&svc, svc.NamespaceName, spec.AddServiceCommand)
-		err = cs.ApplyChangeLog(cl)
-		if err != nil {
+		if err = cs.ApplyChangeLog(cl); err != nil {
 			util.JsonError(w, http.StatusBadRequest, err.Error())
 			return
 		}
 
-		logger.Debug("Waiting for raft barrier")
-		if err := cs.WaitForChanges(); err != nil {
+		if err := cs.WaitForChanges(cl); err != nil {
 			util.JsonError(w, http.StatusInternalServerError, err.Error())
 			return
 		}
@@ -96,8 +116,7 @@ func ConfigureServiceAPI(server chi.Router, logger *zap.Logger, cs changestate.C
 			svc.NamespaceName = spec.DefaultNamespace.Name
 		}
 		cl := spec.NewChangeLog(&svc, svc.NamespaceName, spec.DeleteServiceCommand)
-		err = cs.ApplyChangeLog(cl)
-		if err != nil {
+		if err = cs.ApplyChangeLog(cl); err != nil {
 			util.JsonError(w, http.StatusBadRequest, err.Error())
 			return
 		}

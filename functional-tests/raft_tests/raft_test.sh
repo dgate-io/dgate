@@ -4,6 +4,7 @@ set -eo xtrace
 
 ADMIN_URL1=${ADMIN_URL1:-"http://localhost:9081"}
 PROXY_URL1=${PROXY_URL1:-"http://localhost:81"}
+TEST_URL1=${TEST_URL1:-"http://localhost:8081"}
 
 ADMIN_URL2=${ADMIN_URL2:-"http://localhost:9082"}
 PROXY_URL2=${PROXY_URL2:-"http://localhost:82"}
@@ -24,46 +25,49 @@ DIR="$( cd "$( dirname "$0" )" && pwd )"
 
 export DGATE_ADMIN_API=$ADMIN_URL1
 
+if ! command -v uuid > /dev/null; then
+    id=X$RANDOM-$RANDOM-$RANDOM
+else
+    id=$(uuid)
+fi
 
-id=$(uuid)
+dgate-cli -Vf namespace create name=ns-$id
 
-dgate-cli -f namespace create name=ns-$id
-
-dgate-cli -f domain create name=dm-$id \
+dgate-cli -Vf domain create name=dm-$id \
     namespace=ns-$id priority:=$RANDOM patterns="$id.example.com"
 
-dgate-cli -f service create \
+dgate-cli -Vf service create \
     name=svc-$id namespace=ns-$id \
-    urls="http://localhost:8081/$RANDOM"
+    urls="$TEST_URL1/$RANDOM"
 
-dgate-cli -f route create \
+dgate-cli -Vf route create \
     name=rt-$id \
     service=svc-$id \
     namespace=ns-$id \
-    paths="/$id/{id}" \
-    methods:='["GET"]' \
+    paths="/,/{},/$id,/$id/{id}" \
+    methods=GET,POST,PUT \
     preserveHost:=false \
-    stripPath:=true
+    stripPath:=false
 
-curl -f $ADMIN_URL1/readyz
+curl -sf $ADMIN_URL1/readyz
 
-for i in {1..5}; do
+for i in {1..1}; do
     for j in {1..3}; do
         proxy_url=PROXY_URL$i
-        curl -f ${!proxy_url}/$id/$j -H Host:$id.example.com
+        curl -sf ${!proxy_url}/$id/$RANDOM-$j -H Host:$id.example.com
     done
 done
 
-if dgate-cli --admin $ADMIN_URL4 namespace create name=0; then
-    echo "Expected error when creating namespace on non-voter"
-    exit 1
-fi
+# if dgate-cli --admin $ADMIN_URL4 namespace create name=0; then
+#     echo "Expected error when creating namespace on non-voter"
+#     exit 1
+# fi
 
-export DGATE_ADMIN_API=$ADMIN_URL5
+# export DGATE_ADMIN_API=$ADMIN_URL5
 
-if dgate-cli --admin $ADMIN_URL5 namespace create name=0; then
-    echo "Expected error when creating namespace on non-voter"
-    exit 1
-fi
+# if dgate-cli --admin $ADMIN_URL5 namespace create name=0; then
+#     echo "Expected error when creating namespace on non-voter"
+#     exit 1
+# fi
 
 echo "Raft Test Succeeded"

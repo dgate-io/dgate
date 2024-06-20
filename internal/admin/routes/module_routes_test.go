@@ -21,20 +21,21 @@ import (
 
 func TestAdminRoutes_Module(t *testing.T) {
 	namespaces := []string{"default", "test"}
-	for _, ns := range namespaces {
-		config := configtest.NewTest4DGateConfig()
-		ps := proxy.NewProxyState(zap.NewNop(), config)
-		mux := chi.NewMux()
-		mux.Route("/api/v1", func(r chi.Router) {
-			routes.ConfigureModuleAPI(r, zap.NewNop(), ps, config)
-		})
-		server := httptest.NewServer(mux)
-		defer server.Close()
+	config := configtest.NewTest4DGateConfig()
+	ps := proxy.NewProxyState(zap.NewNop(), config)
+	if err := ps.Start(); err != nil {
+		t.Fatal(err)
+	}
+	mux := chi.NewMux()
+	mux.Route("/api/v1", func(r chi.Router) {
+		routes.ConfigureModuleAPI(r, zap.NewNop(), ps, config)
+	})
+	server := httptest.NewServer(mux)
+	defer server.Close()
 
+	for _, ns := range namespaces {
 		client := dgclient.NewDGateClient()
-		if err := client.Init(server.URL, server.Client(),
-			dgclient.WithVerboseLogging(true),
-		); err != nil {
+		if err := client.Init(server.URL, server.Client()); err != nil {
 			t.Fatal(err)
 		}
 
@@ -77,25 +78,22 @@ func TestAdminRoutes_Module(t *testing.T) {
 }
 
 func TestAdminRoutes_ModuleError(t *testing.T) {
+	config := configtest.NewTest3DGateConfig()
+	cs := testutil.NewMockChangeState()
+	rm := resources.NewManager()
+	cs.On("ApplyChangeLog", mock.Anything).
+		Return(errors.New("test error"))
+	cs.On("ResourceManager").Return(rm)
+	mux := chi.NewMux()
+	mux.Route("/api/v1", func(r chi.Router) {
+		routes.ConfigureModuleAPI(r, zap.NewNop(), cs, config)
+	})
+	server := httptest.NewServer(mux)
+	defer server.Close()
 	namespaces := []string{"default", "test", ""}
 	for _, ns := range namespaces {
-		config := configtest.NewTest3DGateConfig()
-		rm := resources.NewManager()
-		cs := testutil.NewMockChangeState()
-		cs.On("ApplyChangeLog", mock.Anything).
-			Return(errors.New("test error"))
-		cs.On("ResourceManager").Return(rm)
-		mux := chi.NewMux()
-		mux.Route("/api/v1", func(r chi.Router) {
-			routes.ConfigureModuleAPI(r, zap.NewNop(), cs, config)
-		})
-		server := httptest.NewServer(mux)
-		defer server.Close()
-
 		client := dgclient.NewDGateClient()
-		if err := client.Init(server.URL, server.Client(),
-			dgclient.WithVerboseLogging(true),
-		); err != nil {
+		if err := client.Init(server.URL, server.Client()); err != nil {
 			t.Fatal(err)
 		}
 

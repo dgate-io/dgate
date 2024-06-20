@@ -4,30 +4,31 @@ set -eo xtrace
 
 ADMIN_URL=${ADMIN_URL:-"http://localhost:9080"}
 PROXY_URL=${PROXY_URL:-"http://localhost"}
+TEST_URL=${TEST_URL:-"http://localhost:8888"}
 
 DIR="$( cd "$( dirname "$0" )" && pwd )"
 
 export DGATE_ADMIN_API=$ADMIN_URL
 
-dgate-cli namespace create \
+dgate-cli -Vf namespace create \
     name=modify_request_test-ns
 
-dgate-cli domain create \
+dgate-cli -Vf domain create \
     name=modify_request_test-dm \
-    patterns:='["modify_request_test.com"]' \
+    patterns:='["modify_request_test.example.com"]' \
     namespace=modify_request_test-ns
 
 MOD_B64="$(base64 < $DIR/modify_request.ts)"
-dgate-cli module create \
+dgate-cli -Vf module create \
     name=printer payload="$MOD_B64" \
     namespace=modify_request_test-ns
 
-dgate-cli service create \
+dgate-cli -Vf service create \
     name=base_svc \
-    urls:='["http://localhost:8888"]' \
+    urls="$TEST_URL" \
     namespace=modify_request_test-ns
 
-dgate-cli route create \
+dgate-cli -Vf route create \
     name=base_rt \
     paths:='["/modify_request_test"]' \
     methods:='["GET"]' \
@@ -37,8 +38,8 @@ dgate-cli route create \
     namespace=modify_request_test-ns \
     service='base_svc'
 
-curl -s --fail-with-body ${PROXY_URL}/modify_request_test \
-    -H Host:modify_request_test.com \
+curl -sf ${PROXY_URL}/modify_request_test \
+    -H Host:modify_request_test.example.com \
     -H X-Forwarded-For:1.1.1.1
 
 echo "Modify Request Test Passed"

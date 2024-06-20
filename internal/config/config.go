@@ -44,7 +44,7 @@ type (
 		TLS                      *DGateTLSConfig          `koanf:"tls"`
 		EnableH2C                bool                     `koanf:"enable_h2c"`
 		EnableHTTP2              bool                     `koanf:"enable_http2"`
-		EnableConsoleLogger      bool                     `koanf:"enable_console_logger"`
+		ConsoleLogLevel          string                   `koanf:"console_log_level"`
 		RedirectHttpsDomains     []string                 `koanf:"redirect_https"`
 		AllowedDomains           []string                 `koanf:"allowed_domains"`
 		GlobalHeaders            map[string]string        `koanf:"global_headers"`
@@ -234,6 +234,7 @@ func (conf *DGateConfig) GetLogger() (*zap.Logger, error) {
 		config.Development = conf.Debug
 		config.EncoderConfig.EncodeTime = zapcore.RFC3339TimeEncoder
 		config.OutputPaths = []string{"stdout"}
+		config.Sampling = nil
 
 		if config.EncoderConfig.EncodeLevel = zapcore.CapitalLevelEncoder; conf.LogColor {
 			config.EncoderConfig.EncodeLevel = zapcore.CapitalColorLevelEncoder

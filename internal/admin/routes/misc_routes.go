@@ -3,6 +3,7 @@ package routes
 import (
 	"encoding/json"
 	"net/http"
+	"strconv"
 
 	"github.com/dgate-io/chi-router"
 	"github.com/dgate-io/dgate/internal/admin/changestate"
@@ -11,35 +12,23 @@ import (
 )
 
 func ConfigureChangeLogAPI(server chi.Router, cs changestate.ChangeState, appConfig *config.DGateConfig) {
-	server.Get("/changelog/hash", func(w http.ResponseWriter, r *http.Request) {
-		if err := cs.WaitForChanges(); err != nil {
-			util.JsonError(w, http.StatusInternalServerError, err.Error())
-			return
+	server.Get("/changelog", func(w http.ResponseWriter, r *http.Request) {
+		hash := cs.ChangeHash()
+		logs := cs.ChangeLogs()
+		lastLogId := ""
+		if len(logs) > 0 {
+			lastLogId = logs[len(logs)-1].ID
 		}
-
-		if b, err := json.Marshal(map[string]any{
-			"hash": cs.ChangeHash(),
-		}); err != nil {
+		b, err := json.Marshal(map[string]any{
+			"count":  len(logs),
+			"hash":   strconv.FormatUint(hash, 36),
+			"latest": lastLogId,
+		})
+		if err != nil {
 			util.JsonError(w, http.StatusInternalServerError, err.Error())
-		} else {
-			w.Header().Set("Content-Type", "application/json")
-			w.Write([]byte(b))
 		}
-	})
-	server.Get("/changelog/count", func(w http.ResponseWriter, r *http.Request) {
-		if err := cs.WaitForChanges(); err != nil {
-			util.JsonError(w, http.StatusInternalServerError, err.Error())
-			return
-		}
-
-		if b, err := json.Marshal(map[string]any{
-			"count": len(cs.ChangeLogs()),
-		}); err != nil {
-			util.JsonError(w, http.StatusInternalServerError, err.Error())
-		} else {
-			w.Header().Set("Content-Type", "application/json")
-			w.Write([]byte(b))
-		}
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(b))
 	})
 }
 
@@ -54,18 +43,21 @@ func ConfigureHealthAPI(server chi.Router, version string, cs changestate.Change
 
 	server.Get("/readyz", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		if r := cs.Raft(); r != nil {
-			w.Header().Set("X-Raft-State", r.State().String())
-			if r.Leader() == "" {
-				w.WriteHeader(http.StatusServiceUnavailable)
-				w.Write([]byte(`{"status":"no leader"}`))
-				return
-			} else if !cs.Ready() {
-				w.WriteHeader(http.StatusServiceUnavailable)
-				w.Write([]byte(`{"status":"not ready"}`))
-				return
+		if cs.Ready() {
+			if r := cs.Raft(); r != nil {
+				w.Header().Set("X-Raft-State", r.State().String())
+				if leaderAddr := r.Leader(); leaderAddr == "" {
+					w.WriteHeader(http.StatusServiceUnavailable)
+					w.Write([]byte(`{"status":"no leader"}`))
+					return
+				} else {
+					w.Header().Set("X-Raft-Leader", string(leaderAddr))
+				}
 			}
+			w.Write(healthlyResp)
+		} else {
+			w.WriteHeader(http.StatusServiceUnavailable)
+			w.Write([]byte(`{"status":"not ready"}`))
 		}
-		w.Write(healthlyResp)
 	})
 }

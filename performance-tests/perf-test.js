@@ -40,7 +40,7 @@ export function dgatePath() {
   const dgatePath = __ENV.PROXY_URL || 'http://localhost';
   const path = __ENV.DGATE_PATH;
   let res = http.get(dgatePath + path, {
-    headers: { Host: 'dgate.dev' },
+    headers: { Host: 'performance.example.com' },
   });
   let results = {};
   results[path + ': status is ' + res.status] = (r) => r.status < 400;

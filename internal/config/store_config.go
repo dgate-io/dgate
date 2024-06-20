@@ -7,7 +7,6 @@ import (
 type StorageType string
 
 const (
-	StorageTypeDebug  StorageType = "debug"
 	StorageTypeMemory StorageType = "memory"
 	StorageTypeFile   StorageType = "file"
 )
@@ -25,4 +24,8 @@ func StoreConfig[T any, C any](config C) (T, error) {
 	}
 	err = decoder.Decode(config)
 	return output, err
+}
+
+func (st StorageType) String() string {
+	return string(st)
 }

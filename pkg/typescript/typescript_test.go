@@ -1,6 +1,7 @@
 package typescript_test
 
 import (
+	"context"
 	"strings"
 	"testing"
 
@@ -37,7 +38,7 @@ func TestTranspile(t *testing.T) {
 
 	for _, tsSrc := range tsSrcList {
 		vm := goja.New()
-		jsSrc, err := typescript.Transpile(tsSrc)
+		jsSrc, err := typescript.Transpile(context.Background(), tsSrc)
 		if err != nil {
 			t.Fatal(err)
 			return

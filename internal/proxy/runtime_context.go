@@ -25,6 +25,8 @@ type runtimeContext struct {
 	modules []*spec.Module
 }
 
+var _ modules.RuntimeContext = &runtimeContext{}
+
 func NewRuntimeContext(
 	proxyState *ProxyState,
 	route *spec.DGateRoute,
@@ -39,6 +41,7 @@ func NewRuntimeContext(
 
 	reg := require.NewRegistryWithLoader(func(path string) ([]byte, error) {
 		requireMod := strings.Replace(path, "node_modules/", "", 1)
+		// TODO: add support for other module types w/ permissions
 		// 'https://' - requires network permissions and must be enabled in the config
 		// 'file://' - requires file system permissions and must be enabled in the config
 		// 'module://' - requires a module lookup and module permissions
@@ -57,7 +60,8 @@ func NewRuntimeContext(
 					return code.([]byte), nil
 				}
 			}
-			payload, err := typescript.Transpile(mod.Payload)
+			payload, err := typescript.Transpile(
+				context.TODO(), mod.Payload)
 			if err != nil {
 				return nil, err
 			}
@@ -70,8 +74,6 @@ func NewRuntimeContext(
 	)
 	return rtCtx
 }
-
-var _ modules.RuntimeContext = &runtimeContext{}
 
 // UseRequestContext sets the request context
 func (rtCtx *runtimeContext) Use(reqCtx *RequestContext) (*runtimeContext, error) {

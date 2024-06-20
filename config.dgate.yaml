@@ -1,9 +1,8 @@
 version: v1
 debug: true
-log_level: ${LOG_LEVEL:-info}
+log_level: ${LOG_LEVEL:-debug}
 disable_default_namespace: true
-tags:
-  - debug
+tags: [debug, local, test]
 storage:
   type: file
   dir: .dgate/data/
@@ -15,7 +14,7 @@ test_server:
 proxy:
   port: ${PORT:-80}
   host: 0.0.0.0
-  enable_console_logger: true
+  console_log_level: info
   transport:
     dns_prefer_go: true
   init_resources:

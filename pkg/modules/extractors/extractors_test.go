@@ -1,6 +1,7 @@
 package extractors_test
 
 import (
+	"context"
 	"strconv"
 	"testing"
 
@@ -39,7 +40,7 @@ async function print() {console.log("log")}
 `
 
 func Test_runAndWaitForResult(t *testing.T) {
-	src, err := typescript.Transpile(TS_PAYLOAD)
+	src, err := typescript.Transpile(context.Background(), TS_PAYLOAD)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -96,7 +97,7 @@ export async function named_func_async() {
 `
 
 func TestExportedInformation(t *testing.T) {
-	src, err := typescript.Transpile(TS_PAYLOAD_EXPORTED)
+	src, err := typescript.Transpile(context.Background(), TS_PAYLOAD_EXPORTED)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -172,7 +173,7 @@ export async function test2() {
 `
 
 func TestExportedPromiseErrors(t *testing.T) {
-	src, err := typescript.Transpile(TS_PAYLOAD_PROMISE)
+	src, err := typescript.Transpile(context.Background(), TS_PAYLOAD_PROMISE)
 	if err != nil {
 		t.Fatal(err)
 	}

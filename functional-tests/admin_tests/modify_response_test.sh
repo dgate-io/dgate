@@ -4,30 +4,31 @@ set -eo xtrace
 
 ADMIN_URL=${ADMIN_URL:-"http://localhost:9080"}
 PROXY_URL=${PROXY_URL:-"http://localhost"}
+TEST_URL=${TEST_URL:-"http://localhost:8888"}
 
 DIR="$( cd "$( dirname "$0" )" && pwd )"
 
 export DGATE_ADMIN_API=$ADMIN_URL
 
-dgate-cli namespace create \
+dgate-cli -Vf namespace create \
     name=test-ns
 
-dgate-cli domain create \
+dgate-cli -Vf domain create \
     name=test-dm \
-    patterns:='["test.com"]' \
+    patterns:='["test.example.com"]' \
     namespace=test-ns
 
 MOD_B64="$(base64 < $DIR/modify_response.ts)"
-dgate-cli module create \
+dgate-cli -Vf module create \
     name=printer payload="$MOD_B64" \
     namespace=test-ns
 
-dgate-cli service create \
+dgate-cli -Vf service create \
     name=base_svc \
-    urls:='["http://localhost:8888"]' \
+    urls="$TEST_URL"\
     namespace=test-ns
 
-dgate-cli route create \
+dgate-cli -Vf route create \
     name=base_rt \
     paths:='["/test","/hello"]' \
     methods:='["GET"]' \
@@ -37,6 +38,6 @@ dgate-cli route create \
     namespace=test-ns \
     service='base_svc'
 
-curl -s ${PROXY_URL}/test -H Host:test.com
+curl -s ${PROXY_URL}/test -H Host:test.example.com
 
 echo "Modify Response Test Passed"

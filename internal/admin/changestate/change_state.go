@@ -2,6 +2,7 @@ package changestate
 
 import (
 	"github.com/dgate-io/dgate/internal/proxy"
+	"github.com/dgate-io/dgate/pkg/raftadmin"
 	"github.com/dgate-io/dgate/pkg/resources"
 	"github.com/dgate-io/dgate/pkg/spec"
 	"github.com/hashicorp/raft"
@@ -10,17 +11,18 @@ import (
 type ChangeState interface {
 	// Change state
 	ApplyChangeLog(cl *spec.ChangeLog) error
-	ProcessChangeLog(*spec.ChangeLog, bool) error
-	WaitForChanges() error
+	ProcessChangeLog(cl *spec.ChangeLog, reload bool) error
+	WaitForChanges(cl *spec.ChangeLog) error
 	ReloadState(bool, ...*spec.ChangeLog) error
-	ChangeHash() uint32
+	ChangeHash() uint64
 	ChangeLogs() []*spec.ChangeLog
 
 	// Readiness
 	Ready() bool
+	SetReady(bool)
 
 	// Replication
-	SetupRaft(*raft.Raft, chan raft.Observation)
+	SetupRaft(*raft.Raft, *raftadmin.Client)
 	Raft() *raft.Raft
 
 	// Resources

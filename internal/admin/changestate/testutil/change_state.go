@@ -7,9 +7,9 @@ import (
 	"github.com/dgate-io/dgate/internal/admin/changestate"
 	"github.com/dgate-io/dgate/pkg/resources"
 	"github.com/dgate-io/dgate/pkg/spec"
+	"github.com/dgate-io/dgate/pkg/raftadmin"
 	"github.com/hashicorp/raft"
 	"github.com/stretchr/testify/mock"
-	"go.uber.org/zap"
 )
 
 type MockChangeState struct {
@@ -22,23 +22,24 @@ func (m *MockChangeState) ApplyChangeLog(cl *spec.ChangeLog) error {
 }
 
 // ChangeHash implements changestate.ChangeState.
-func (m *MockChangeState) ChangeHash() uint32 {
-	return m.Called().Get(0).(uint32)
+func (m *MockChangeState) ChangeHash() uint64 {
+	return m.Called().Get(0).(uint64)
 }
 
 // DocumentManager implements changestate.ChangeState.
 func (m *MockChangeState) DocumentManager() resources.DocumentManager {
+	if m.Called().Get(0) == nil {
+		return nil
+	}
 	return m.Called().Get(0).(resources.DocumentManager)
 }
 
 // ResourceManager implements changestate.ChangeState.
 func (m *MockChangeState) ResourceManager() *resources.ResourceManager {
+	if m.Called().Get(0) == nil {
+		return nil
+	}
 	return m.Called().Get(0).(*resources.ResourceManager)
-}
-
-// Logger implements changestate.ChangeState.
-func (m *MockChangeState) Logger() *zap.Logger {
-	return m.Called().Get(0).(*zap.Logger)
 }
 
 // ProcessChangeLog implements changestate.ChangeState.
@@ -60,13 +61,18 @@ func (m *MockChangeState) Ready() bool {
 	return m.Called().Get(0).(bool)
 }
 
+// SetReady implements changestate.ChangeState.
+func (m *MockChangeState) SetReady(ready bool) {
+	m.Called(ready)
+}
+
 // ReloadState implements changestate.ChangeState.
 func (m *MockChangeState) ReloadState(a bool, cls ...*spec.ChangeLog) error {
 	return m.Called(a, cls).Error(0)
 }
 
 // SetupRaft implements changestate.ChangeState.
-func (m *MockChangeState) SetupRaft(*raft.Raft, chan raft.Observation) {
+func (m *MockChangeState) SetupRaft(*raft.Raft, *raftadmin.Client) {
 	m.Called().Error(0)
 }
 
@@ -76,8 +82,8 @@ func (m *MockChangeState) Version() string {
 }
 
 // WaitForChanges implements changestate.ChangeState.
-func (m *MockChangeState) WaitForChanges() error {
-	return m.Called().Error(0)
+func (m *MockChangeState) WaitForChanges(cl *spec.ChangeLog) error {
+	return m.Called(cl).Error(0)
 }
 
 // ChangeLogs implements changestate.ChangeState.

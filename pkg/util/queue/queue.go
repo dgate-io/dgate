@@ -17,7 +17,14 @@ type queueImpl[V any] struct {
 }
 
 // New returns a new queue.
-func New[V any]() Queue[V] {
+func New[V any](vs ...V) Queue[V] {
+	if len(vs) > 0 {
+		q := newQueue[V](len(vs))
+		for _, v := range vs {
+			q.Push(v)
+		}
+		return q
+	}
 	return newQueue[V](128)
 }
 

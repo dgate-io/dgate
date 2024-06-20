@@ -18,12 +18,12 @@ func NewTestDGateConfig() *config.DGateConfig {
 		Version:                 "v1",
 		Tags:                    []string{"test"},
 		Storage: config.DGateStorageConfig{
-			StorageType: config.StorageTypeDebug,
+			StorageType: config.StorageTypeMemory,
 		},
 		ProxyConfig: config.DGateProxyConfig{
 			AllowedDomains: []string{"*test.com", "localhost"},
 			Host:           "localhost",
-			Port:           8080,
+			Port:           0,
 			InitResources: &config.DGateResources{
 				Namespaces: []spec.Namespace{
 					{
@@ -69,7 +69,7 @@ func NewTest2DGateConfig() *config.DGateConfig {
 	conf := NewTestDGateConfig()
 	conf.ProxyConfig = config.DGateProxyConfig{
 		Host: "localhost",
-		Port: 16436,
+		Port: 0,
 		InitResources: &config.DGateResources{
 			Namespaces: []spec.Namespace{
 				{
@@ -112,7 +112,7 @@ func NewTest4DGateConfig() *config.DGateConfig {
 	conf.DisableDefaultNamespace = false
 	conf.ProxyConfig = config.DGateProxyConfig{
 		Host: "localhost",
-		Port: 16436,
+		Port: 0,
 		InitResources: &config.DGateResources{
 			Namespaces: []spec.Namespace{
 				{
@@ -166,5 +166,17 @@ func NewTestDGateConfig_DomainAndNamespaces() *config.DGateConfig {
 func NewTestDGateConfig_DomainAndNamespaces2() *config.DGateConfig {
 	conf := NewTestDGateConfig_DomainAndNamespaces()
 	conf.DisableDefaultNamespace = false
+	return conf
+}
+
+func NewTestAdminConfig() *config.DGateConfig {
+	conf := NewTestDGateConfig()
+	conf.AdminConfig = &config.DGateAdminConfig{
+		Host: "localhost",
+		Port: 0,
+		TLS: &config.DGateTLSConfig{
+			Port: 0,
+		},
+	}
 	return conf
 }

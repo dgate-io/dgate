@@ -15,7 +15,7 @@ DGate is a distributed API Gateway built for developers. DGate allows you to use
 
 ## Getting Started
 
-Coming soon @ http://dgate.io/docs/getting-started
+http://dgate.io/docs/getting-started
 
 ### Installing
 

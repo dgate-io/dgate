@@ -38,7 +38,7 @@ func proxyHandler(ps *ProxyState, reqCtx *RequestContext) {
 		if reqCtx.route.Service != nil {
 			event = event.With(zap.String("service", reqCtx.route.Service.Name))
 		}
-		event.Info("Request log")
+		event.Debug("Request log")
 	}()
 
 	defer ps.metrics.MeasureProxyRequest(reqCtx, time.Now())
@@ -164,7 +164,7 @@ func handleServiceProxy(ps *ProxyState, reqCtx *RequestContext, modExt ModuleExt
 		}).
 		ErrorHandler(func(w http.ResponseWriter, r *http.Request, reqErr error) {
 			upstreamErr = reqErr
-			ps.logger.Error("Error proxying request",
+			ps.logger.Debug("Error proxying request",
 				zap.String("error", reqErr.Error()),
 				zap.String("route", reqCtx.route.Name),
 				zap.String("service", reqCtx.route.Service.Name),

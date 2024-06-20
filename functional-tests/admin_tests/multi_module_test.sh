@@ -4,17 +4,18 @@ set -eo xtrace
 
 ADMIN_URL=${ADMIN_URL:-"http://localhost:9080"}
 PROXY_URL=${PROXY_URL:-"http://localhost"}
+TEST_URL=${TEST_URL:-"http://localhost:8888"}
 
 DIR="$( cd "$( dirname "$0" )" && pwd )"
 
 export DGATE_ADMIN_API=$ADMIN_URL
 
-dgate-cli namespace create \
+dgate-cli -Vf namespace create \
     name=multimod-test-ns
 
-dgate-cli domain create \
+dgate-cli -Vf domain create \
     name=multimod-test-dm \
-    patterns:='["multimod-test.com"]' \
+    patterns:='["multimod-test.example.com"]' \
     namespace=multimod-test-ns
 
 MOD_B64=$(base64 <<-END
@@ -32,7 +33,7 @@ END
 
 )
 
-dgate-cli module create \
+dgate-cli -Vf module create \
     name=multimod1 \
     payload="$MOD_B64" \
     namespace=multimod-test-ns
@@ -53,15 +54,14 @@ END
 
 )
 
-dgate-cli module create name=multimod2 \
+dgate-cli -Vf module create name=multimod2 \
     payload="$MOD_B64" namespace=multimod-test-ns
 
-URL='http://localhost:8888'
-dgate-cli service create name=base_svc \
-    urls="$URL/a","$URL/b","$URL/c" \
+dgate-cli -Vf service create name=base_svc \
+    urls="$TEST_URL/a","$TEST_URL/b","$TEST_URL/c" \
     namespace=multimod-test-ns
 
-dgate-cli route create name=base_rt \
+dgate-cli -Vf route create name=base_rt \
     paths=/,/multimod-test \
     methods:='["GET"]' \
     modules=multimod1,multimod2 \
@@ -71,7 +71,7 @@ dgate-cli route create name=base_rt \
     namespace=multimod-test-ns
 
 
-curl -s --fail-with-body ${PROXY_URL}/ -H Host:multimod-test.com
-curl -s --fail-with-body ${PROXY_URL}/multimod-test -H Host:multimod-test.com
+curl -sf ${PROXY_URL}/ -H Host:multimod-test.example.com
+curl -sf ${PROXY_URL}/multimod-test -H Host:multimod-test.example.com
 
 echo "Multi Module Test Passed"

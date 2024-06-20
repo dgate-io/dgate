@@ -23,6 +23,9 @@ func TestAdminRoutes_Route(t *testing.T) {
 	for _, ns := range namespaces {
 		config := configtest.NewTest3DGateConfig()
 		ps := proxy.NewProxyState(zap.NewNop(), config)
+		if err := ps.Start(); err != nil {
+			t.Fatal(err)
+		}
 		mux := chi.NewMux()
 		mux.Route("/api/v1", func(r chi.Router) {
 			routes.ConfigureRouteAPI(r, zap.NewNop(), ps, config)
@@ -31,9 +34,7 @@ func TestAdminRoutes_Route(t *testing.T) {
 		defer server.Close()
 
 		client := dgclient.NewDGateClient()
-		if err := client.Init(server.URL, server.Client(),
-			dgclient.WithVerboseLogging(true),
-		); err != nil {
+		if err := client.Init(server.URL, server.Client()); err != nil {
 			t.Fatal(err)
 		}
 
@@ -90,9 +91,7 @@ func TestAdminRoutes_RouteError(t *testing.T) {
 		defer server.Close()
 
 		client := dgclient.NewDGateClient()
-		if err := client.Init(server.URL, server.Client(),
-			dgclient.WithVerboseLogging(true),
-		); err != nil {
+		if err := client.Init(server.URL, server.Client()); err != nil {
 			t.Fatal(err)
 		}
 

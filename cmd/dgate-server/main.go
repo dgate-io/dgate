@@ -58,19 +58,23 @@ func main() {
 		}
 		if dgateConfig, err := config.LoadConfig(*configPath); err != nil {
 			fmt.Printf("Error loading config: %s\n", err)
-			os.Exit(1)
+			panic(err)
 		} else {
 			logger, err := dgateConfig.GetLogger()
 			if err != nil {
 				fmt.Printf("Error setting up logger: %s\n", err)
-				os.Exit(1)
+				panic(err)
 			}
 			defer logger.Sync()
 			proxyState := proxy.NewProxyState(logger.Named("proxy"), dgateConfig)
-			admin.StartAdminAPI(version, dgateConfig, logger.Named("admin"), proxyState)
+			err = admin.StartAdminAPI(version, dgateConfig, logger.Named("admin"), proxyState)
+			if err != nil {
+				fmt.Printf("Error starting admin api: %s\n", err)
+				panic(err)
+			}
 			if err := proxyState.Start(); err != nil {
 				fmt.Printf("Error loading config: %s\n", err)
-				os.Exit(1)
+				panic(err)
 			}
 
 			sigchan := make(chan os.Signal, 1)
