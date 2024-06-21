@@ -31,8 +31,8 @@ func (ps *ProxyState) processChangeLog(cl *spec.ChangeLog, reload, store bool) (
 		defer func() {
 			if err == nil {
 				if !ps.raftEnabled {
-					// dont store change logs
-					if err = ps.store.StoreChangeLog(cl); err != nil {
+					// renew the change log ID to avoid out-of-order processing
+					if err = ps.store.StoreChangeLog(cl.RenewID()); err != nil {
 						ps.logger.Error("Error storing change log, restarting state", zap.Error(err))
 						return
 					}
@@ -346,12 +346,20 @@ func (ps *ProxyState) restoreFromChangeLogs(directApply bool) error {
 	}
 	ps.logger.Info("restoring state change logs from storage", zap.Int("count", len(logs)))
 	// we might need to sort the change logs by timestamp
-	for _, cl := range logs {
+	for i, cl := range logs {
 		// skip documents as they are persisted in the store
 		if cl.Cmd.Resource() == spec.Documents {
 			continue
 		}
 		if err = ps.processChangeLog(cl, false, false); err != nil {
+			ps.logger.Error("error processing change log",
+				zap.Bool("skip", ps.debugMode),
+				zap.Error(err),
+				zap.Int("index", i),
+			)
+			if ps.debugMode {
+				continue
+			}
 			return err
 		} else {
 			ps.changeLogs = append(ps.changeLogs, cl)

@@ -299,7 +299,7 @@ func (ps *ProxyState) ApplyChangeLog(log *spec.ChangeLog) error {
 		if err != nil {
 			return err
 		}
-		raftLog := raft.Log{Data: encodedCL}
+		raftLog := raft.Log{ Data: encodedCL }
 		now := time.Now()
 		future := r.ApplyLog(raftLog, time.Second*15)
 		err = future.Error()
