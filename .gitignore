@@ -1,16 +1,5 @@
 *__debug_bin*
-.vscode
-.idea
-.fleet
-
-infra/
-.aws/
-dist/
-./dgate
-./k6
-
-# Local files #
-.dgate*/
+.dgate
 cov.out
 go.work.sum
 .env

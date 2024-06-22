@@ -453,29 +453,3 @@ START:
 	removeList = sliceutil.SliceUnique(removeList, func(cl *spec.ChangeLog) string { return cl.ID })
 	return removeList
 }
-
-// Function to check if there is a delete command between two logs with matching keys
-// func hasDeleteBetween(logs []*spec.ChangeLog, start, end *spec.ChangeLog) bool {
-// 	startIndex := -1
-// 	endIndex := -1
-
-// 	for i, log := range logs {
-// 		if log.ID == start.ID {
-// 			startIndex = i
-// 		}
-// 		if log.ID == end.ID {
-// 			endIndex = i
-// 		}
-// 	}
-
-// 	if startIndex == -1 || endIndex == -1 {
-// 		return false
-// 	}
-
-// 	for i := startIndex + 1; i < endIndex; i++ {
-// 		if logs[i].Cmd.IsDeleteCommand() {
-// 			return true
-// 		}
-// 	}
-// 	return false
-// }

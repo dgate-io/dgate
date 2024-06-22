@@ -16,5 +16,7 @@ func main() {
 		os.Stderr.WriteString(err.Error())
 		os.Stderr.WriteString("\n")
 		os.Exit(1)
+		return
 	}
+	os.Stdout.WriteString("\n")
 }

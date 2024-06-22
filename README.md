@@ -45,12 +45,3 @@ DGate CLI is a command-line interface that can be used to interact with the DGat
 - Error Handler Module (`errorHandler`) - executed when an error occurs when sending a request to the upstream server. This module is used to modify the response before it is sent to the client.
 
 - Request Handler Module (`requestHandler`) - executed when a request is received from the client. This module is used to handle arbitrary requests, instead of using an upstream service.
-
-
-
-- Examples
-  - [x] ip hash load balancer
-  - [x] short url service
-  - [x] modify json request/response
-  - [x] send multiple upstream requests and combine them
-
