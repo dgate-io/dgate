@@ -22,11 +22,12 @@ func SetupTelemetry(name string, version string) func() {
 		"version": version,
 	}
 	if err := sentry.Init(sentry.ClientOptions{
-		Dsn:           dsn,
-		Debug:         false,
-		EnableTracing: true,
-		Release:       fmt.Sprint(name, "@", version),
-		Tags:          finalTags,
+		Dsn:              dsn,
+		Debug:            false,
+		EnableTracing:    true,
+		TracesSampleRate: 1.0,
+		Release:          fmt.Sprint(name, "@", version),
+		Tags:             finalTags,
 	}); err != nil {
 		zap.L().Error("sentry.Init failed", zap.Error(err))
 		return func() {}
@@ -45,4 +46,8 @@ func SetupTelemetry(name string, version string) func() {
 	return func() {
 		sentry.Flush(2 * time.Second)
 	}
+}
+
+func CaptureError(err error) {
+	sentry.CaptureException(err)
 }

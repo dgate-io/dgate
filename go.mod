@@ -4,7 +4,7 @@ go 1.22.0
 
 require (
 	github.com/clarkmcc/go-typescript v0.7.0
-	github.com/dgate-io/chi-router v0.0.0-20231217131951-d154152d5115
+	github.com/dgate-io/chi-router v0.0.0-20240610012144-c4aae03990a6
 	github.com/dgraph-io/badger/v4 v4.2.0
 	github.com/dop251/goja v0.0.0-20240220182346-e401ed450204
 	github.com/dop251/goja_nodejs v0.0.0-20231122114759-e84d9a924c5c

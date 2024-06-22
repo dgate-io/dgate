@@ -2,8 +2,11 @@ package util
 
 import (
 	"encoding/json"
+	"errors"
 	"net/http"
 	"reflect"
+
+	"github.com/dgate-io/dgate/internal/extensions/telemetry"
 )
 
 func isSlice(v interface{}) bool {
@@ -45,11 +48,12 @@ func JsonError[T any](w http.ResponseWriter, statusCode int, message T) {
 	})
 }
 
-func JsonErrors[T any](w http.ResponseWriter, statusCode int, message []T) {
+func JsonErrors(w http.ResponseWriter, statusCode int, errs []error) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(statusCode)
+	telemetry.CaptureError(errors.Join(errs...))
 	json.NewEncoder(w).Encode(map[string]any{
-		"errors": message,
+		"errors": errs,
 		"status": statusCode,
 	})
 }

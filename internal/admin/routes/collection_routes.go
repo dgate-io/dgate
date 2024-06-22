@@ -246,15 +246,16 @@ func ConfigureCollectionAPI(server chi.Router, logger *zap.Logger, cs changestat
 			return
 		}
 		if collection.Type == spec.CollectionTypeDocument && collection.Schema != nil {
-			err := collection.Schema.Validate(payloadData)
-
-			if err != nil {
-				verrs := err.(*jsonschema.ValidationError)
-				validationErrs := make([]string, len(verrs.Causes))
-				for i, ve := range verrs.Causes {
-					validationErrs[i] = ve.Error()
+			if err := collection.Schema.Validate(payloadData); err != nil {
+				if verrs, ok := err.(*jsonschema.ValidationError); ok {
+					errs := make([]error, len(verrs.Causes))
+					for i, ve := range verrs.Causes {
+						errs[i] = ve
+					}
+					util.JsonErrors(w, http.StatusBadRequest, errs)
+				} else {
+					util.JsonError(w, http.StatusBadRequest, err.Error())
 				}
-				util.JsonErrors(w, http.StatusBadRequest, validationErrs)
 				return
 			}
 		}

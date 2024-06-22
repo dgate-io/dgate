@@ -47,7 +47,7 @@ type ProxyState struct {
 	proxyLock      *sync.RWMutex
 	ready          *atomic.Bool
 	pendingChanges bool
-	metrics        *ProxyMetrics
+	metrics        *Telemetry
 
 	rm          *resources.ResourceManager
 	skdr        scheduler.Scheduler

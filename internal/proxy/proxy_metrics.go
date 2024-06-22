@@ -5,12 +5,13 @@ import (
 	"time"
 
 	"github.com/dgate-io/dgate/internal/config"
+	"github.com/dgate-io/dgate/internal/extensions/telemetry"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	api "go.opentelemetry.io/otel/metric"
 )
 
-type ProxyMetrics struct {
+type Telemetry struct {
 	resolveNamespaceDurInstrument api.Float64Histogram
 	resolveCertDurInstrument      api.Float64Histogram
 	proxyDurInstrument            api.Float64Histogram
@@ -21,11 +22,11 @@ type ProxyMetrics struct {
 	errorCountInstrument          api.Int64Counter
 }
 
-func NewProxyMetrics() *ProxyMetrics {
-	return &ProxyMetrics{}
+func NewProxyMetrics() *Telemetry {
+	return &Telemetry{}
 }
 
-func (pm *ProxyMetrics) Setup(config *config.DGateConfig) {
+func (tm *Telemetry) Setup(config *config.DGateConfig) {
 	if config.DisableMetrics {
 		return
 	}
@@ -41,28 +42,28 @@ func (pm *ProxyMetrics) Setup(config *config.DGateConfig) {
 		},
 	))
 
-	pm.resolveNamespaceDurInstrument, _ = meter.Float64Histogram(
+	tm.resolveNamespaceDurInstrument, _ = meter.Float64Histogram(
 		"resolve_namespace_duration", api.WithUnit("us"))
-	pm.resolveCertDurInstrument, _ = meter.Float64Histogram(
+	tm.resolveCertDurInstrument, _ = meter.Float64Histogram(
 		"resolve_cert_duration", api.WithUnit("ms"))
-	pm.proxyDurInstrument, _ = meter.Float64Histogram(
+	tm.proxyDurInstrument, _ = meter.Float64Histogram(
 		"request_duration", api.WithUnit("ms"))
-	pm.moduleDurInstrument, _ = meter.Float64Histogram(
+	tm.moduleDurInstrument, _ = meter.Float64Histogram(
 		"module_duration", api.WithUnit("ms"))
-	pm.upstreamDurInstrument, _ = meter.Float64Histogram(
+	tm.upstreamDurInstrument, _ = meter.Float64Histogram(
 		"upstream_duration", api.WithUnit("ms"))
-	pm.proxyCountInstrument, _ = meter.Int64Counter(
+	tm.proxyCountInstrument, _ = meter.Int64Counter(
 		"request_count")
-	pm.moduleRunCountInstrument, _ = meter.Int64Counter(
+	tm.moduleRunCountInstrument, _ = meter.Int64Counter(
 		"module_executions")
-	pm.errorCountInstrument, _ = meter.Int64Counter(
+	tm.errorCountInstrument, _ = meter.Int64Counter(
 		"error_count")
 }
 
-func (pm *ProxyMetrics) MeasureProxyRequest(
+func (tm *Telemetry) MeasureProxyRequest(
 	reqCtx *RequestContext, start time.Time,
 ) {
-	if pm.proxyDurInstrument == nil || pm.proxyCountInstrument == nil {
+	if tm.proxyDurInstrument == nil || tm.proxyCountInstrument == nil {
 		return
 	}
 	serviceAttr := attribute.NewSet()
@@ -91,19 +92,19 @@ func (pm *ProxyMetrics) MeasureProxyRequest(
 		attribute.Int("status_code", reqCtx.rw.Status()),
 	)
 
-	pm.proxyDurInstrument.Record(reqCtx.ctx,
+	tm.proxyDurInstrument.Record(reqCtx.ctx,
 		float64(elasped)/float64(time.Millisecond),
 		api.WithAttributeSet(attrSet), api.WithAttributeSet(serviceAttr))
 
-	pm.proxyCountInstrument.Add(reqCtx.ctx, 1,
+	tm.proxyCountInstrument.Add(reqCtx.ctx, 1,
 		api.WithAttributeSet(attrSet), api.WithAttributeSet(serviceAttr))
 }
 
-func (pm *ProxyMetrics) MeasureModuleDuration(
+func (tm *Telemetry) MeasureModuleDuration(
 	reqCtx *RequestContext, moduleFunc string,
 	start time.Time, err error,
 ) {
-	if pm.moduleDurInstrument == nil || pm.moduleRunCountInstrument == nil {
+	if tm.moduleDurInstrument == nil || tm.moduleRunCountInstrument == nil {
 		return
 	}
 	elasped := time.Since(start)
@@ -117,21 +118,21 @@ func (pm *ProxyMetrics) MeasureModuleDuration(
 		attribute.String("pattern", reqCtx.pattern),
 		attribute.String("host", reqCtx.req.Host),
 	)
-	pm.addError(moduleFunc, err, attrSet)
+	tm.addError(moduleFunc, err, attrSet)
 
-	pm.moduleDurInstrument.Record(reqCtx.ctx,
+	tm.moduleDurInstrument.Record(reqCtx.ctx,
 		float64(elasped)/float64(time.Millisecond),
 		api.WithAttributeSet(attrSet))
 
-	pm.moduleRunCountInstrument.Add(reqCtx.ctx, 1,
+	tm.moduleRunCountInstrument.Add(reqCtx.ctx, 1,
 		api.WithAttributeSet(attrSet))
 }
 
-func (pm *ProxyMetrics) MeasureUpstreamDuration(
+func (tm *Telemetry) MeasureUpstreamDuration(
 	reqCtx *RequestContext, start time.Time,
 	upstreamHost string, err error,
 ) {
-	if pm.upstreamDurInstrument == nil {
+	if tm.upstreamDurInstrument == nil {
 		return
 	}
 	elasped := time.Since(start)
@@ -146,17 +147,17 @@ func (pm *ProxyMetrics) MeasureUpstreamDuration(
 		attribute.String("service", reqCtx.route.Service.Name),
 		attribute.String("upstream_host", upstreamHost),
 	)
-	pm.addError("upstream_request", err, attrSet)
+	tm.addError("upstream_request", err, attrSet)
 
-	pm.upstreamDurInstrument.Record(reqCtx.ctx,
+	tm.upstreamDurInstrument.Record(reqCtx.ctx,
 		float64(elasped)/float64(time.Millisecond),
 		api.WithAttributeSet(attrSet))
 }
 
-func (pm *ProxyMetrics) MeasureNamespaceResolutionDuration(
+func (tm *Telemetry) MeasureNamespaceResolutionDuration(
 	start time.Time, host, namespace string, err error,
 ) {
-	if pm.resolveNamespaceDurInstrument == nil {
+	if tm.resolveNamespaceDurInstrument == nil {
 		return
 	}
 	elasped := time.Since(start)
@@ -164,17 +165,17 @@ func (pm *ProxyMetrics) MeasureNamespaceResolutionDuration(
 		attribute.String("host", host),
 		attribute.String("namespace", namespace),
 	)
-	pm.addError("namespace_resolution", err, attrSet)
+	tm.addError("namespace_resolution", err, attrSet)
 
-	pm.resolveNamespaceDurInstrument.Record(context.TODO(),
+	tm.resolveNamespaceDurInstrument.Record(context.TODO(),
 		float64(elasped)/float64(time.Microsecond),
 		api.WithAttributeSet(attrSet))
 }
 
-func (pm *ProxyMetrics) MeasureCertResolutionDuration(
+func (tm *Telemetry) MeasureCertResolutionDuration(
 	start time.Time, host string, cache bool, err error,
 ) {
-	if pm.resolveCertDurInstrument == nil {
+	if tm.resolveCertDurInstrument == nil {
 		return
 	}
 
@@ -184,20 +185,21 @@ func (pm *ProxyMetrics) MeasureCertResolutionDuration(
 		attribute.String("host", host),
 		attribute.Bool("cache", cache),
 	)
-	pm.addError("cert_resolution", err, attrSet)
+	tm.addError("cert_resolution", err, attrSet)
 
-	pm.resolveCertDurInstrument.Record(context.TODO(),
+	tm.resolveCertDurInstrument.Record(context.TODO(),
 		float64(elasped)/float64(time.Millisecond),
 		api.WithAttributeSet(attrSet))
 }
 
-func (pm *ProxyMetrics) addError(
+func (tm *Telemetry) addError(
 	namespace string, err error,
 	attrs ...attribute.Set,
 ) {
-	if pm.errorCountInstrument == nil || err == nil {
+	if tm.errorCountInstrument == nil || err == nil {
 		return
 	}
+	telemetry.CaptureError(err)
 	attrSet := attribute.NewSet(
 		attribute.String("error_value", err.Error()),
 		attribute.String("namespace", namespace),
@@ -210,5 +212,5 @@ func (pm *ProxyMetrics) addError(
 		attrSets = append(attrSets, api.WithAttributeSet(attr))
 	}
 
-	pm.errorCountInstrument.Add(context.TODO(), 1, attrSets...)
+	tm.errorCountInstrument.Add(context.TODO(), 1, attrSets...)
 }
