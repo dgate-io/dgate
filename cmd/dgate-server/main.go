@@ -11,6 +11,7 @@ import (
 
 	"github.com/dgate-io/dgate/internal/admin"
 	"github.com/dgate-io/dgate/internal/config"
+	"github.com/dgate-io/dgate/internal/extensions/telemetry"
 	"github.com/dgate-io/dgate/internal/proxy"
 	"github.com/dgate-io/dgate/pkg/util"
 	"github.com/spf13/pflag"
@@ -56,10 +57,11 @@ func main() {
 					"-----------------------------------\n",
 			)
 		}
-		if dgateConfig, err := config.LoadConfig(*configPath); err != nil {
+			if dgateConfig, err := config.LoadConfig(*configPath); err != nil {
 			fmt.Printf("Error loading config: %s\n", err)
 			panic(err)
 		} else {
+			defer telemetry.SetupTelemetry("dgate-server", version)()
 			logger, err := dgateConfig.GetLogger()
 			if err != nil {
 				fmt.Printf("Error setting up logger: %s\n", err)
