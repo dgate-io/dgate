@@ -43,6 +43,14 @@ func NewChangeLog(item Named, namespace string, cmd Command) *ChangeLog {
 	}
 }
 
+func (cl *ChangeLog) RenewID() *ChangeLog {
+	changeLog := *cl
+	changeLog.ID = strconv.FormatInt(
+		time.Now().UnixNano(), 36,
+	)
+	return &changeLog
+}
+
 type Command string
 
 type Action string
