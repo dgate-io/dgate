@@ -1,6 +1,6 @@
 version: v1
 debug: true
-log_level: ${LOG_LEVEL:-debug}
+log_level: ${LOG_LEVEL:-info}
 disable_default_namespace: true
 tags: [debug, local, test]
 storage:
@@ -15,7 +15,8 @@ proxy:
   port: ${PORT:-80}
   host: 0.0.0.0
   console_log_level: info
-  transport:
+  client_transport:
+    disable_private_ips: false
     dns_prefer_go: true
   init_resources:
     namespaces:

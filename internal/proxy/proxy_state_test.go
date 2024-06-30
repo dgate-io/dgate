@@ -48,7 +48,7 @@ func TestDynamicTLSConfig_DomainCertCache(t *testing.T) {
 	}
 	d := domains[0]
 	key := fmt.Sprintf("cert:%s:%s:%d", d.Namespace.Name,
-		d.Name, d.CreatedAt.UnixMilli())
+		d.Name, d.CreatedAt.Unix())
 	tlsConfig := ps.DynamicTLSConfig("", "")
 	clientHello := &tls.ClientHelloInfo{
 		ServerName: "abc.test.com",

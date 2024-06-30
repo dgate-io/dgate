@@ -59,6 +59,7 @@ func (l *IPList) AddIPString(ipstr string) error {
 func (l *IPList) Len() int {
 	return l.v4s.Len() + l.v6s.Len()
 }
+
 func (l *IPList) Contains(ipstr string) (bool, error) {
 	if l.Len() == 0 {
 		return false, nil

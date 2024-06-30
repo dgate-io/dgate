@@ -60,7 +60,9 @@ func (pm *ProxyMetrics) Setup(config *config.DGateConfig) {
 }
 
 func (pm *ProxyMetrics) MeasureProxyRequest(
-	reqCtx *RequestContext, start time.Time,
+	ctx context.Context,
+	reqCtx *RequestContext,
+	start time.Time,
 ) {
 	if pm.proxyDurInstrument == nil || pm.proxyCountInstrument == nil {
 		return
@@ -100,8 +102,8 @@ func (pm *ProxyMetrics) MeasureProxyRequest(
 }
 
 func (pm *ProxyMetrics) MeasureModuleDuration(
-	reqCtx *RequestContext, moduleFunc string,
-	start time.Time, err error,
+	ctx context.Context, reqCtx *RequestContext,
+	moduleFunc string, start time.Time, err error,
 ) {
 	if pm.moduleDurInstrument == nil || pm.moduleRunCountInstrument == nil {
 		return
@@ -117,7 +119,7 @@ func (pm *ProxyMetrics) MeasureModuleDuration(
 		attribute.String("pattern", reqCtx.pattern),
 		attribute.String("host", reqCtx.req.Host),
 	)
-	pm.addError(moduleFunc, err, attrSet)
+	pm.addError(ctx, moduleFunc, err, attrSet)
 
 	pm.moduleDurInstrument.Record(reqCtx.ctx,
 		float64(elasped)/float64(time.Millisecond),
@@ -128,8 +130,8 @@ func (pm *ProxyMetrics) MeasureModuleDuration(
 }
 
 func (pm *ProxyMetrics) MeasureUpstreamDuration(
-	reqCtx *RequestContext, start time.Time,
-	upstreamHost string, err error,
+	ctx context.Context, reqCtx *RequestContext,
+	start time.Time, upstreamHost string, err error,
 ) {
 	if pm.upstreamDurInstrument == nil {
 		return
@@ -146,7 +148,7 @@ func (pm *ProxyMetrics) MeasureUpstreamDuration(
 		attribute.String("service", reqCtx.route.Service.Name),
 		attribute.String("upstream_host", upstreamHost),
 	)
-	pm.addError("upstream_request", err, attrSet)
+	pm.addError(ctx, "upstream_request", err, attrSet)
 
 	pm.upstreamDurInstrument.Record(reqCtx.ctx,
 		float64(elasped)/float64(time.Millisecond),
@@ -154,7 +156,8 @@ func (pm *ProxyMetrics) MeasureUpstreamDuration(
 }
 
 func (pm *ProxyMetrics) MeasureNamespaceResolutionDuration(
-	start time.Time, host, namespace string, err error,
+	ctx context.Context, start time.Time,
+	host, namespace string, err error,
 ) {
 	if pm.resolveNamespaceDurInstrument == nil {
 		return
@@ -164,7 +167,7 @@ func (pm *ProxyMetrics) MeasureNamespaceResolutionDuration(
 		attribute.String("host", host),
 		attribute.String("namespace", namespace),
 	)
-	pm.addError("namespace_resolution", err, attrSet)
+	pm.addError(ctx, "namespace_resolution", err, attrSet)
 
 	pm.resolveNamespaceDurInstrument.Record(context.TODO(),
 		float64(elasped)/float64(time.Microsecond),
@@ -172,7 +175,8 @@ func (pm *ProxyMetrics) MeasureNamespaceResolutionDuration(
 }
 
 func (pm *ProxyMetrics) MeasureCertResolutionDuration(
-	start time.Time, host string, cache bool, err error,
+	ctx context.Context, start time.Time,
+	host string, cache bool, err error,
 ) {
 	if pm.resolveCertDurInstrument == nil {
 		return
@@ -184,7 +188,7 @@ func (pm *ProxyMetrics) MeasureCertResolutionDuration(
 		attribute.String("host", host),
 		attribute.Bool("cache", cache),
 	)
-	pm.addError("cert_resolution", err, attrSet)
+	pm.addError(ctx, "cert_resolution", err, attrSet)
 
 	pm.resolveCertDurInstrument.Record(context.TODO(),
 		float64(elasped)/float64(time.Millisecond),
@@ -192,6 +196,7 @@ func (pm *ProxyMetrics) MeasureCertResolutionDuration(
 }
 
 func (pm *ProxyMetrics) addError(
+	ctx context.Context,
 	namespace string, err error,
 	attrs ...attribute.Set,
 ) {
@@ -210,5 +215,5 @@ func (pm *ProxyMetrics) addError(
 		attrSets = append(attrSets, api.WithAttributeSet(attr))
 	}
 
-	pm.errorCountInstrument.Add(context.TODO(), 1, attrSets...)
+	pm.errorCountInstrument.Add(ctx, 1, attrSets...)
 }

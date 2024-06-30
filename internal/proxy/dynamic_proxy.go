@@ -173,15 +173,19 @@ func (ps *ProxyState) setupRoutes(
 				if len(rt.Modules) > 0 {
 					modExtFunc := ps.createModuleExtractorFunc(rt)
 					if modPool, err := NewModulePool(
-						256, 1024, reqCtxProvider, modExtFunc,
+						0, 1024, time.Minute*5,
+						reqCtxProvider, modExtFunc,
 					); err != nil {
 						ps.logger.Error("Error creating module buffer", zap.Error(err))
 						return err
 					} else {
-						reqCtxProvider.SetModulePool(modPool)
+						reqCtxProvider.UpdateModulePool(modPool)
 					}
 				}
-				ps.providers.Insert(rt.Namespace.Name+"/"+rt.Name, reqCtxProvider)
+				oldReqCtxProvider := ps.providers.Insert(rt.Namespace.Name+"/"+rt.Name, reqCtxProvider)
+				if oldReqCtxProvider != nil {
+					oldReqCtxProvider.Close()
+				}
 				for _, path := range rt.Paths {
 					if len(rt.Methods) > 0 && rt.Methods[0] == "*" {
 						if len(rt.Methods) > 1 {

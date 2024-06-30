@@ -2,6 +2,9 @@ package proxy
 
 import (
 	"context"
+	"time"
+
+	"go.uber.org/zap"
 )
 
 type ModulePool interface {
@@ -11,44 +14,55 @@ type ModulePool interface {
 }
 
 type modulePool struct {
-	modExtBuffer chan ModuleExtractor
-	min, max     int
+	modExtChan chan ModuleExtractor
+	min, max   int
+	cancel  context.CancelFunc
+	ctx        context.Context
 
-	ctxCancel context.CancelFunc
-	ctx       context.Context
-
-	createModuleExtract func() (ModuleExtractor, error)
+	createModExt func() (ModuleExtractor, error)
 }
 
 func NewModulePool(
 	minBuffers, maxBuffers int,
+	bufferTimeout time.Duration,
 	reqCtxProvider *RequestContextProvider,
 	createModExts ModuleExtractorFunc,
 ) (ModulePool, error) {
-	if minBuffers < 1 {
-		panic("module concurrency must be greater than 0")
-	}
 	if maxBuffers < minBuffers {
 		panic("maxBuffers must be greater than minBuffers")
 	}
-
 	if _, err := createModExts(reqCtxProvider); err != nil {
 		return nil, err
 	}
+	modExtChan := make(chan ModuleExtractor, maxBuffers)
 	mb := &modulePool{
-		min:          minBuffers,
-		max:          maxBuffers,
-		modExtBuffer: make(chan ModuleExtractor, maxBuffers),
+		min:        minBuffers,
+		max:        maxBuffers,
+		modExtChan: modExtChan,
+		createModExt: func() (ModuleExtractor, error) {
+			return createModExts(reqCtxProvider)
+		},
 	}
-	mb.createModuleExtract = func() (ModuleExtractor, error) {
-		return createModExts(reqCtxProvider)
-	}
-	mb.ctx, mb.ctxCancel = context.WithCancel(reqCtxProvider.ctx)
+	mb.ctx, mb.cancel = context.WithCancel(reqCtxProvider.ctx)
+
+	// add min module extractors to the pool
+	defer func() {
+		for i := 0; i < minBuffers; i++ {
+			me, err := mb.createModExt()
+			if err == nil {
+				mb.modExtChan <- me
+			}
+		}
+	}()
+
 	return mb, nil
 }
 
 func (mb *modulePool) Borrow() ModuleExtractor {
-	if mb == nil || mb.ctx == nil || mb.ctx.Err() != nil {
+	if mb == nil || mb.ctx.Err() != nil {
+		zap.L().Warn("stale use of module pool",
+			zap.Any("modPool", mb),
+		)
 		return nil
 	}
 	var (
@@ -56,12 +70,10 @@ func (mb *modulePool) Borrow() ModuleExtractor {
 		err error
 	)
 	select {
-	case me = <-mb.modExtBuffer:
+	case me = <-mb.modExtChan:
 		break
-	// NOTE: important for performance
 	default:
-		me, err = mb.createModuleExtract()
-		if err != nil {
+		if me, err = mb.createModExt(); err != nil {
 			return nil
 		}
 	}
@@ -72,18 +84,18 @@ func (mb *modulePool) Return(me ModuleExtractor) {
 	// if context is canceled, do not return module extract
 	if mb.ctx != nil && mb.ctx.Err() == nil {
 		select {
-		case mb.modExtBuffer <- me:
+		case mb.modExtChan <- me:
 			return
 		default:
 			// if buffer is full, discard module extract
 		}
 	}
-	me.Stop(true)
+	me.Stop(false)
 }
 
 func (mb *modulePool) Close() {
-	if mb.ctxCancel != nil {
-		mb.ctxCancel()
+	if mb.cancel != nil {
+		mb.cancel()
 	}
-	close(mb.modExtBuffer)
+	close(mb.modExtChan)
 }

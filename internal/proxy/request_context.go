@@ -16,6 +16,7 @@ type S string
 
 type RequestContextProvider struct {
 	ctx    context.Context
+	cancel context.CancelFunc
 	route  *spec.DGateRoute
 	rpb    reverse_proxy.Builder
 	mtx    *sync.Mutex
@@ -42,7 +43,7 @@ func NewRequestContextProvider(route *spec.DGateRoute, ps *ProxyState) *RequestC
 	if route.Service != nil {
 		ctx = context.WithValue(ctx, spec.Name("service"), route.Service.Name)
 		transport := setupTranportsFromConfig(
-			ps.config.ProxyConfig.Transport,
+			&ps.config.ProxyConfig.Transport,
 			func(dialer *net.Dialer, t *http.Transport) {
 				t.TLSClientConfig = &tls.Config{
 					InsecureSkipVerify: route.Service.TLSSkipVerify,
@@ -68,18 +69,19 @@ func NewRequestContextProvider(route *spec.DGateRoute, ps *ProxyState) *RequestC
 				route.Service.DisableQueryParams,
 				ps.config.ProxyConfig.DisableXForwardedHeaders,
 			)
-
 	}
+	ctx, cancel := context.WithCancel(ctx)
 
 	return &RequestContextProvider{
-		ctx:   ctx,
-		route: route,
-		rpb:   rpb,
-		mtx:   &sync.Mutex{},
+		ctx:    ctx,
+		cancel: cancel,
+		route:  route,
+		rpb:    rpb,
+		mtx:    &sync.Mutex{},
 	}
 }
 
-func (reqCtxProvider *RequestContextProvider) SetModulePool(mb ModulePool) {
+func (reqCtxProvider *RequestContextProvider) UpdateModulePool(mb ModulePool) {
 	reqCtxProvider.mtx.Lock()
 	defer reqCtxProvider.mtx.Unlock()
 	if reqCtxProvider.modBuf != nil {
@@ -113,6 +115,16 @@ func (reqCtxProvider *RequestContextProvider) CreateRequestContext(
 		req:      req.WithContext(ctx),
 		rw:       spec.NewResponseWriterTracker(rw),
 	}
+}
+
+func (reqCtxProvider *RequestContextProvider) Close() {
+	reqCtxProvider.mtx.Lock()
+	defer reqCtxProvider.mtx.Unlock()
+	if reqCtxProvider.modBuf != nil {
+		reqCtxProvider.modBuf.Close()
+		reqCtxProvider.modBuf = nil
+	}
+	reqCtxProvider.cancel()
 }
 
 func (reqCtx *RequestContext) Context() context.Context {

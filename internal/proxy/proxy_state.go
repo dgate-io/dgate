@@ -396,9 +396,9 @@ func (ps *ProxyState) DynamicTLSConfig(certFile, keyFile string) *tls.Config {
 
 	return &tls.Config{
 		GetCertificate: func(info *tls.ClientHelloInfo) (*tls.Certificate, error) {
-			if cert, err := ps.getDomainCertificate(info.ServerName); err != nil {
+			if cert, found, err := ps.getDomainCertificate(info.Context(), info.ServerName); err != nil {
 				return nil, err
-			} else if cert == nil {
+			} else if !found {
 				if fallbackCert != nil {
 					return fallbackCert, nil
 				} else {
@@ -420,7 +420,9 @@ func loadCertFromFile(certFile, keyFile string) (*tls.Certificate, error) {
 	return &cert, nil
 }
 
-func (ps *ProxyState) getDomainCertificate(domain string) (*tls.Certificate, error) {
+func (ps *ProxyState) getDomainCertificate(
+	ctx context.Context, domain string,
+) (*tls.Certificate, bool, error) {
 	start := time.Now()
 	allowedDomains := ps.config.ProxyConfig.AllowedDomains
 	domainAllowed := len(allowedDomains) == 0
@@ -430,7 +432,7 @@ func (ps *ProxyState) getDomainCertificate(domain string) (*tls.Certificate, err
 			ps.logger.Error("Error checking domain match list",
 				zap.Error(err),
 			)
-			return nil, err
+			return nil, false, err
 		}
 		domainAllowed = domainMatch
 	}
@@ -441,17 +443,19 @@ func (ps *ProxyState) getDomainCertificate(domain string) (*tls.Certificate, err
 				ps.logger.Error("Error checking domain match list",
 					zap.Error(err),
 				)
-				return nil, err
+				return nil, false, err
 			} else if match && d.Cert != "" && d.Key != "" {
 				var err error
+				var cached bool
 				defer ps.metrics.MeasureCertResolutionDuration(
-					start, domain, false, err)
-
+					ctx, start, domain,cached, err,
+				)
 				certBucket := ps.sharedCache.Bucket("certs")
 				key := fmt.Sprintf("cert:%s:%s:%d", d.Namespace.Name,
-					d.Name, d.CreatedAt.UnixMilli())
+					d.Name, d.UpdatedAt.Unix())
 				if cert, ok := certBucket.Get(key); ok {
-					return cert.(*tls.Certificate), nil
+					cached = true
+					return cert.(*tls.Certificate), true, nil
 				}
 				var serverCert tls.Certificate
 				serverCert, err = tls.X509KeyPair(
@@ -462,14 +466,14 @@ func (ps *ProxyState) getDomainCertificate(domain string) (*tls.Certificate, err
 						zap.String("domain_name", d.Name),
 						zap.String("namespace", d.Namespace.Name),
 					)
-					return nil, err
+					return nil, false, err
 				}
 				certBucket.Set(key, &serverCert)
-				return &serverCert, nil
+				return &serverCert, true, nil
 			}
 		}
 	}
-	return nil, nil
+	return nil, false, nil
 }
 
 func (ps *ProxyState) initConfigResources(resources *config.DGateResources) error {
@@ -610,7 +614,7 @@ func (ps *ProxyState) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			err = nil
 		}
 		defer ps.metrics.MeasureNamespaceResolutionDuration(
-			start, host, ns.Name, err,
+			r.Context(), start, host, ns.Name, err,
 		)
 		var ok bool
 		if len(allowedDomains) > 0 {

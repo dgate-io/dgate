@@ -3,6 +3,7 @@ package proxy
 import (
 	"context"
 	"crypto/tls"
+	"errors"
 	"net"
 	"net/http"
 
@@ -10,28 +11,26 @@ import (
 	"golang.org/x/net/http2"
 )
 
+func validateAddress(c *config.DGateHttpTransportConfig, address string) error {
+	if c.DisablePrivateIPs {
+		ip, _, err := net.SplitHostPort(address)
+		if err != nil {
+			ip = address
+		}
+		if ipAddr := net.ParseIP(ip); ipAddr == nil {
+			return errors.New("could not parse IP: " + ip)
+		} else if ipAddr.IsLoopback() || ipAddr.IsPrivate() {
+			return errors.New("private IP address not allowed: " + ipAddr.String())
+		}
+	}
+	return nil
+}
+
 func setupTranportsFromConfig(
-	c config.DGateHttpTransportConfig,
+	c *config.DGateHttpTransportConfig,
 	modifyTransport func(*net.Dialer, *http.Transport),
 ) http.RoundTripper {
 	t1 := http.DefaultTransport.(*http.Transport).Clone()
-	dailer := &net.Dialer{
-		Timeout:   c.DialTimeout,
-		KeepAlive: c.KeepAlive,
-		Resolver: &net.Resolver{
-			PreferGo: c.DNSPreferGo,
-			Dial: func(ctx context.Context, network, address string) (net.Conn, error) {
-				d := net.Dialer{
-					Timeout: c.DNSTimeout,
-				}
-				return d.DialContext(ctx, network, c.DNSServer)
-			},
-		},
-	}
-	if t1.DisableKeepAlives {
-		dailer.KeepAlive = -1
-	}
-	t1.DialContext = dailer.DialContext
 	t1.MaxIdleConns = c.MaxIdleConns
 	t1.IdleConnTimeout = c.IdleConnTimeout
 	t1.TLSHandshakeTimeout = c.TLSHandshakeTimeout
@@ -45,10 +44,38 @@ func setupTranportsFromConfig(
 	t1.DisableCompression = c.DisableCompression
 	t1.ForceAttemptHTTP2 = c.ForceAttemptHttp2
 	t1.ResponseHeaderTimeout = c.ResponseHeaderTimeout
-	if modifyTransport != nil {
-		modifyTransport(dailer, t1)
+	dailer := &net.Dialer{
+		Timeout:   c.DialTimeout,
+		KeepAlive: c.KeepAlive,
 	}
-
+	if t1.DisableKeepAlives {
+		dailer.KeepAlive = -1
+	}
+	resolver := &net.Resolver{
+		PreferGo: c.DNSPreferGo,
+		Dial: func(ctx context.Context, network, address string) (net.Conn, error) {
+			if err := validateAddress(c, address); err != nil {
+				return nil, err
+			}
+			if c.DNSServer != "" {
+				address = c.DNSServer
+			}
+			return dailer.DialContext(ctx, network, address)
+		},
+	}
+	dailer.Resolver = resolver
+	t1.DialContext = func(ctx context.Context, network, address string) (net.Conn, error) {
+		conn, err := dailer.DialContext(ctx, network, address)
+		if err != nil {
+			return nil, err
+		}
+		if err := validateAddress(c, conn.RemoteAddr().String()); err != nil {
+			return nil, err
+		}
+		return conn, nil
+	}
+	t1.DialTLSContext = t1.DialContext
+	modifyTransport(dailer, t1)
 	return newRoundTripper(t1)
 }
 
