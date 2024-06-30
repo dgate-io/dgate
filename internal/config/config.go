@@ -29,13 +29,7 @@ type (
 	}
 
 	LoggingConfig struct {
-		ZapConfig  *zap.Config  `koanf:",squash"`
-		LogOutputs []*LogOutput `koanf:"log_outputs"`
-	}
-
-	LogOutput struct {
-		Name   string         `koanf:"name"`
-		Config map[string]any `koanf:",remain"`
+		ZapConfig *zap.Config `koanf:",squash"`
 	}
 
 	DGateProxyConfig struct {
@@ -176,6 +170,7 @@ type (
 		KeepAlive              time.Duration `koanf:"keep_alive"`
 		ResponseHeaderTimeout  time.Duration `koanf:"response_header_timeout"`
 		DialTimeout            time.Duration `koanf:"dial_timeout"`
+		DisablePrivateIPs      bool          `koanf:"disable_private_ips"`
 	}
 
 	DGateStorageConfig struct {
@@ -255,6 +250,7 @@ func (conf *DGateConfig) GetLogger() (*zap.Logger, error) {
 	if logger, err := conf.Logging.ZapConfig.Build(); err != nil {
 		return nil, err
 	} else {
+		zap.ReplaceGlobals(logger)
 		return logger, nil
 	}
 }

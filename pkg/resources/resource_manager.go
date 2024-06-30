@@ -23,6 +23,9 @@ type ResourceManager struct {
 	secrets     avlTreeLinker[spec.DGateSecret]
 	collections avlTreeLinker[spec.DGateCollection]
 	mutex       *keylock.KeyLock
+
+	// sorting can be expensive, so we cache the sorted list of domains
+	priorityDomainCache []*spec.DGateDomain
 }
 
 type Options func(*ResourceManager)
@@ -481,12 +484,18 @@ func (rm *ResourceManager) DomainCountEquals(target int) bool {
 // GetDomainsByPriority returns a list of all domains sorted by priority and name
 func (rm *ResourceManager) GetDomainsByPriority() []*spec.DGateDomain {
 	defer rm.mutex.RLockMain()()
+	if rm.priorityDomainCache != nil {
+		return rm.priorityDomainCache
+	}
+	return rm.domainsByPriority()
+}
+
+func (rm *ResourceManager) domainsByPriority() []*spec.DGateDomain {
 	var domains []*spec.DGateDomain
 	rm.domains.Each(func(_ string, lk *linker.Link[string, safe.Ref[spec.DGateDomain]]) bool {
 		domains = append(domains, lk.Item().Read())
 		return true
 	})
-
 	sort.Slice(domains, func(i, j int) bool {
 		d1, d2 := domains[j], domains[i]
 		if d1.Priority == d2.Priority {
@@ -494,7 +503,7 @@ func (rm *ResourceManager) GetDomainsByPriority() []*spec.DGateDomain {
 		}
 		return d1.Priority < d2.Priority
 	})
-
+	rm.priorityDomainCache = domains
 	return domains
 }
 
@@ -519,6 +528,7 @@ func (rm *ResourceManager) AddDomain(domain *spec.Domain) (*spec.DGateDomain, er
 	if err != nil {
 		return nil, err
 	}
+	defer func() { rm.priorityDomainCache = nil }()
 	if dmLk, ok := rm.domains.Find(domain.Name + "/" + domain.NamespaceName); ok {
 		dmLk.Item().Replace(dm)
 		return dm, nil
@@ -553,6 +563,7 @@ func (rm *ResourceManager) transformDomain(domain *spec.Domain) (*spec.DGateDoma
 
 func (rm *ResourceManager) RemoveDomain(name, namespace string) error {
 	defer rm.mutex.Lock(namespace)()
+	defer func() { rm.priorityDomainCache = nil }()
 	if dmLk, ok := rm.domains.Find(name + "/" + namespace); ok {
 		if nsLk, ok := rm.namespaces.Find(namespace); ok {
 			nsLk.UnlinkOneMany("domains", name)

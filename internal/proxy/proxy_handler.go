@@ -41,7 +41,7 @@ func proxyHandler(ps *ProxyState, reqCtx *RequestContext) {
 		event.Debug("Request log")
 	}()
 
-	defer ps.metrics.MeasureProxyRequest(reqCtx, time.Now())
+	defer ps.metrics.MeasureProxyRequest(reqCtx.ctx, reqCtx, time.Now())
 
 	var modExt ModuleExtractor
 	if len(reqCtx.route.Modules) != 0 {
@@ -53,7 +53,7 @@ func proxyHandler(ps *ProxyState, reqCtx *RequestContext) {
 		} else {
 			if modExt = modPool.Borrow(); modExt == nil {
 				ps.metrics.MeasureModuleDuration(
-					reqCtx, "module_extract", runtimeStart,
+					reqCtx.ctx, reqCtx, "module_extract", runtimeStart,
 					errors.New("error borrowing module"),
 				)
 				ps.logger.Error("Error borrowing module")
@@ -66,7 +66,7 @@ func proxyHandler(ps *ProxyState, reqCtx *RequestContext) {
 		modExt.Start(reqCtx)
 		defer modExt.Stop(true)
 		ps.metrics.MeasureModuleDuration(
-			reqCtx, "module_extract",
+			reqCtx.ctx, reqCtx, "module_extract",
 			runtimeStart, nil,
 		)
 	} else {
@@ -86,7 +86,7 @@ func handleServiceProxy(ps *ProxyState, reqCtx *RequestContext, modExt ModuleExt
 		fetchUpstreamStart := time.Now()
 		hostUrl, err := fetchUpstreamUrl(modExt.ModuleContext())
 		ps.metrics.MeasureModuleDuration(
-			reqCtx, "fetch_upstream",
+			reqCtx.ctx, reqCtx, "fetch_upstream",
 			fetchUpstreamStart, err,
 		)
 		if err != nil {
@@ -147,7 +147,8 @@ func handleServiceProxy(ps *ProxyState, reqCtx *RequestContext, modExt ModuleExt
 				resModifierStart := time.Now()
 				err = responseModifier(modExt.ModuleContext(), res)
 				ps.metrics.MeasureModuleDuration(
-					reqCtx, "response_modifier",
+					reqCtx.ctx, reqCtx,
+					"response_modifier",
 					resModifierStart, err,
 				)
 				if err != nil {
@@ -164,7 +165,7 @@ func handleServiceProxy(ps *ProxyState, reqCtx *RequestContext, modExt ModuleExt
 		}).
 		ErrorHandler(func(w http.ResponseWriter, r *http.Request, reqErr error) {
 			upstreamErr = reqErr
-			ps.logger.Debug("Error proxying request",
+			ps.logger.Error("Error proxying request",
 				zap.String("error", reqErr.Error()),
 				zap.String("route", reqCtx.route.Name),
 				zap.String("service", reqCtx.route.Service.Name),
@@ -178,7 +179,7 @@ func handleServiceProxy(ps *ProxyState, reqCtx *RequestContext, modExt ModuleExt
 				errorHandlerStart := time.Now()
 				err = errorHandler(modExt.ModuleContext(), reqErr)
 				ps.metrics.MeasureModuleDuration(
-					reqCtx, "error_handler",
+					reqCtx.ctx, reqCtx, "error_handler",
 					errorHandlerStart, err,
 				)
 				if err != nil {
@@ -193,12 +194,6 @@ func handleServiceProxy(ps *ProxyState, reqCtx *RequestContext, modExt ModuleExt
 				}
 			}
 			if !reqCtx.rw.HeadersSent() && reqCtx.rw.BytesWritten() == 0 {
-				ps.logger.Error("Writing error response",
-					zap.String("error", reqErr.Error()),
-					zap.String("route", reqCtx.route.Name),
-					zap.String("service", reqCtx.route.Service.Name),
-					zap.String("namespace", reqCtx.route.Namespace.Name),
-				)
 				util.WriteStatusCodeError(reqCtx.rw, http.StatusBadGateway)
 			}
 		})
@@ -207,7 +202,8 @@ func handleServiceProxy(ps *ProxyState, reqCtx *RequestContext, modExt ModuleExt
 		reqModifierStart := time.Now()
 		err = requestModifier(modExt.ModuleContext())
 		ps.metrics.MeasureModuleDuration(
-			reqCtx, "request_modifier",
+			reqCtx.ctx, reqCtx,
+			"request_modifier",
 			reqModifierStart, err,
 		)
 		if err != nil {
@@ -241,8 +237,10 @@ func handleServiceProxy(ps *ProxyState, reqCtx *RequestContext, modExt ModuleExt
 	upstreamStart := time.Now()
 	rp.ServeHTTP(reqCtx.rw, reqCtx.req)
 	ps.metrics.MeasureUpstreamDuration(
-		reqCtx, upstreamStart,
-		upstreamUrl.String(), upstreamErr,
+		reqCtx.ctx, reqCtx,
+		upstreamStart,
+		upstreamUrl.String(),
+		upstreamErr,
 	)
 }
 
@@ -252,7 +250,8 @@ func requestHandlerModule(ps *ProxyState, reqCtx *RequestContext, modExt ModuleE
 		reqModifierStart := time.Now()
 		err = requestModifier(modExt.ModuleContext())
 		ps.metrics.MeasureModuleDuration(
-			reqCtx, "request_modifier",
+			reqCtx.ctx, reqCtx,
+			"request_modifier",
 			reqModifierStart, err,
 		)
 		if err != nil {
@@ -269,7 +268,8 @@ func requestHandlerModule(ps *ProxyState, reqCtx *RequestContext, modExt ModuleE
 		requestHandlerStart := time.Now()
 		err := requestHandler(modExt.ModuleContext())
 		defer ps.metrics.MeasureModuleDuration(
-			reqCtx, "request_handler",
+			reqCtx.ctx, reqCtx,
+			"request_handler",
 			requestHandlerStart, err,
 		)
 		if err != nil {
@@ -283,7 +283,8 @@ func requestHandlerModule(ps *ProxyState, reqCtx *RequestContext, modExt ModuleE
 				errorHandlerStart := time.Now()
 				err = errorHandler(modExt.ModuleContext(), err)
 				ps.metrics.MeasureModuleDuration(
-					reqCtx, "error_handler",
+					reqCtx.ctx, reqCtx,
+					"error_handler",
 					errorHandlerStart, err,
 				)
 				if err != nil {

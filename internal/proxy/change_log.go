@@ -17,10 +17,12 @@ import (
 func (ps *ProxyState) processChangeLog(cl *spec.ChangeLog, reload, store bool) (err error) {
 	if reload {
 		defer func(start time.Time) {
-			ps.logger.Debug("processing change log",
-				zap.String("id", cl.ID),
-				zap.Duration("duration", time.Since(start)),
-			)
+			if err != nil {
+				ps.logger.Debug("processed change log",
+					zap.String("id", cl.ID),
+					zap.Duration("duration", time.Since(start)),
+				)
+			}
 		}(time.Now())
 	}
 	ps.proxyLock.Lock()

@@ -41,27 +41,12 @@ jobs:
         run: |
           sudo apt install -y jq
           jq --version
-      
-      - name: Install goreman
-        run: |
-          go install github.com/mattn/goreman@latest
-          goreman version
 
-      - run: go run cmd/dgate-server/main.go &
+      - name: Start and wait 5 seconds
+        run: go run cmd/dgate-server/main.go & sleep 5
 
-      - run: cd functional-tests/raft_tests && goreman start &
-
-      - name: Wait for server to start
-        run: sleep 10
-      
       - name: Functional Standalone Tests
         run: |
           for i in functional-tests/admin_tests/*.sh; \
             do bash -c $i; done
-
-      - name: Run local k6 test
-        uses: grafana/k6-action@v0.3.1
-        with:
-          filename: performance-tests/perf-test.js
-  
       

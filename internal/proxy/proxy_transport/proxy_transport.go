@@ -6,6 +6,8 @@ import (
 	"time"
 
 	"errors"
+
+	"github.com/dgate-io/dgate/internal/proxy/proxyerrors"
 )
 
 type Builder interface {
@@ -112,8 +114,13 @@ func (m *retryRoundTripper) RoundTrip(req *http.Request) (*http.Response, error)
 			defer cancel()
 		}
 		resp, err = m.transport.RoundTrip(req)
+		// Retry only on network errors or if the request is a PUT or POST
 		if err == nil || req.Method == http.MethodPut || req.Method == http.MethodPost {
 			break
+		} else if pxyErr := proxyerrors.GetProxyError(err); pxyErr != nil {
+			if !pxyErr.DisableRetry {
+				break
+			}
 		}
 		if m.retryTimeout != 0 {
 			<-time.After(m.retryTimeout)
